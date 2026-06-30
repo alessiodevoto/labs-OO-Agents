@@ -4200,3 +4200,130 @@ class TestCodeActGenerationIdNone:
         # existing execute() tests which rely on proper runtime setup.
         strat = CodeActStrategy()
         assert hasattr(strat, "execute")
+
+
+# ---------------------------------------------------------------------------
+# CodeActStrategy._maybe_eval_constructor_string
+# ---------------------------------------------------------------------------
+
+
+class TestMaybeEvalConstructorString:
+    """Tests for _maybe_eval_constructor_string constructor-call coercion."""
+
+    def _make_session(self, **locals_):
+        """Create a mock session with given session_locals."""
+        session = MagicMock()
+        session.session_locals = dict(locals_)
+        return session
+
+    def test_basic_constructor_with_type_in_locals(self):
+        """Should eval 'Answer(answer=1, reason="test")' when Answer is in locals."""
+        from pydantic import BaseModel
+
+        class Answer(BaseModel):
+            answer: int | None
+            reason: str
+
+        strat = CodeActStrategy()
+        session = self._make_session(Answer=Answer)
+        result = strat._maybe_eval_constructor_string(
+            'Answer(answer=1, reason="the minimum")', Answer, session
+        )
+        assert isinstance(result, Answer)
+        assert result.answer == 1
+        assert result.reason == "the minimum"
+
+    def test_constructor_with_type_injected_from_return_type(self):
+        """Should inject return_type into eval ns when not in session_locals."""
+        from pydantic import BaseModel
+
+        class MyResult(BaseModel):
+            value: int
+            note: str
+
+        strat = CodeActStrategy()
+        session = self._make_session()  # MyResult NOT in session_locals
+        result = strat._maybe_eval_constructor_string(
+            'MyResult(value=42, note="computed")', MyResult, session
+        )
+        assert isinstance(result, MyResult)
+        assert result.value == 42
+        assert result.note == "computed"
+
+    def test_constructor_with_variable_reference_in_args(self):
+        """Should resolve variables from session_locals inside constructor args."""
+        from pydantic import BaseModel
+
+        class Answer(BaseModel):
+            answer: int | None
+            reason: str
+
+        strat = CodeActStrategy()
+        session = self._make_session(Answer=Answer, x=7, msg="found it")
+        result = strat._maybe_eval_constructor_string(
+            "Answer(answer=x, reason=msg)", Answer, session
+        )
+        assert isinstance(result, Answer)
+        assert result.answer == 7
+        assert result.reason == "found it"
+
+    def test_non_constructor_string_returns_as_is(self):
+        """Plain string should be returned unchanged."""
+        strat = CodeActStrategy()
+        session = self._make_session()
+        result = strat._maybe_eval_constructor_string("just a string", str, session)
+        assert result == "just a string"
+
+    def test_no_parens_returns_as_is(self):
+        """String without parens should be returned unchanged."""
+        strat = CodeActStrategy()
+        session = self._make_session()
+        result = strat._maybe_eval_constructor_string("Answer", object, session)
+        assert result == "Answer"
+
+    def test_unknown_type_returns_as_is(self):
+        """Constructor with unknown type name should return as-is."""
+        strat = CodeActStrategy()
+        session = self._make_session()
+        result = strat._maybe_eval_constructor_string("Unknown(x=1)", object, session)
+        assert result == "Unknown(x=1)"
+
+    def test_eval_failure_returns_as_is(self):
+        """If eval raises, return original string."""
+        from pydantic import BaseModel
+
+        class Answer(BaseModel):
+            answer: int
+            reason: str
+
+        strat = CodeActStrategy()
+        session = self._make_session(Answer=Answer)
+        # Missing required field should raise ValidationError in eval
+        result = strat._maybe_eval_constructor_string(
+            'Answer(answer="not_an_int_but_coerced", reason=missing_var)', Answer, session
+        )
+        # missing_var is not in session_locals → NameError → returns as-is
+        assert result == 'Answer(answer="not_an_int_but_coerced", reason=missing_var)'
+
+    def test_nested_parens_work(self):
+        """Nested parens in args should be handled by eval."""
+        from pydantic import BaseModel
+
+        class Answer(BaseModel):
+            answer: int | None
+            reason: str
+
+        strat = CodeActStrategy()
+        session = self._make_session(Answer=Answer, min=min)
+        result = strat._maybe_eval_constructor_string(
+            'Answer(answer=min(3, 1, 2), reason="picked smallest")', Answer, session
+        )
+        assert isinstance(result, Answer)
+        assert result.answer == 1
+
+    def test_non_identifier_prefix_returns_as_is(self):
+        """String starting with non-identifier before parens should return as-is."""
+        strat = CodeActStrategy()
+        session = self._make_session()
+        result = strat._maybe_eval_constructor_string("123Bad(x=1)", object, session)
+        assert result == "123Bad(x=1)"

@@ -1145,9 +1145,12 @@ Standard Python builtins and agent instance (`self`) are available."""
                     )
                     raise
                 if error_msg is None:
-                    # Success! Update ToolCallEvent with nested result
+                    # Rewrite the tool_call arguments to show correct syntax
+                    # when coercion changed the value (teaches model the right format).
+                    corrected_args = self._corrected_return_args(validated, args)
                     runtime.event_manager.update(
                         tool_call_event_id,
+                        arguments=corrected_args,
                         result=ToolResult(
                             tool_call_id=tool_call.id,
                             content="Result accepted.",
@@ -1647,7 +1650,17 @@ Standard Python builtins and agent instance (`self`) are available."""
                     )
                     normalized_args["result"] = session.session_locals[result_str]
                 else:
-                    normalized_args["result"] = self._maybe_parse_json_string(result_str)
+                    parsed = self._maybe_parse_json_string(result_str)
+                    if parsed is not result_str:
+                        normalized_args["result"] = parsed
+                    else:
+                        # Constructor-call coercion: if the string looks like a Python
+                        # constructor call (e.g. "Answer(answer=1, reason='...')"), eval it
+                        # in the session namespace where the type is available.
+                        coerced = self._maybe_eval_constructor_string(
+                            result_str, return_type, session
+                        )
+                        normalized_args["result"] = coerced
 
             # Validate using Pydantic
             validated_model = ReturnResultModel(**normalized_args)
@@ -1813,6 +1826,81 @@ Standard Python builtins and agent instance (`self`) are available."""
                 pass  # Not valid Python literal, return as-is
 
         return value
+
+    def _corrected_return_args(self, validated: Any, original_args: dict) -> dict:
+        """Return corrected tool_call arguments showing correct JSON syntax.
+
+        When coercion transformed the result (e.g. from a constructor-call
+        string to an actual object), rewrite the arguments dict so the
+        model's conversation history shows what it should have passed.
+        """
+        try:
+            if isinstance(validated, BaseModel):
+                corrected_result = validated.model_dump(mode="json")
+            elif validated is None:
+                return original_args
+            else:
+                # For non-Pydantic types, try JSON round-trip
+                json.dumps(validated)
+                corrected_result = validated
+        except (TypeError, ValueError):
+            return original_args
+
+        return {"result": corrected_result}
+
+    def _maybe_eval_constructor_string(self, value: str, return_type: Any, session: Any) -> Any:
+        """Eval a string that looks like a Python constructor call.
+
+        Detects patterns like 'ClassName(field=value, ...)' where ClassName
+        matches the expected return type. Evaluates in the session namespace
+        so the type is available. Returns the constructed object on success,
+        or the original string on failure.
+
+        This handles a common LLM failure mode where the model calls
+        return_result as a tool with the constructor as a string argument
+        instead of calling return_result(ClassName(...)) from within
+        execute_python.
+        """
+        stripped = value.strip()
+
+        # Must look like a constructor call: Identifier(...)
+        # Quick check before parsing
+        paren_idx = stripped.find("(")
+        if paren_idx <= 0 or not stripped.endswith(")"):
+            return value
+
+        candidate_name = stripped[:paren_idx].strip()
+        if not candidate_name.isidentifier():
+            return value
+
+        # Check that the candidate name matches the expected return type
+        # or is available in session locals
+        type_name = getattr(return_type, "__name__", None)
+        if candidate_name != type_name and candidate_name not in session.session_locals:
+            return value
+
+        # Build eval namespace: session locals + the return type itself (which may
+        # live in module globals rather than session_locals).
+        eval_ns = dict(session.session_locals)
+        if type_name and type_name not in eval_ns and isinstance(return_type, type):
+            eval_ns[type_name] = return_type
+
+        # Try to eval in the combined namespace
+        try:
+            result = eval(stripped, {"__builtins__": {}}, eval_ns)  # noqa: S307
+            get_harness_metrics().constructor_string_coerced(candidate_name)
+            logger.debug(
+                "[CODEACT] Coerced constructor-call string %r into %s instance",
+                stripped[:80],
+                type(result).__name__,
+            )
+            return result
+        except Exception:
+            logger.debug(
+                "[CODEACT] Failed to eval constructor string %r, returning as-is",
+                stripped[:80],
+            )
+            return value
 
     def _try_validate_return_value(
         self,
