@@ -79,6 +79,60 @@ async def test_cancelled_get_leaves_no_phantom_waiter():
     assert q.qsize() == 1
 
 
+@pytest.mark.asyncio
+async def test_cancelled_get_late_result_wakes_next_waiter_without_fifo_inversion():
+    q: Channel[str] = Channel("q", "queue")
+    first_getter = asyncio.create_task(q.get())
+    second_getter = asyncio.create_task(q.get())
+    await asyncio.sleep(0)
+
+    q.put("a")
+    first_getter.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await first_getter
+
+    assert q.snapshot() == []
+    assert not q.has_waiters()
+    assert await asyncio.wait_for(second_getter, timeout=0.5) == "a"
+
+    q.put("b")
+    assert await q.get() == "b"
+
+
+@pytest.mark.asyncio
+async def test_cancelled_get_restored_item_stays_before_later_put():
+    q: Channel[str] = Channel("q", "queue")
+    first_getter = asyncio.create_task(q.get())
+    second_getter = asyncio.create_task(q.get())
+    await asyncio.sleep(0)
+
+    q.put("a")
+    first_getter.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await first_getter
+
+    q.put("b")
+    assert await asyncio.wait_for(second_getter, timeout=0.5) == "a"
+    assert await q.get() == "b"
+
+
+@pytest.mark.asyncio
+async def test_cancelled_get_late_result_stays_before_put_before_cancel_unwinds():
+    q: Channel[str] = Channel("q", "queue")
+    first_getter = asyncio.create_task(q.get())
+    second_getter = asyncio.create_task(q.get())
+    await asyncio.sleep(0)
+
+    q.put("a")
+    first_getter.cancel()
+    q.put("b")
+    with pytest.raises(asyncio.CancelledError):
+        await first_getter
+
+    assert await asyncio.wait_for(second_getter, timeout=0.5) == "a"
+    assert await q.get() == "b"
+
+
 # ---------------------------------------------------------------------------
 # Non-consuming accessors
 # ---------------------------------------------------------------------------
