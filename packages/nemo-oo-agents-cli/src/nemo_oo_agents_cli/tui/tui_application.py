@@ -208,6 +208,30 @@ class TUIApplication:
         self._on_output = on_output
         self._session_label_fn: Callable[[], str] | None = session_label
         self._config = config
+
+        # Wrap the agent's QueueManager._set_notify to also start the
+        # dispatcher when items arrive on non-user channels while idle.
+        # Without this, slash commands or spawned jobs that produce output
+        # before any user message is typed would queue items indefinitely.
+        # The callback may fire from the agent-loop thread (spawned jobs),
+        # so schedule _ensure_dispatcher_task on the UI loop to avoid
+        # attaching dispatcher state to the wrong event loop.
+        if agent is not None:
+            qm = getattr(agent, "queue_manager", None)
+            if qm is not None:
+                _original_set_notify = qm._set_notify
+
+                def _set_notify_and_start() -> None:
+                    _original_set_notify()
+                    ui_loop = self._loop
+                    if ui_loop is not None and ui_loop.is_running():
+                        ui_loop.call_soon_threadsafe(
+                            lambda: self._ensure_dispatcher_task(start_with_race=True)
+                        )
+                    else:
+                        self._ensure_dispatcher_task(start_with_race=True)
+
+                qm._set_notify = _set_notify_and_start
         self.full_screen = full_screen
         self.state = QueueState()
 
@@ -1364,6 +1388,14 @@ class TUIApplication:
                     pending.setdefault(ch.name, []).append(val)
         return pending
 
+    def _restart_dispatcher_if_pending(self) -> None:
+        """Restart the dispatcher if user messages or non-user work is pending."""
+        q = getattr(self.agent, "_user_messages_in", None) if self.agent else None
+        if q is not None and q.qsize() > 0:
+            self._ensure_dispatcher_task()
+        elif self._has_pending_or_running_non_user_work():
+            self._ensure_dispatcher_task(start_with_race=True)
+
     def _has_pending_or_running_non_user_work(self) -> bool:
         """True when post-cancel background channel work should wake the agent."""
         agent = self.agent
@@ -1540,11 +1572,7 @@ class TUIApplication:
         exc = task.exception()
         if exc is not None:
             self.emit_block(f"Agent error: {exc}\n")
-            q = getattr(self.agent, "_user_messages_in", None) if self.agent else None
-            if q is not None and q.qsize() > 0:
-                self._ensure_dispatcher_task()
-            elif self._has_pending_or_running_non_user_work():
-                self._ensure_dispatcher_task(start_with_race=True)
+        self._restart_dispatcher_if_pending()
 
     # ── agent_run: dispatch to agent thread ----------------------------
 
