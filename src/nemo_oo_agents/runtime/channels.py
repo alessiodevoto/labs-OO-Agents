@@ -219,7 +219,7 @@ class Channel[T]:
         self._agent = agent
         self._event_manager = event_manager
         self._items: deque[T] = deque()
-        self._waiters: deque[asyncio.Future[T]] = deque()
+        self._waiters: deque[asyncio.Future[Any]] = deque()
         # Fired once per item at the queued → consumed transition. Both
         # the dispatcher (race winner) and agent mid-turn ``get()`` go
         # through the same firing path so callers can rely on symmetric
@@ -236,9 +236,10 @@ class Channel[T]:
         """Push *item* through the channel.
 
         queue mode
-            If a ``get()`` is already awaiting, hand the item directly
-            to the waiter. Otherwise append to the deque so any later
-            consumer sees it.
+            Append to the backing deque, then wake one waiter. Consumers pop
+            only after their task resumes, matching ``asyncio.Queue``
+            cancellation semantics: a cancelled waiter cannot strand a
+            delivered-but-unclaimed item in its Future.
 
         event mode
             Build a ``QueueOutput`` and add it to ``event_manager``.
@@ -263,9 +264,14 @@ class Channel[T]:
             if self._on_put is not None:
                 self._on_put()
             return
-        # queue mode: hand to a pending waiter or buffer. Waiters may
-        # belong to the agent-loop thread while producers run on the TUI
-        # loop, so set the result via the Future's owning loop.
+
+        self._items.append(item)
+        self._wake_next_waiter()
+        if self._on_put is not None:
+            self._on_put()
+
+    def _wake_next_waiter(self) -> None:
+        """Wake one live waiter, if any, without transferring an item."""
         while self._waiters:
             waiter = self._waiters.popleft()
             if waiter.done():
@@ -277,24 +283,23 @@ class Channel[T]:
                 running = None
             if running is waiter_loop:
                 if not waiter.done():
-                    waiter.set_result(item)
-                else:
-                    # Waiter was cancelled between our check and now — re-buffer.
-                    self._items.appendleft(item)
+                    waiter.set_result(None)
             else:
-                # Schedule on the waiter's loop; handle the case where the
-                # waiter is cancelled between now and callback execution.
-                def _safe_deliver(w=waiter, v=item) -> None:
-                    if not w.done():
-                        w.set_result(v)
-                    else:
-                        self._items.appendleft(v)
-                        if self._on_put is not None:
-                            self._on_put()
 
-                waiter_loop.call_soon_threadsafe(_safe_deliver)
+                def _safe_wake(w=waiter) -> None:
+                    if not w.done():
+                        w.set_result(None)
+
+                try:
+                    waiter_loop.call_soon_threadsafe(_safe_wake)
+                except RuntimeError:
+                    continue
             return
-        self._items.append(item)
+
+    def _restore_front(self, item: T) -> None:
+        """Restore *item* at the head and wake a waiter to claim it."""
+        self._items.appendleft(item)
+        self._wake_next_waiter()
         if self._on_put is not None:
             self._on_put()
 
@@ -309,33 +314,30 @@ class Channel[T]:
         public ``get()`` always fires the hook.
 
         Cancellation-safe: a cancelled drain removes its waiter from
-        the queue without consuming any item. If a producer set the
-        waiter's result between cancel and unwind, the item is
-        restored to the head of the deque so a later consumer claims
-        it.
+        the queue without consuming any item. Items stay in ``_items``
+        until the consumer task resumes and pops them, so cancellation
+        cannot leave a result stranded in a cancelled Future.
         """
         if self.mode != "queue":
             raise NotImplementedError(
                 f"_drain_one is queue-mode only; channel {self.name!r} is {self.mode}"
             )
-        if self._items:
-            return self._items.popleft()
-        loop = asyncio.get_running_loop()
-        waiter: asyncio.Future[T] = loop.create_future()
-        self._waiters.append(waiter)
-        try:
-            return await waiter
-        except asyncio.CancelledError:
+        while True:
+            if self._items:
+                return self._items.popleft()
+            loop = asyncio.get_running_loop()
+            waiter: asyncio.Future[Any] = loop.create_future()
+            self._waiters.append(waiter)
             try:
-                self._waiters.remove(waiter)
-            except ValueError:
-                pass
-            if waiter.done() and not waiter.cancelled():
+                await waiter
+            except asyncio.CancelledError:
                 try:
-                    self._items.appendleft(waiter.result())
-                except BaseException:
+                    self._waiters.remove(waiter)
+                except ValueError:
                     pass
-            raise
+                if self._items:
+                    self._wake_next_waiter()
+                raise
 
     async def get(self) -> T:
         """Block until an item arrives, then return it.
@@ -846,7 +848,7 @@ class QueueManager:
                     lost_item = t.result()
                 except BaseException:
                     continue
-                ch._items.appendleft(lost_item)
+                ch._restore_front(lost_item)
             winner_ch._fire_on_get(winner_item)
             notify_event.clear()
             return [(winner_ch.name, winner_item)]
@@ -868,7 +870,7 @@ class QueueManager:
                     pass
                 if t.done() and not t.cancelled():
                     try:
-                        ch._items.appendleft(t.result())
+                        ch._restore_front(t.result())
                     except BaseException:
                         pass
             raise
