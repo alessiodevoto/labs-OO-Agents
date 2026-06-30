@@ -1374,6 +1374,20 @@ Standard Python builtins and agent instance (`self`) are available."""
             session.session_locals.update(result.captured_locals)
             logger.debug(f"[CODEACT] Captured locals: {list(result.captured_locals.keys())}")
 
+        # Re-inject return type names into session_locals if the model clobbered them.
+        # Defense-in-depth: even if the E501 validator misses an assignment that
+        # shadows the return type, this ensures they're always fresh for the next cell.
+        # Handles complex types like Optional[Answer], list[Answer] by extracting
+        # all protected names and re-injecting from the execution builtins.
+        if return_type is not None:
+            from nemo_oo_agents.runtime.code_validator import _collect_type_names
+
+            protected_names = _collect_type_names(return_type, builtins)
+            for name in protected_names:
+                original = builtins.get(name)
+                if original is not None and session.session_locals.get(name) is not original:
+                    session.session_locals[name] = original
+
         # Check if return_result() was called inline (signals task completion)
         if result.signal and isinstance(result.signal, _ReturnResultSignal):
             logger.debug("[CODEACT] Detected inline return_result() call")
