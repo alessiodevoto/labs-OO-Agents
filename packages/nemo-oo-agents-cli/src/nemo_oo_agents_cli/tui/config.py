@@ -113,6 +113,12 @@ class TUIConfig(BaseModel):
 
     # Native scrollback with clear+rewrite transcript replay on resize.
     full_screen: bool = True
+    # Long-term memory skill. Off by default; users can opt in per agent via
+    # /config set memory session. memory_path is an explicit SQLite
+    # path override.
+    memory: Literal["off", "session"] = "off"
+    memory_agents: dict[str, Literal["off", "session"]] = {}
+    memory_path: Path | None = None
 
     # Goal mode: when on, unresolved todos auto-feed the agent after each turn
     goal_mode: bool = False
@@ -169,6 +175,9 @@ class Config(BaseModel):
             "tui.libs_dirs",
             lambda v: [Path(p) for p in (v if isinstance(v, list) else [v])],
         ),
+        "memory": "tui.memory",
+        "memory_agents": "tui.memory_agents",
+        "memory_path": ("tui.memory_path", Path),
     }
 
     # Fields that are argparse store_true flags (skip False values to avoid overwriting config)

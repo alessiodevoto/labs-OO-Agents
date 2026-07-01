@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+import asyncio
 import copy
 import inspect
 import json
@@ -1435,6 +1436,35 @@ async def _collect_async(raw: Any) -> "litellm.ModelResponse":
     return raw
 
 
+async def _litellm_acompletion(api_params: dict[str, Any]) -> Any:
+    """Await LiteLLM without cancelling its nested provider coroutine.
+
+    LiteLLM runs sync ``completion()`` in an executor for async chat calls.
+    OpenAI-compatible providers return ``OpenAIChatCompletion.acompletion``
+    from that sync frame, then LiteLLM awaits it on the event loop. If a TUI
+    soft-cancel lands in that handoff window, Python can garbage-collect the
+    provider coroutine before it is awaited and print::
+
+        RuntimeWarning: coroutine 'OpenAIChatCompletion.acompletion' was never awaited
+
+    Shielding lets LiteLLM finish consuming that provider coroutine while the
+    caller still receives ``CancelledError`` immediately.
+    """
+    task = asyncio.create_task(litellm.acompletion(**api_params))
+    try:
+        return await asyncio.shield(task)
+    except asyncio.CancelledError:
+        task.add_done_callback(_consume_litellm_acompletion_result)
+        raise
+
+
+def _consume_litellm_acompletion_result(task: asyncio.Task[Any]) -> None:
+    try:
+        task.result()
+    except BaseException:
+        pass
+
+
 def _extract_reasoning_and_usage(raw_response: Any) -> tuple[str | None, dict[str, int] | None]:
     """Extract reasoning and usage from raw LLM response."""
     reasoning = None
@@ -1875,7 +1905,7 @@ class CompletionClient(UnifiedLLM):
         retry_on_empty = self.retry_config.retry_on_empty_content if self.retry_config else False
 
         async def _make_call():
-            raw_response = await _collect_async(await litellm.acompletion(**api_params))
+            raw_response = await _collect_async(await _litellm_acompletion(api_params))
             reasoning, _ = _extract_reasoning_and_usage(raw_response)
             text_content = raw_response.choices[0].message.content or ""  # type: ignore[union-attr]
 

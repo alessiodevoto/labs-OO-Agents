@@ -46,6 +46,8 @@ lint:
   image:
     name: ghcr.io/astral-sh/uv:$UV_VERSION-python$PYTHON_VERSION-$BASE_LAYER
     pull_policy: always
+  tags:
+    - os/linux
   cache:
     key:
       files:
@@ -131,6 +133,8 @@ check-frontend-build:
   image:
     name: ghcr.io/astral-sh/uv:$UV_VERSION-python$PYTHON_VERSION-$BASE_LAYER
     pull_policy: always
+  tags:
+    - os/linux
   cache:
     key:
       files:
@@ -411,6 +415,8 @@ upload-test-report:
   image:
     name: ghcr.io/astral-sh/uv:$UV_VERSION-python$PYTHON_VERSION-$BASE_LAYER
     pull_policy: always
+  tags:
+    - os/linux
   needs:
     - job: test-core
       artifacts: true
@@ -451,6 +457,8 @@ capability-test:
   image:
     name: ghcr.io/astral-sh/uv:$UV_VERSION-python$PYTHON_VERSION-$BASE_LAYER
     pull_policy: always
+  tags:
+    - os/linux
   cache:
     key:
       files:
@@ -648,6 +656,9 @@ integration-return-types:
 # pipeline.
 .build-package-base:
   stage: build
+  image:
+    name: ghcr.io/astral-sh/uv:$UV_VERSION-python$PYTHON_VERSION-$BASE_LAYER
+    pull_policy: always
   tags:
     - os/linux
   image:
@@ -713,6 +724,9 @@ build-package-cli:
 # build base so build/publish jobs are always co-included or co-excluded.
 .publish-package-base:
   stage: publish
+  image:
+    name: ghcr.io/astral-sh/uv:$UV_VERSION-python$PYTHON_VERSION-$BASE_LAYER
+    pull_policy: always
   tags:
     - os/linux
   image:
@@ -809,6 +823,10 @@ deploy-staging:
   image:
     name: debian:latest
     pull_policy: always
+  tags:
+    - os/linux
+    - docker-build
+    - interactive-agents
   before_script:
     - command -v ssh-agent >/dev/null || ( apt-get update -y && apt-get install openssh-client -y )
     - eval $(ssh-agent -s)
