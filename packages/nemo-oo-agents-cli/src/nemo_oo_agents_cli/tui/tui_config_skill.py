@@ -38,6 +38,18 @@ class TuiConfigurationSkill(Skill):
       vi_mode: false                   # Vi keybindings
       libs_dirs: ["/path/to/skills"]   # External library skill directories
       trace_dir: .nemo_oo/traces       # Trace output directory
+    ```toml
+    [tui]
+    model = "claude-opus-4-8"        # LLM model (litellm or unifiedllm alias)
+    python = false                    # Show Python execution panels
+    vi = false                        # Vi keybindings
+    libs_dirs = ["/path/to/skills"]   # External library skill directories
+    trace = ".nemo_oo_agents/traces"  # Trace output directory
+    memory = "off"                    # global default: off | session
+    # /config set memory session writes a per-agent sticky opt-in under [tui.memory_agents]
+    # memory_path = "memory.db"  # explicit SQLite override
+    # [tui.memory_agents]
+    # "nemo_oo_agents_cli.tui.agent:TUIAgent" = "session"
 
       # MCP servers can be configured inline here. Use env vars for secrets
       # so tokens are not committed; ${VAR} is expanded when connecting.
@@ -170,10 +182,9 @@ class TuiConfigurationSkill(Skill):
         data = self._load_raw()
         if not data:
             return (
-                "No settings file exists yet in any layer. The TUI is running on defaults.\n\n"
-                "To create one, edit a `settings.yaml` directly or use "
-                "`/config set <key> <value>`.\n"
-                "Available keys: `model`, `python`, `vi`, `libs_dirs`, `trace`.\n\n"
+                f"No config file exists yet at `{self._config_path()}`. The TUI is running on defaults.\n\n"
+                "To create one, edit the file directly or use `/config set <key> <value>`.\n"
+                "Available keys: `model`, `python`, `vi`, `libs_dirs`, `trace`, `memory`, `memory_path`.\n\n"
                 "Example: `/config set model claude-opus-4-8`"
             )
         content = yaml.safe_dump(data, sort_keys=False).rstrip()
@@ -295,11 +306,14 @@ class TuiConfigurationSkill(Skill):
             return "Usage: /config set <key> <value>\nExample: /config set model claude-opus-4-8"
 
         raw_key, raw_value = parts
+        if raw_key == "memory":
+            return self._set_agent_memory(raw_value)
         try:
             setting_path = self._setting_path(raw_key)
         except ValueError as exc:
             return f"Error: {exc}"
         value = self._parse_value(raw_value)
+        path = self._config_path()
 
         from .settings import write_settings_updates
 
@@ -365,6 +379,23 @@ class TuiConfigurationSkill(Skill):
                 values["keep_going_model"] = vars_obj.get("tui_keep_going_model")
 
         return {("tui", key): value for key, value in values.items() if value is not None}
+
+    def _set_agent_memory(self, value: str) -> str:
+        """Persist memory preference for the current agent, not globally."""
+        value = value.strip().strip("\\\"'")
+        if value not in {"off", "session"}:
+            return "Usage: /config set memory <off|session>"
+
+        from .commands import _set_agent_memory_config
+
+        path = _set_agent_memory_config(self._agent, value)
+        key = getattr(self._agent, "_tui_memory_key", None)
+        if key is None and self._agent is not None:
+            key = f"{type(self._agent).__module__}:{type(self._agent).__qualname__}"
+        return (
+            f"Set memory `{value}` for agent `{key or 'default'}` in {path}\n"
+            "⚠️ Restart TUI for changes to take effect."
+        )
 
     @staticmethod
     def _setting_path(raw_key: str) -> list[str]:

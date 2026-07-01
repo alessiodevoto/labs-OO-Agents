@@ -1124,6 +1124,52 @@ class PythonCommand(Command):
 # ---------------------------------------------------------------------------
 
 
+def _quote_toml_key_segment(value: str) -> str:
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def _set_toml_table_value(content: str, table: str, key: str, value: str) -> str:
+    """Set a string value in a TOML table without matching commented headers."""
+    table_header = f"[{table}]"
+    key_segment = _quote_toml_key_segment(key)
+    new_line = f"{key_segment} = {value!r}".replace("'", '"')
+    table_re = re.compile(rf"^\s*\[{re.escape(table)}\]\s*$", re.MULTILINE)
+    match = table_re.search(content)
+    if match is None:
+        return content.rstrip() + f"\n\n{table_header}\n{new_line}\n"
+
+    next_table = re.search(r"^\s*\[[^\]]+\]\s*$", content[match.end() :], re.MULTILINE)
+    table_end = len(content) if next_table is None else match.end() + next_table.start()
+    table_body = content[match.end() : table_end]
+    key_re = re.compile(rf"^(\s*){re.escape(key_segment)}\s*=.*$", re.MULTILINE)
+    if key_re.search(table_body):
+        new_body = key_re.sub(new_line, table_body, count=1)
+    else:
+        separator = "" if table_body.endswith("\n") or not table_body else "\n"
+        new_body = table_body + separator + new_line + "\n"
+    return content[: match.end()] + new_body + content[table_end:]
+
+
+def _set_agent_memory_config(agent: "Agent | None", value: str) -> Path:
+    """Persist memory preference for the current agent, not globally."""
+    from nemo_oo_agents.paths import get_project_dir
+
+    path = get_project_dir("config.toml")
+    if path.exists():
+        content = path.read_text()
+    else:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        content = '# NeMo OO Agents TUI configuration\n\n[tui]\nmemory = "off"\n'
+
+    key = getattr(agent, "_tui_memory_key", None)
+    if key is None and agent is not None:
+        key = f"{type(agent).__module__}:{type(agent).__qualname__}"
+    if key is None:
+        key = "default"
+    path.write_text(_set_toml_table_value(content, "tui.memory_agents", key, value))
+    return path
+
+
 class GoalModeCommand(Command):
     """Toggle goal mode: auto-feed unresolved todos to the agent between turns."""
 
@@ -1244,6 +1290,66 @@ class KeepGoingCommand(Command):
             return None
         model = str(value).strip()
         return model or None
+
+
+class MemoryCommand(Command):
+    """Toggle session-scoped long-term memory for the current agent."""
+
+    @property
+    def name(self) -> str:
+        return "memory"
+
+    def help_text(self) -> dict[str, str]:  # type: ignore[override]
+        state = "on" if getattr(self.config, "memory", "off") == "session" else "off"
+        return {"/memory [on|off]": f"Toggle session memory for this agent (currently {state})"}
+
+    def validate_args(self, args: list[str]) -> tuple[bool, str | None]:
+        if args and args[0].lower() not in ("on", "off", "status"):
+            return False, f"Unknown argument `{args[0]}`. Use on or off."
+        return True, None
+
+    async def execute(self, args: list[str]) -> "CommandResult":
+        if not args or args[0].lower() == "status":
+            state = "on" if getattr(self.config, "memory", "off") == "session" else "off"
+            return CommandResult.ok(TextOutput(f"Memory: {state}", "info"))
+
+        subcmd = args[0].lower()
+        scope = "session" if subcmd == "on" else "off"
+        self.config.memory = scope
+        key = getattr(self.agent, "_tui_memory_key", None)
+        if key is None:
+            key = f"{type(self.agent).__module__}:{type(self.agent).__qualname__}"
+        if hasattr(self.config, "memory_agents"):
+            self.config.memory_agents[key] = scope
+        _set_agent_memory_config(self.agent, scope)
+
+        def _configure():
+            from .bootstrap import configure_tui_memory
+
+            root_config = getattr(self._registry, "_root_config", None)
+            if root_config is None:
+                root_config = type("_RootConfig", (), {"tui": self.config})()
+            session_manager = self.session_manager or getattr(
+                self._registry, "session_manager", None
+            )
+            if session_manager is None:
+                configure_tui_memory(self.agent, root_config, agent_db=None, session_id=None)
+            else:
+                configure_tui_memory(
+                    self.agent,
+                    root_config,
+                    agent_db=session_manager.agent_db_path,
+                    session_id=session_manager.session_id,
+                )
+
+        try:
+            self.agent_run(_configure)
+        except Exception as exc:
+            return CommandResult.err(f"Failed to configure memory: {exc}")
+
+        if scope == "session":
+            return CommandResult.ok(TextOutput("Session memory enabled for this agent.", "success"))
+        return CommandResult.ok(TextOutput("Memory disabled for this agent.", "success"))
 
 
 class ToolbarCommand(Command):
@@ -2459,6 +2565,7 @@ class CommandRegistry:
         "python": PythonCommand,
         "goal-mode": GoalModeCommand,
         "keep-going": KeepGoingCommand,
+        "memory": MemoryCommand,
         "session": SessionCommand,
         "jobs": JobsCommand,
         "show-last-python": ShowLastPythonCommand,
@@ -2479,6 +2586,7 @@ class CommandRegistry:
         skills_dirs: list[Path] | None = None,
         mcp_file: Path | None = None,
         session_manager: "SessionManager | None" = None,
+        root_config: "Any | None" = None,
     ):
         self.config = config
         self.agent = agent
@@ -2486,6 +2594,7 @@ class CommandRegistry:
         self.skills_dirs = skills_dirs
         self.mcp_file = mcp_file
         self.session_manager = session_manager
+        self._root_config = root_config
         self.startup_info: Output | None = None  # set by main after bootstrap
         self._commands: dict[str, Command] = self._register()
         self._auto_connect_mcp()

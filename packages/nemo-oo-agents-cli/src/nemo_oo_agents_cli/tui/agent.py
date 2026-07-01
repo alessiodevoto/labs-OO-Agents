@@ -765,7 +765,10 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
         self.skills.register("nemo.repo", self.repo)
         self.skills.register("nemo.todo", self.todo)
         self.skills.register("nemo.libwriting", self.libs)
-        self.skills.activate(["nemo.*"])
+        builtin_skills = [
+            n for n in self.skills.discovered() if n.startswith("nemo.") and n != "nemo.memory"
+        ]
+        self.skills.activate(builtin_skills)
 
         # Render Python tool docs together so ShellTools/RepoTools stay paired in context.
         self.context.set_static("python_tools", expr="doc(RepoTools, ShellTools)")
@@ -834,6 +837,8 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
         fill up with the doer's scratch work. Call ``.execute(todo)`` to
         run a single todo item to completion.
         """
+        memory_skill = getattr(self, "memory", None)
+        memory_config = getattr(memory_skill, "_config", None)
         return DoerAgent(
             llm=self._llm,
             cwd=self.shell.cwd,
@@ -843,6 +848,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
             shell_cls=type(
                 self.shell
             ),  # propagate the parent's current shell variant (/swap-shell)
+            memory_config=memory_config,
         )
 
     @strategy(CodeActStrategy())

@@ -64,6 +64,98 @@ def _scaffold_settings(config: "Config") -> None:
     target.write_text(render_settings_template(config))
 
 
+def tui_agent_memory_key(agent: "Agent", config: "Config") -> str:
+    """Stable config key for an agent's TUI memory preference."""
+    if config.tui.agent_spec:
+        return config.tui.agent_spec
+    return f"{type(agent).__module__}:{type(agent).__qualname__}"
+
+
+def resolve_tui_memory_scope(agent: "Agent", config: "Config") -> str:
+    """Return the effective TUI memory scope for *agent*."""
+    key = tui_agent_memory_key(agent, config)
+    return config.tui.memory_agents.get(key, config.tui.memory)
+
+
+def configure_tui_memory(
+    agent: "Agent",
+    config: "Config",
+    *,
+    agent_db,
+    session_id: str | None,
+) -> None:
+    """Install/reinstall the TUI memory skill according to effective config."""
+    from pathlib import Path
+
+    key = tui_agent_memory_key(agent, config)
+    agent._tui_memory_key = key
+    scope = resolve_tui_memory_scope(agent, config)
+
+    existing = getattr(agent, "memory", None)
+    if existing is not None and hasattr(existing, "detach"):
+        try:
+            existing.detach()
+        except Exception:
+            pass
+
+    if scope == "off":
+        if hasattr(agent, "skills"):
+            try:
+                agent.skills.deactivate(["nemo.memory"])
+            except Exception:
+                pass
+        if hasattr(agent, "memory"):
+            try:
+                delattr(agent, "memory")
+            except Exception:
+                pass
+        return
+
+    from nemo_oo_agents.memory import MemoryConfig
+    from nemo_oo_agents.memory.memory_skill import MemorySkill
+    from nemo_oo_agents.paths import get_project_dir
+
+    if scope != "session":
+        raise ValueError(f"Unsupported TUI memory scope {scope!r}; use 'off' or 'session'.")
+
+    project_dir = get_project_dir()
+    if config.tui.memory_path is not None:
+        if config.tui.memory_path.is_absolute():
+            raise ValueError("tui.memory_path must be relative to the project directory")
+        memory_path = (project_dir / config.tui.memory_path).resolve()
+        if (
+            project_dir.resolve() not in memory_path.parents
+            and memory_path != project_dir.resolve()
+        ):
+            raise ValueError("tui.memory_path must stay under the project directory")
+    else:
+        if session_id is None:
+            raise RuntimeError("session-scoped memory requires a session id")
+        memory_path = Path(agent_db).with_name(f"{session_id}-memory.db")
+
+    memory_config = MemoryConfig(enabled=True, path=str(memory_path))
+    agent.skills.register("nemo.memory", MemorySkill(memory_config))
+    agent.skills.activate(["nemo.memory"])
+
+
+_CONFIG_TOML_TEMPLATE = """# NeMo OO Agents project config
+[agent]
+model = "{default_model}"
+"""
+
+
+def _scaffold_project_dir(config: "Config") -> None:
+    """Create .nemo_oo_agents/ and write a config.toml template on first run."""
+    from nemo_oo_agents.paths import get_project_dir
+
+    project_dir = get_project_dir()
+    project_dir.mkdir(exist_ok=True)
+
+    config_path = project_dir / "config.toml"
+    if not config_path.exists():
+        config_path.write_text(_CONFIG_TOML_TEMPLATE.format(default_model=config.tui.default_model))
+
+
 async def bootstrap(
     config: "Config",
     *,
@@ -335,6 +427,14 @@ async def bootstrap(
             messages.append(TextOutput(f"Could not replay rich content: {_e}", "warning"))
 
     # ------------------------------------------------------------------
+    # Long-term memory
+    # ------------------------------------------------------------------
+    try:
+        configure_tui_memory(agent, config, agent_db=agent_db, session_id=_session_id)
+    except Exception as _e:
+        messages.append(TextOutput(f"Could not enable memory: {_e}", "warning"))
+
+    # ------------------------------------------------------------------
     # Session manager
     # ------------------------------------------------------------------
     session_manager: SessionManager | None = None
@@ -421,7 +521,9 @@ def build_registry(
     # Activate all discovered library skills (local.* from project libs, plus any prefixed ones)
     discovered = result.agent.skills.discovered()
     lib_patterns = {
-        n.split(".")[0] + ".*" for n in discovered if n not in result.agent.skills.loaded()
+        n.split(".")[0] + ".*"
+        for n in discovered
+        if n not in result.agent.skills.loaded() and n != "nemo.memory"
     }
     if lib_patterns:
         result.agent.skills.activate(list(lib_patterns))
@@ -461,6 +563,7 @@ def build_registry(
         skills_dirs=result.config.tui.skills_dirs,
         mcp_file=result.config.tui.mcp_file,
         session_manager=result.session_manager,
+        root_config=result.config,
     )
     # Expose to agent so LibraryManager can trigger slash-command hot-reload.
     result.agent._command_registry = registry  # type: ignore[attr-defined]

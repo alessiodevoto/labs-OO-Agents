@@ -1395,6 +1395,17 @@ class Session:
             def _do_swap():
                 self.agent._storage = new_sm._storage
                 self.agent.event_manager.set_backend(new_sm._storage.event_backend)
+                try:
+                    from .bootstrap import configure_tui_memory
+
+                    configure_tui_memory(
+                        self.agent,
+                        self.config,
+                        agent_db=new_sm.agent_db_path,
+                        session_id=new_sm.session_id,
+                    )
+                except Exception:
+                    logger.debug("memory reconfiguration on session swap failed", exc_info=True)
 
             app = getattr(self, "_app", None)
             if app is not None:

@@ -395,3 +395,6 @@ util/harbor/tb1_opus_smoke.yaml
 util/harbor/tb1_ultra_smoke.yaml
 .claude/scheduled_tasks.lock
 .commit_msg
+
+# LoCoMo benchmark data (downloaded on demand, not vendored)
+examples/memory_bench/data/

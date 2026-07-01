@@ -79,6 +79,7 @@ class DoerAgent(Agent):
         todo: TodoManager,
         skills_dirs: list[Path] | None = None,
         shell_cls: type | None = None,
+        memory_config=None,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -105,8 +106,18 @@ class DoerAgent(Agent):
         if dirs:
             self.skills.discover_skills_dirs(dirs)
 
-        # Activate all for doer (it's a full-power executor)
-        self.skills.activate(["nemo.*"])
+        # Activate all built-ins except memory; TUI wires memory explicitly below
+        # so the configured scope/path is shared with the parent agent.
+        builtin_skills = [
+            n for n in self.skills.discovered() if n.startswith("nemo.") and n != "nemo.memory"
+        ]
+        self.skills.activate(builtin_skills)
+
+        if memory_config is not None:
+            from nemo_oo_agents.memory.memory_skill import MemorySkill
+
+            self.skills.register("nemo.memory", MemorySkill(memory_config))
+            self.skills.activate(["nemo.memory"])
 
     @strategy(CodeActStrategy(config=CodeActConfig(cell_timeout=1800.0)))
     async def execute(self, todo: "Todo") -> str:
