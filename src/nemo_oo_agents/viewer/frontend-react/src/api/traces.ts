@@ -37,6 +37,17 @@ export async function fetchTrace(sessionId: string): Promise<TraceResponse> {
   return res.json();
 }
 
+export async function fetchTraceResource(
+  sessionId: string,
+  signal?: AbortSignal,
+): Promise<Record<string, unknown>> {
+  const res = await fetch(`/api/trace/resource?session_id=${encodeURIComponent(sessionId)}`, {
+    signal,
+  });
+  if (!res.ok) throw new Error(`Failed to fetch trace resource: ${res.statusText}`);
+  return res.json();
+}
+
 export async function deleteTrace(sessionId: string): Promise<void> {
   const res = await fetch(`/api/traces/${encodeURIComponent(sessionId)}`, {
     method: 'DELETE',
