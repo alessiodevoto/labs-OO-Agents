@@ -182,6 +182,30 @@ class TestGetLlmClient:
         assert llm.config.get("temperature") == 0.9
         assert llm.config.get("max_tokens") == 100
 
+    def test_registry_preserves_litellm_pass_through_controls(self, tmp_path):
+        """Reasoning aliases can whitelist gateway params for LiteLLM."""
+        path = _write_project_config(
+            _project_dir(tmp_path),
+            """\
+            models:
+              reasoning-alias:
+                model_name: openai/aws/anthropic/bedrock-claude-opus-4-6
+                reasoning_effort: high
+                allowed_openai_params:
+                  - reasoning_effort
+                extra_body:
+                  trace: true
+            """,
+        )
+        reload_registry(path)
+
+        llm = get_llm_client("reasoning-alias")
+
+        assert llm.model == "openai/aws/anthropic/bedrock-claude-opus-4-6"
+        assert llm.config["reasoning_effort"] == "high"
+        assert llm.config["allowed_openai_params"] == ["reasoning_effort"]
+        assert llm.config["extra_body"] == {"trace": True}
+
     def test_drop_params_default_true(self):
         llm = get_llm_client("gpt-4o-mini")
         assert llm.config.get("drop_params") is True
