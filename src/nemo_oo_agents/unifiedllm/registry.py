@@ -317,8 +317,19 @@ def get_llm_client(name: str, *, client_type: str | None = None, **overrides) ->
     ):
         params["api_key"] = api_key
 
-    # Copy model-specific defaults from config (overrides win)
-    for key in ("temperature", "top_p", "max_tokens", "reasoning", "reasoning_effort"):
+    # Copy model-specific defaults from config (overrides win).  Keep LiteLLM
+    # pass-through controls here too: OpenAI-compatible gateways drop unknown
+    # params unless aliases explicitly whitelist them.
+    for key in (
+        "temperature",
+        "top_p",
+        "max_tokens",
+        "reasoning",
+        "reasoning_effort",
+        "allowed_openai_params",
+        "additional_drop_params",
+        "extra_body",
+    ):
         if key in config and key not in overrides:
             params[key] = config[key]
 

@@ -244,6 +244,8 @@ models:
     context_window: 200000
     max_tokens: 64000
     reasoning_effort: high
+    allowed_openai_params:
+      - reasoning_effort
 
   claude-opus-4-6:
     model_name: openai/aws/anthropic/bedrock-claude-opus-4-6
@@ -257,6 +259,8 @@ models:
     api_key_env: NVIDIA_INTERNAL_API_KEY
     context_window: 1000000
     reasoning_effort: high
+    allowed_openai_params:
+      - reasoning_effort
 
   claude-opus-4-7:
     model_name: openai/aws/anthropic/bedrock-claude-opus-4-7
@@ -280,6 +284,8 @@ models:
     context_window: 200000
     max_tokens: 64000
     reasoning_effort: medium
+    allowed_openai_params:
+      - reasoning_effort
 
   claude-haiku-reasoning-high:
     model_name: openai/aws/anthropic/claude-haiku-4-5-v1-reasoning-high
@@ -296,6 +302,8 @@ models:
     context_window: 200000
     max_tokens: 64000
     reasoning_effort: low
+    allowed_openai_params:
+      - reasoning_effort
 
   claude-sonnet-reasoning-high:
     model_name: openai/aws/anthropic/bedrock-claude-sonnet-4-5-v1-reasoning-high
