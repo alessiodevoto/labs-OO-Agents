@@ -10,7 +10,7 @@
 # Run with:
 #   uv run python -m eval_pipeline \
 #     --config tests/capability/config_truncation.yaml \
-#     --models claude-haiku,gemini-3-flash-preview,nemotron3-nano-30b \
+#     --models claude-haiku-azure,gemini-3-flash-preview,nemotron3-nano-30b \
 #     --runs 3 --parallel 8
 
 name: truncation_comprehension
@@ -26,7 +26,7 @@ agent_models:
   # Small/mini class:
   - nemotron3-nano-30b       # ~30B
   - nemotron-super-49b       # ~49B
-  - claude-haiku             #  small/medium
+  - claude-haiku-azure       #  small/medium, Azure-routed Anthropic
   - gemini-3-flash-preview   #  flash-class
   - gemini-2.5-flash-lite    #  flash-lite (smallest Gemini)
   - gpt-5-mini               #  mini-class

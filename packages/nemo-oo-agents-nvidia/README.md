@@ -1,6 +1,6 @@
 # nemo-oo-agents-nvidia
 
-NVIDIA-gateway model aliases (`claude-haiku`, `nemotron3-nano-30b`, `gpt-5.2`, …) for the NeMo OO Agents LLM registry.
+NVIDIA-gateway model aliases (`claude-haiku`, `claude-haiku-azure`, `nemotron3-nano-30b`, `gpt-5.2`, …) for the NeMo OO Agents LLM registry.
 
 Installing this package makes the bundled aliases available to the
 core framework automatically — discovery happens via the

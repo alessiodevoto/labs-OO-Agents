@@ -62,7 +62,7 @@ target_files:
 # =============================================================================
 # MODELS — resolved from the unifiedllm registry.
 #
-# NVIDIA-internal aliases (claude-haiku, nemotron3-nano-30b, gpt-5.2, etc.)
+# NVIDIA-internal aliases (claude-haiku-azure, nemotron3-nano-30b, gpt-5.2, etc.)
 # ship in the nemo-oo-agents-nvidia package; install it (or the [nvidia]
 # extra) and the aliases resolve automatically. Run
 # `nemo oo config show` to inspect which YAML files are loading.
@@ -79,7 +79,7 @@ agent_models:
   - nemotron-3-super-preview
   - nemotron3-nano-30b
   - claude-sonnet
-  - claude-haiku
+  - claude-haiku-azure
   - gpt-5.2
   - gpt-5-mini
   - gpt-5.3-codex

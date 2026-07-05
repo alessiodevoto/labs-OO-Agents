@@ -27,7 +27,7 @@ STRATEGY_ORDER = ["predict", "codeact"]
 MODEL_ORDER = [
     "nemotron3-nano-30b",
     "nemotron-super-49b",
-    "claude-haiku",
+    "claude-haiku-azure",
     "gemini-3-flash-preview",
     "gemini-2.5-flash-lite",
     "gpt-5-mini",

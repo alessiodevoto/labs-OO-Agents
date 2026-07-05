@@ -7,7 +7,7 @@
 #   nemo_oo_agents eval --config tests/capability/config_phase1.yaml --runs 3
 #
 # Single model:
-#   nemo_oo_agents eval --config tests/capability/config_phase1.yaml --models claude-haiku
+#   nemo_oo_agents eval --config tests/capability/config_phase1.yaml --models claude-haiku-azure
 #
 # Debug single test:
 #   nemo_oo_agents eval --config tests/capability/config_phase1.yaml --test sentiment_single --limit 1
@@ -29,7 +29,7 @@ agent_models:
   # - gpt-oss-120b
   # - gpt-5-mini
   - gpt-5.2
-  - claude-haiku
+  - claude-haiku-azure
   # - bedrock-claude-sonnet-4-5-v1
   # - gemini-2.5-flash-lite
   # - gemini-3-pro

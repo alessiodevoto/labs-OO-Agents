@@ -470,15 +470,15 @@ capability-test:
     - uv sync --all-extras --no-extra sandbox
   script:
     - rm -rf results/ci/ capability-results.zip
-    # NVIDIA model aliases (claude-haiku, nemotron3-nano-30b, etc.) resolve
+    # NVIDIA model aliases (claude-haiku-azure, nemotron3-nano-30b, etc.) resolve
     # via the unifiedllm registry. The `[nvidia]` extra (pulled in by
     # --all-extras above) installs nemo-oo-agents-nvidia, which registers
     # the bundled defaults via entry-point — no env var needed.
-    - echo "Running capability tests with NVIDIA models..."
+    - echo "Running capability tests with Azure-routed Haiku..."
     - |
       uv run python -m eval_pipeline \
         --config tests/capability/config.yaml \
-        --models claude-haiku \
+        --models claude-haiku-azure \
         --output-dir results/ci \
         --default_strategy codeact \
         --runs 3 \

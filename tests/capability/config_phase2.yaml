@@ -7,7 +7,7 @@
 #   nemo_oo_agents eval --config tests/capability/config_phase2.yaml --runs 3
 #
 # Single model:
-#   nemo_oo_agents eval --config tests/capability/config_phase2.yaml --models claude-haiku
+#   nemo_oo_agents eval --config tests/capability/config_phase2.yaml --models claude-haiku-azure
 #
 # Debug single test:
 #   nemo_oo_agents eval --config tests/capability/config_phase2.yaml --test sentiment_batch --limit 1
@@ -24,7 +24,7 @@ description: "Phase 2 code-path tests — batch, JSON, REPL, needle, large-data 
 agent_models:
   - nemotron3-nano-30b
   - gpt-5.2
-  - claude-haiku
+  - claude-haiku-azure
 
 output_dir: results/phase2
 pass_threshold: 0.8
