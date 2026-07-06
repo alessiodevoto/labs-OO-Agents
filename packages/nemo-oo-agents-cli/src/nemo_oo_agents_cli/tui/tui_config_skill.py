@@ -38,18 +38,11 @@ class TuiConfigurationSkill(Skill):
       vi_mode: false                   # Vi keybindings
       libs_dirs: ["/path/to/skills"]   # External library skill directories
       trace_dir: .nemo_oo/traces       # Trace output directory
-    ```toml
-    [tui]
-    model = "claude-opus-4-8"        # LLM model (litellm or unifiedllm alias)
-    python = false                    # Show Python execution panels
-    vi = false                        # Vi keybindings
-    libs_dirs = ["/path/to/skills"]   # External library skill directories
-    trace = ".nemo_oo_agents/traces"  # Trace output directory
-    memory = "off"                    # global default: off | session
-    # /config set memory session writes a per-agent sticky opt-in under [tui.memory_agents]
-    # memory_path = "memory.db"  # explicit SQLite override
-    # [tui.memory_agents]
-    # "nemo_oo_agents_cli.tui.agent:TUIAgent" = "session"
+      memory: "off"                    # global default: "off" | "session"
+      # memory_path: memory.db         # explicit SQLite override (optional)
+      # Per-agent sticky opt-in written by `/config set memory session`:
+      memory_agents:
+        "nemo_oo_agents_cli.tui.agent:TUIAgent": "session"
 
       # MCP servers can be configured inline here. Use env vars for secrets
       # so tokens are not committed; ${VAR} is expanded when connecting.

@@ -138,24 +138,6 @@ def configure_tui_memory(
     agent.skills.activate(["nemo.memory"])
 
 
-_CONFIG_TOML_TEMPLATE = """# NeMo OO Agents project config
-[agent]
-model = "{default_model}"
-"""
-
-
-def _scaffold_project_dir(config: "Config") -> None:
-    """Create .nemo_oo_agents/ and write a config.toml template on first run."""
-    from nemo_oo_agents.paths import get_project_dir
-
-    project_dir = get_project_dir()
-    project_dir.mkdir(exist_ok=True)
-
-    config_path = project_dir / "config.toml"
-    if not config_path.exists():
-        config_path.write_text(_CONFIG_TOML_TEMPLATE.format(default_model=config.tui.default_model))
-
-
 async def bootstrap(
     config: "Config",
     *,
