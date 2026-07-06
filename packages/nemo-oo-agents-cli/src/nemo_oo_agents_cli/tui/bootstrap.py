@@ -1,12 +1,13 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Shared bootstrap for terminal and web frontends.
+"""Shared bootstrap for the NeMo OO Agents TUI.
 
-Both ``main.py`` (terminal) and ``web/server.py`` call ``bootstrap()`` to
-create the agent, storage, session manager, tracing, and registry.  The
-frontend is plugged in afterwards — that's the only thing that differs.
+``main.py`` calls ``bootstrap()`` to create the agent, storage, session
+manager, tracing, and registry.  The PTY web terminal (``web/pty_server.py``,
+``nemo oo term``) runs this same TUI inside a pseudo-terminal, so it inherits
+the identical setup; the frontend is plugged in afterwards.
 
-This makes it structurally impossible for a feature to exist in one frontend
+This makes it structurally impossible for a feature to exist in one run mode
 but not the other: if it's in bootstrap, both get it.
 """
 

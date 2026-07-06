@@ -95,7 +95,7 @@ def render_history_replay_to_ansi(output: HistoryReplay, width: int) -> str:
 class Frontend(Protocol):
     """Everything a Session needs from its rendering layer.
 
-    Both ``TerminalFrontend`` and ``WebFrontend`` implement this protocol.
+    ``TerminalFrontend`` is the concrete implementation of this protocol.
     Commands and Session code should ONLY interact with frontends through
     this protocol — never reach into frontend-specific attributes.
 
@@ -405,7 +405,7 @@ class TerminalFrontend:
             self._console.print_info(f"{label} — {output.fallback_text}")
         else:
             self._console.print_info(
-                f"{label} (rich rendering available in web frontend — run `nemo_oo_agents web`)"
+                f"{label} (rich rendering available in the web terminal — run `nemo oo term`)"
             )
 
     def _render_diff(self, output: DiffOutput) -> None:

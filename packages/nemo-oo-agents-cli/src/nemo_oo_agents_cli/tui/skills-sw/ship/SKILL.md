@@ -56,8 +56,8 @@ if unfinished:
 test_results = self.todo.get_var(umbrella.id, "test_results") or {}
 if not test_results.get("passed"):
     # Re-run to be sure — maybe state has changed since /tdd
-    final = await self.bash.run("pytest --tb=short")
-    if final.return_code != 0:
+    final = await self.shell.run("pytest --tb=short")
+    if final.returncode != 0:
         self.message(
             "Not shippable — test suite is failing:\n\n"
             f"```\n{final.stdout[-2000:]}\n```"
@@ -126,8 +126,11 @@ If the user says `ship`, the **next turn** handles:
 
 1. Stage + commit anything uncommitted (docstring touch-ups, etc.).
 2. Push the branch (`git push -u origin HEAD`).
-3. If `ship`, open an MR via `glab mr create` with the spec as
-   description. If `push`, stop here.
+3. If `ship`, open a pull/merge request with the spec as the
+   description — optional, and tool-neutral: use whatever CLI your
+   host provides (`gh pr create`, `glab mr create`, etc.), or skip
+   this step entirely if the project doesn't use one. If `push`,
+   stop here.
 4. Mark umbrella done: `self.todo.done(umbrella.id)` + journal.
 5. Print the MR URL or the push confirmation.
 

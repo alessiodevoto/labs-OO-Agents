@@ -2,15 +2,14 @@
 # SPDX-License-Identifier: Apache-2.0
 """Structured output types for NeMo OO Agents frontends.
 
-Commands and agent events produce ``Output`` instances; each ``Frontend``
-renders them in its own way — Rich panels in the terminal, JSON over a
-WebSocket for the browser.
+Commands and agent events produce ``Output`` instances; the
+``TerminalFrontend`` renders them as Rich panels in the terminal.
 
 Every concrete type is a plain dataclass with a ``to_json()`` method that
 returns a dict suitable for JSON serialisation.  This is the **single source
-of truth** for web serialisation — ``WebFrontend`` calls ``output.to_json()``
-and sends the result over the WebSocket.  Adding a new Output type
-automatically works in both frontends as long as ``to_json()`` is defined.
+of truth** for the JSON form of rich content pushed to the browser via the
+PTY web terminal's rich side-channel (``nemo oo term``).  Adding a new Output
+type keeps working as long as ``to_json()`` is defined.
 """
 
 import re
@@ -334,10 +333,10 @@ class RichOutput:
     """Generic rich visual output for frontends that support it.
 
     The ``kind`` field identifies the rendering type; ``data`` is the
-    kind-specific payload.  Terminal frontends fall back to ``fallback_text``;
-    web frontends render the real thing.
+    kind-specific payload.  The terminal falls back to ``fallback_text``;
+    the web terminal (``nemo oo term``) renders the real thing.
 
-    Built-in kinds recognised by the web frontend:
+    Built-in kinds recognised by the web terminal:
 
     ``"plotly"``
         ``data["figure_json"]`` — result of ``plotly.Figure.to_json()``.

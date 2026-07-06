@@ -3,9 +3,9 @@
 """Shared completion engine for NeMo OO Agents frontends.
 
 ``Completer`` is frontend-agnostic: it takes a text buffer and returns a list
-of ``CompletionItem`` objects.  Both the terminal (prompt_toolkit adapter) and
-the web frontend (WebSocket round-trip) use this same engine, so completion
-behavior is identical everywhere.
+of ``CompletionItem`` objects.  The terminal (prompt_toolkit adapter) uses
+this engine, so completion behavior is identical whether run natively or
+through the PTY web terminal (``nemo oo term``).
 """
 
 import logging

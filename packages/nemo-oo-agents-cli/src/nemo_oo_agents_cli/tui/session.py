@@ -4,8 +4,8 @@
 
 ``Session`` is frontend-agnostic: it reads input via ``frontend.get_input()``,
 routes commands through ``CommandHandler``, and renders every output through
-``frontend.render()``.  Both ``TerminalFrontend`` and ``WebFrontend`` are
-drop-in replacements.
+``frontend.render()``.  ``TerminalFrontend`` is the concrete frontend
+implementation.
 
 All *behavior* lives here — event subscription, streaming state, show_python
 decisions.  Frontends are pure rendering.

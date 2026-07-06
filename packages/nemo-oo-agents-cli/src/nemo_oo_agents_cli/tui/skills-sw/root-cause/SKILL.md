@@ -55,7 +55,8 @@ A bug you can't trigger on demand isn't a bug you can fix. First goal:
 one command that fails deterministically.
 
 - If the user gave a stack trace, work backwards from the top frame
-  using `self.files.grep` / `self.files.read`.
+  using `self.shell.run("rg ...")` / `self.shell.read`, or
+  `self.repo.symbols` / `self.repo.refs`.
 - If the user described symptoms, figure out a minimal invocation
   (failing test, curl, CLI command) that shows it.
 - Try it. If it doesn't reproduce, **stop and ask** — don't guess at
@@ -63,8 +64,8 @@ one command that fails deterministically.
 
 ```python
 # Once you have a command that fails:
-result = await self.bash.run("<your repro command>")
-assert result.return_code != 0, "command didn't fail — is this actually the bug?"
+result = await self.shell.run("<your repro command>")
+assert result.returncode != 0, "command didn't fail — is this actually the bug?"
 self.todo.set_var(umbrella.id, "repro_cmd", "<the command>")
 self.todo.comment(umbrella.id, f"🔧 reproduces via: <command>")
 ```
@@ -84,11 +85,11 @@ def test_login_race():
 '''
 # Write the test file:
 test_path = "tests/auth/test_race.py"
-await self.files.write(test_path, test_code)
+await self.shell.write_file(test_path, test_code)
 
 # Run it — confirm it's RED for the right reason (not a syntax error):
-result = await self.bash.run(f"pytest {test_path} -v")
-assert result.return_code != 0
+result = await self.shell.run(f"pytest {test_path} -v")
+assert result.returncode != 0
 self.todo.set_var(umbrella.id, "failing_test_code", test_code)
 self.todo.set_var(umbrella.id, "failing_test_path", test_path)
 self.todo.comment(umbrella.id, f"🧪 {test_path} RED — reproduces the bug")
@@ -96,7 +97,8 @@ self.todo.comment(umbrella.id, f"🧪 {test_path} RED — reproduces the bug")
 
 ## Phase 3 — find the root cause
 
-Read the code along the failure path. `self.files.read`, `grep`, walk
+Read the code along the failure path. `self.shell.read`,
+`self.shell.run("rg ...")`, `self.repo.refs`, walk
 the stack. **Find the specific line that's wrong**, not a vague area.
 
 Two anti-patterns to avoid:

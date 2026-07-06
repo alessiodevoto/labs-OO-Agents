@@ -57,8 +57,8 @@ Confirm the failing test is still RED before doing anything else. If
 it's already GREEN, something shifted — stop and ask.
 
 ```python
-red = await self.bash.run(f"pytest {failing_test_path} -x")
-if red.return_code == 0:
+red = await self.shell.run(f"pytest {failing_test_path} -x")
+if red.returncode == 0:
     self.todo.comment(umbrella.id, "⚠️ failing test is unexpectedly GREEN — stopping")
     self.message(f"`{failing_test_path}` is already passing. Did someone else fix this? "
                  "Re-run /root-cause to verify.")
@@ -103,11 +103,11 @@ for step_id in step_todo_ids:
 
     # 1. Implement
     self.todo.comment(step_id, f"🔧 implementing: {step.title}")
-    # (edit files via self.files.edit_file / self.files.write)
+    # (edit files via self.shell.replace / self.shell.write_file)
 
     # 2. Target test
-    tgt = await self.bash.run(f"pytest {failing_test_path} -x")
-    step_passed = tgt.return_code == 0
+    tgt = await self.shell.run(f"pytest {failing_test_path} -x")
+    step_passed = tgt.returncode == 0
     self.todo.comment(
         step_id,
         f"🧪 target test {'GREEN' if step_passed else 'still RED'} "
@@ -122,8 +122,8 @@ for step_id in step_todo_ids:
         return_result(RespondResult(kind="NEED_INPUT", explanation="target test still fails; need fix-forward or revised plan"))
 
     # 3. Full suite
-    full = await self.bash.run("pytest -x --tb=short")
-    if full.return_code != 0:
+    full = await self.shell.run("pytest -x --tb=short")
+    if full.returncode != 0:
         self.todo.comment(step_id, "⚠️ regression in another test; investigating")
         self.message(
             f"Step `{step.title}` made the target test pass but broke "
@@ -134,15 +134,15 @@ for step_id in step_todo_ids:
 
     # 4. Commit (or show-and-pause if user opted in)
     if show_diffs:
-        diff = await self.bash.run("git diff --stat")
+        diff = await self.shell.run("git diff --stat")
         self.message(f"Step `{step.title}` ready to commit:\n\n```\n{diff.stdout}\n```\n\n"
                      f"Reply `yes` to commit, or describe changes.")
         return_result(RespondResult(kind="NEED_INPUT", explanation="diff is ready; waiting for user approval to commit"))
 
     msg = f"{step.title}\n\nPart of TDD for: {umbrella.title}"
-    await self.bash.run("git add -A")
-    commit = await self.bash.run(f"git commit -m {msg!r}")
-    sha = (await self.bash.run("git rev-parse --short HEAD")).stdout.strip()
+    await self.shell.run("git add -A")
+    commit = await self.shell.run(f"git commit -m {msg!r}")
+    sha = (await self.shell.run("git rev-parse --short HEAD")).stdout.strip()
     commits.append(sha)
     self.todo.set_var(umbrella.id, "commits", commits)
     self.todo.done(step_id)
@@ -155,14 +155,14 @@ Once all steps are done, run the full suite once more and capture
 results:
 
 ```python
-final = await self.bash.run("pytest --tb=short")
-passed = final.return_code == 0
+final = await self.shell.run("pytest --tb=short")
+passed = final.returncode == 0
 self.todo.set_var(umbrella.id, "test_results", {
     "cmd": "pytest --tb=short",
     "passed": passed,
     "stdout_tail": final.stdout[-1000:],
 })
-diff_summary = (await self.bash.run(
+diff_summary = (await self.shell.run(
     "git log --oneline HEAD~%d..HEAD" % len(commits)
 )).stdout.strip()
 self.todo.set_var(umbrella.id, "diff_summary", diff_summary)
