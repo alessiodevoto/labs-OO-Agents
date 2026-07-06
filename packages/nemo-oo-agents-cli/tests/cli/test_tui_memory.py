@@ -125,51 +125,14 @@ def test_session_manager_ignores_and_deletes_memory_sidecars(tmp_path, monkeypat
     assert not sidecar.exists()
 
 
-def test_set_toml_table_value_ignores_commented_memory_agents_table():
-    from nemo_oo_agents_cli.tui.commands import _set_toml_table_value
-
-    content = (
-        "# [tui.memory_agents]\n"
-        '# "nemo_oo_agents_cli.tui.agent:TUIAgent" = "session"\n\n'
-        "[tui]\n"
-        'model = "m"\n\n'
-        "[tui.mcp_servers.maas]\n"
-        'url = "https://example.invalid"\n'
-    )
-    updated = _set_toml_table_value(
-        content,
-        "tui.memory_agents",
-        "nemo_oo_agents_cli.tui.agent:TUIAgent",
-        "session",
-    )
-
-    assert '\n[tui.memory_agents]\n"nemo_oo_agents_cli.tui.agent:TUIAgent" = "session"\n' in updated
-    assert updated.rindex("[tui.memory_agents]") > updated.index("[tui.mcp_servers.maas]")
-
-
-def test_set_toml_table_value_updates_existing_memory_agent_before_next_table():
-    from nemo_oo_agents_cli.tui.commands import _set_toml_table_value
-
-    content = (
-        "[tui]\n"
-        'memory = "off"\n\n'
-        "[tui.memory_agents]\n"
-        '"agent:A" = "off"\n\n'
-        "[tui.mcp_servers.maas]\n"
-        'url = "https://example.invalid"\n'
-    )
-    updated = _set_toml_table_value(content, "tui.memory_agents", "agent:A", "session")
-
-    assert '"agent:A" = "session"' in updated
-    assert updated.index('"agent:A" = "session"') < updated.index("[tui.mcp_servers.maas]")
-
-
 @pytest.mark.asyncio
-async def test_memory_command_on_off_updates_runtime_and_sticky_config(tmp_path, monkeypatch):
-    from nemo_oo_agents_cli.tui.bootstrap import bootstrap
+async def test_memory_command_on_off_persists_to_settings_yaml_and_reloads(tmp_path, monkeypatch):
+    from nemo_oo_agents_cli.tui.bootstrap import bootstrap, resolve_tui_memory_scope
     from nemo_oo_agents_cli.tui.commands import CommandRegistry
+    from nemo_oo_agents_cli.tui.settings import SETTINGS_FILENAME
 
     project_dir = _configure_project(monkeypatch, tmp_path)
+    agent_key = "nemo_oo_agents_cli.tui.agent:TUIAgent"
     cfg = Config()
     cfg.tui.default_model = "test-model"
     cfg.agent.summarization.policy = "none"
@@ -188,21 +151,32 @@ async def test_memory_command_on_off_updates_runtime_and_sticky_config(tmp_path,
         on_result = await cmd.execute(["on"])
         assert on_result.success
         assert cfg.tui.memory == "session"
-        assert cfg.tui.memory_agents["nemo_oo_agents_cli.tui.agent:TUIAgent"] == "session"
+        assert cfg.tui.memory_agents[agent_key] == "session"
         assert result.agent.memory._mgr.store.path == str(
             project_dir / "sessions" / f"{result.session_id}-memory.db"
         )
-        config_text = (project_dir / "config.toml").read_text()
-        assert "[tui.memory_agents]" in config_text
-        assert '"nemo_oo_agents_cli.tui.agent:TUIAgent" = "session"' in config_text
+
+        # Persistence lands in settings.yaml — the file the loader actually reads —
+        # NOT the phantom config.toml that no loader reads.
+        settings_file = project_dir / SETTINGS_FILENAME
+        assert settings_file.exists()
+        assert not (project_dir / "config.toml").exists()
+
+        # Round-trip: a fresh Config.load() (which applies settings.yaml) sees the
+        # preference, so it survives the restart the command prompts for.
+        reloaded = Config.load()
+        assert reloaded.tui.memory_agents.get(agent_key) == "session"
+        assert resolve_tui_memory_scope(result.agent, reloaded) == "session"
 
         off_result = await cmd.execute(["off"])
         assert off_result.success
         assert cfg.tui.memory == "off"
-        assert cfg.tui.memory_agents["nemo_oo_agents_cli.tui.agent:TUIAgent"] == "off"
+        assert cfg.tui.memory_agents[agent_key] == "off"
         assert not hasattr(result.agent, "memory")
-        config_text = (project_dir / "config.toml").read_text()
-        assert '"nemo_oo_agents_cli.tui.agent:TUIAgent" = "off"' in config_text
+
+        reloaded_off = Config.load()
+        assert reloaded_off.tui.memory_agents.get(agent_key) == "off"
+        assert resolve_tui_memory_scope(result.agent, reloaded_off) == "off"
     finally:
         if result.session_manager is not None:
             result.session_manager.close()

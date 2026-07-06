@@ -1124,49 +1124,21 @@ class PythonCommand(Command):
 # ---------------------------------------------------------------------------
 
 
-def _quote_toml_key_segment(value: str) -> str:
-    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
-
-
-def _set_toml_table_value(content: str, table: str, key: str, value: str) -> str:
-    """Set a string value in a TOML table without matching commented headers."""
-    table_header = f"[{table}]"
-    key_segment = _quote_toml_key_segment(key)
-    new_line = f"{key_segment} = {value!r}".replace("'", '"')
-    table_re = re.compile(rf"^\s*\[{re.escape(table)}\]\s*$", re.MULTILINE)
-    match = table_re.search(content)
-    if match is None:
-        return content.rstrip() + f"\n\n{table_header}\n{new_line}\n"
-
-    next_table = re.search(r"^\s*\[[^\]]+\]\s*$", content[match.end() :], re.MULTILINE)
-    table_end = len(content) if next_table is None else match.end() + next_table.start()
-    table_body = content[match.end() : table_end]
-    key_re = re.compile(rf"^(\s*){re.escape(key_segment)}\s*=.*$", re.MULTILINE)
-    if key_re.search(table_body):
-        new_body = key_re.sub(new_line, table_body, count=1)
-    else:
-        separator = "" if table_body.endswith("\n") or not table_body else "\n"
-        new_body = table_body + separator + new_line + "\n"
-    return content[: match.end()] + new_body + content[table_end:]
-
-
 def _set_agent_memory_config(agent: "Agent | None", value: str) -> Path:
-    """Persist memory preference for the current agent, not globally."""
-    from nemo_oo_agents.paths import get_project_dir
+    """Persist per-agent memory preference to settings.yaml, not globally.
 
-    path = get_project_dir("config.toml")
-    if path.exists():
-        content = path.read_text()
-    else:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        content = '# NeMo OO Agents TUI configuration\n\n[tui]\nmemory = "off"\n'
+    Writes ``tui.memory_agents.<key>`` through the same settings.yaml writer
+    the rest of the TUI uses, so the preference survives the restart the
+    command prompts for. (``bootstrap.resolve_tui_memory_scope`` reads it back.)
+    """
+    from .settings import write_settings_updates
 
     key = getattr(agent, "_tui_memory_key", None)
     if key is None and agent is not None:
         key = f"{type(agent).__module__}:{type(agent).__qualname__}"
     if key is None:
         key = "default"
-    path.write_text(_set_toml_table_value(content, "tui.memory_agents", key, value))
+    path, _data = write_settings_updates({("tui", "memory_agents", key): value})
     return path
 
 
