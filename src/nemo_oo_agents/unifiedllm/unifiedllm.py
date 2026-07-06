@@ -1465,6 +1465,59 @@ def _consume_litellm_acompletion_result(task: asyncio.Task[Any]) -> None:
         pass
 
 
+def _map_completion_finish_reason(
+    raw_response: Any,
+) -> Literal["stop", "tool_calls", "length", "error"]:
+    """Map a Chat-Completions provider finish_reason onto LLMResponse.finish_reason.
+
+    litellm/OpenAI report the provider's stop condition on
+    ``raw_response.choices[0].finish_reason``. We surface ``"length"`` (output
+    tokens exhausted) and ``"error"`` (e.g. ``content_filter``) so downstream
+    logic (e.g. CodeAct's max-tokens abort) can react. Callers that have already
+    detected tool calls should keep ``finish_reason="tool_calls"`` rather than
+    calling this.
+    """
+    raw = None
+    try:
+        raw = raw_response.choices[0].finish_reason
+    except (AttributeError, IndexError, TypeError):
+        raw = None
+
+    if raw == "length":
+        return "length"
+    if raw == "tool_calls":
+        return "tool_calls"
+    if raw in ("content_filter", "error"):
+        return "error"
+    return "stop"
+
+
+def _map_responses_finish_reason(
+    raw_response: Any,
+) -> Literal["stop", "tool_calls", "length", "error"]:
+    """Map a Responses-API response onto LLMResponse.finish_reason.
+
+    The Responses API reports truncation via ``status == "incomplete"`` with
+    ``incomplete_details.reason == "max_output_tokens"`` (rather than a
+    per-choice finish_reason). A ``status == "failed"`` response is surfaced as
+    ``"error"``. Callers that have already detected tool calls should keep
+    ``finish_reason="tool_calls"`` rather than calling this.
+    """
+    status = getattr(raw_response, "status", None)
+
+    if status == "incomplete":
+        details = getattr(raw_response, "incomplete_details", None)
+        reason = getattr(details, "reason", None)
+        if reason is None and isinstance(details, dict):
+            reason = details.get("reason")
+        if reason == "max_output_tokens":
+            return "length"
+        return "error"
+    if status == "failed":
+        return "error"
+    return "stop"
+
+
 def _extract_reasoning_and_usage(raw_response: Any) -> tuple[str | None, dict[str, int] | None]:
     """Extract reasoning and usage from raw LLM response."""
     reasoning = None
@@ -1832,7 +1885,7 @@ class CompletionClient(UnifiedLLM):
                 raw_response=raw_response,
                 content=parsed_content,
                 tool_calls=[],
-                finish_reason="stop",
+                finish_reason=_map_completion_finish_reason(raw_response),
                 assistant_message={"role": "assistant", "content": text_content},
                 reasoning=reasoning if text_content else None,
                 usage=usage,
@@ -1842,7 +1895,7 @@ class CompletionClient(UnifiedLLM):
             raw_response=raw_response,
             content=text_content,
             tool_calls=[],
-            finish_reason="stop",
+            finish_reason=_map_completion_finish_reason(raw_response),
             assistant_message={"role": "assistant", "content": text_content},
             reasoning=reasoning,
             usage=usage,
@@ -2006,7 +2059,7 @@ class CompletionClient(UnifiedLLM):
                 raw_response=raw_response,
                 content=parsed_content,
                 tool_calls=[],
-                finish_reason="stop",
+                finish_reason=_map_completion_finish_reason(raw_response),
                 assistant_message={"role": "assistant", "content": text_content},
                 reasoning=reasoning if text_content else None,
                 usage=usage,
@@ -2016,7 +2069,7 @@ class CompletionClient(UnifiedLLM):
             raw_response=raw_response,
             content=text_content,
             tool_calls=[],
-            finish_reason="stop",
+            finish_reason=_map_completion_finish_reason(raw_response),
             assistant_message={"role": "assistant", "content": text_content},
             reasoning=reasoning,
             usage=usage,
@@ -2317,7 +2370,7 @@ class ResponsesClient(UnifiedLLM):
                 raw_response=raw_response,
                 content=parsed_content,
                 tool_calls=[],
-                finish_reason="stop",
+                finish_reason=_map_responses_finish_reason(raw_response),
                 assistant_message={"role": "assistant", "content": text_content},
                 reasoning=None,
                 usage=usage,
@@ -2327,7 +2380,7 @@ class ResponsesClient(UnifiedLLM):
             raw_response=raw_response,
             content=text_content,
             tool_calls=[],
-            finish_reason="stop",
+            finish_reason=_map_responses_finish_reason(raw_response),
             assistant_message={"role": "assistant", "content": text_content},
             reasoning=None,
             usage=usage,
@@ -2443,7 +2496,7 @@ class ResponsesClient(UnifiedLLM):
                 raw_response=raw_response,
                 content=parsed_content,
                 tool_calls=[],
-                finish_reason="stop",
+                finish_reason=_map_responses_finish_reason(raw_response),
                 assistant_message={"role": "assistant", "content": text_content},
                 reasoning=None,
                 usage=usage,
@@ -2453,7 +2506,7 @@ class ResponsesClient(UnifiedLLM):
             raw_response=raw_response,
             content=text_content,
             tool_calls=[],
-            finish_reason="stop",
+            finish_reason=_map_responses_finish_reason(raw_response),
             assistant_message={"role": "assistant", "content": text_content},
             reasoning=None,
             usage=usage,
