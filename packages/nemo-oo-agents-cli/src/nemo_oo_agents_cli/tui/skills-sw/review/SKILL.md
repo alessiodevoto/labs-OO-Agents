@@ -60,7 +60,7 @@ Parallel-run them with `asyncio.gather`.
 spec = self.todo.get_var(umbrella.id, "spec") or {}
 acceptance = spec.get("acceptance_criteria", [])
 diff_cmd = f"git log --oneline HEAD~{len(commits)}..HEAD"
-diff = (await self.bash.run(
+diff = (await self.shell.run(
     f"git diff HEAD~{len(commits)} -- . ':(exclude)*.lock'"
 )).stdout[:20_000]  # cap — reviewers share context
 

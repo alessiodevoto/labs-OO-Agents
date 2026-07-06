@@ -638,7 +638,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
     # Long-running tasks
 
     For commands that take more than ~10s, **spawn them** instead of
-    blocking the turn with ``self.bash.run()``:
+    blocking the turn with ``self.shell.run()``:
 
         ch = self.queue_manager.queue("ci")
         h = self.queue_manager.spawn(
@@ -860,7 +860,9 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
 
         Instructions:
         1. Read the todo title and notes carefully.
-        2. Execute the work described using self.shell (bash, view, edit, write, grep, find, ls).
+        2. Execute the work described using self.shell (run for shell commands,
+           read to view a file/region, replace to edit at a match or unique
+           string, write_file to create/overwrite) and self.repo (symbols, refs).
         3. When done, update the todo with what you learned:
            self.todo.update("{todo.id}", notes="what you did and found")
         4. Mark it complete: self.todo.done("{todo.id}")
@@ -1009,5 +1011,5 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
         Report your findings honestly."""
         ...
 
-    # respond() is inherited from BaseTUIAgent and runs as a forever-loop.
-    # See the BaseTUIAgent.respond docstring for the pump pattern.
+    # handle() is inherited from BaseTUIAgent and runs once per inbound
+    # notification. See the BaseTUIAgent.handle docstring for the turn pattern.
