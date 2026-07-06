@@ -478,7 +478,7 @@ capability-test:
     - |
       uv run python -m eval_pipeline \
         --config tests/capability/config.yaml \
-        --models claude-haiku-azure \
+        --models openai/gpt-5.4-mini \
         --output-dir results/ci \
         --default_strategy codeact \
         --runs 3 \
@@ -561,8 +561,9 @@ capability-test:
     # Always run on main branch commits
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       when: always
-    # On MRs: run only when core framework files change.
-    # Skipped for package-only MRs (benchmark agents, adapters) and CI-config-only MRs.
+    # On MRs: run when core framework files change, or when the capability job's own
+    # config changes (.gitlab-ci.yml — e.g. switching the model here must re-test it).
+    # Still skipped for package-only MRs (benchmark agents, adapters).
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
         - "src/**/*"
@@ -571,7 +572,7 @@ capability-test:
         - "conftest.py"
         - "pyproject.toml"
         - "uv.lock"
-        - "conftest.py"
+        - ".gitlab-ci.yml"
       when: always
     - when: never
 
