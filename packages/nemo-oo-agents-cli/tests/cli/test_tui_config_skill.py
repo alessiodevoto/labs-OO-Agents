@@ -57,17 +57,17 @@ def test_config_set_friendly_model_key_still_writes_tui_default_model(project_di
 def test_config_set_dotted_key_updates_nested_existing_section(project_dir):
     """Dotted paths update deep nested settings without clobbering siblings."""
     _settings_path(project_dir).write_text(
-        "tui:\n  default_model: old-model\nagent:\n  summarization:\n    window_size: 50\n"
+        "tui:\n  default_model: old-model\nagent:\n  summarization:\n    preserve_recent: 50\n"
     )
     skill = TuiConfigurationSkill()
 
-    result = skill._set_config("agent.summarization.window_size 99")
+    result = skill._set_config("agent.summarization.preserve_recent 99")
     data = yaml.safe_load(_settings_path(project_dir).read_text())
 
-    assert "Set `agent.summarization.window_size = 99`" in result
+    assert "Set `agent.summarization.preserve_recent = 99`" in result
     assert data["tui"]["default_model"] == "old-model"
-    assert data["agent"]["summarization"]["window_size"] == 99
-    assert Config.load().agent.summarization.window_size == 99
+    assert data["agent"]["summarization"]["preserve_recent"] == 99
+    assert Config.load().agent.summarization.preserve_recent == 99
 
 
 def test_config_set_invalid_dotted_key_returns_error(project_dir):

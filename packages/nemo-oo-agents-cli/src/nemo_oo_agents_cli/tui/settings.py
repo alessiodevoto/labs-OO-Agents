@@ -233,10 +233,9 @@ tui:
   #       Authorization: "Bearer ${MAAS_API_KEY}"
 
 # agent:
-#   orchestrator: false
 #   working_dir: "."
 #   summarization:
-#     policy: token_budget   # token_budget | sliding_window | none
+#     policy: token_budget   # token_budget | none
 #     max_tokens: null       # null = 80% of the model's context window
 """
 

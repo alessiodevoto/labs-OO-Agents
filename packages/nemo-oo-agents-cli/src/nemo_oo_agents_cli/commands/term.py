@@ -63,7 +63,6 @@ _RESUME_LAST = "__last__"
     help="Skills directory (can be specified multiple times)",
 )
 @click.option("--context-limit", type=int, help="Context limit for summarization")
-@click.option("--orchestrator", is_flag=True, help="Use orchestrator mode")
 @click.option("--no-trace", is_flag=True, help="Disable tracing")
 @click.option("--vi", is_flag=True, help="Enable vi keybindings in the input prompt")
 @click.option("--python", is_flag=True, help="Show agent Python code execution panels")
@@ -103,7 +102,6 @@ def command(
     mcp_file: str | None,
     skills_dir: tuple[str, ...],
     context_limit: int | None,
-    orchestrator: bool,
     no_trace: bool,
     vi: bool,
     python: bool,
@@ -159,7 +157,6 @@ def command(
         mcp_file=mcp_file,
         skills_dir=skills_dir,
         context_limit=context_limit,
-        orchestrator=orchestrator,
         no_trace=no_trace,
         vi=vi,
         python=python,
@@ -304,7 +301,6 @@ def _build_tui_argv(
     mcp_file: str | None,
     skills_dir: tuple[str, ...],
     context_limit: int | None,
-    orchestrator: bool,
     no_trace: bool,
     vi: bool,
     python: bool,
@@ -335,8 +331,6 @@ def _build_tui_argv(
         argv += ["--skills-dir", sd]
     if context_limit is not None:
         argv += ["--context-limit", str(context_limit)]
-    if orchestrator:
-        argv.append("--orchestrator")
     if no_trace:
         argv.append("--no-trace")
     if vi:

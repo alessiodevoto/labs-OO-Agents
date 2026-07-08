@@ -128,10 +128,12 @@ class TestLoadLayeredYaml:
         assert load_layered_yaml(_FILENAME, _ENV_VAR)["model"] == "bar"
 
     def test_deep_merge_nested(self, user_dir, project_dir):
-        _write(user_dir / _FILENAME, "summarization:\n  policy: token_budget\n  window_size: 50\n")
-        _write(project_dir / _FILENAME, "summarization:\n  window_size: 99\n")
+        _write(
+            user_dir / _FILENAME, "summarization:\n  policy: token_budget\n  preserve_recent: 50\n"
+        )
+        _write(project_dir / _FILENAME, "summarization:\n  preserve_recent: 99\n")
         merged = load_layered_yaml(_FILENAME, _ENV_VAR)
-        assert merged["summarization"] == {"policy": "token_budget", "window_size": 99}
+        assert merged["summarization"] == {"policy": "token_budget", "preserve_recent": 99}
 
     def test_null_deletes_key(self, user_dir, project_dir):
         _write(user_dir / _FILENAME, "model: foo\nvi: true\n")

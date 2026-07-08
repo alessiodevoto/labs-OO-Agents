@@ -739,7 +739,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
 
         Args:
             llm: LLM client to use
-            config: Agent behavior configuration (summarization, orchestrator, etc.)
+            config: Agent behavior configuration (summarization, working_dir, etc.)
             **kwargs: Additional arguments passed to Agent
         """
         super().__init__(llm=llm, **kwargs)
