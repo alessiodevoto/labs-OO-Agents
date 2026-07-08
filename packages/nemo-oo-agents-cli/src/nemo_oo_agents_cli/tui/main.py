@@ -90,11 +90,6 @@ def parse_args() -> argparse.Namespace:
         help="Context token limit for summarization (default: 100000).",
     )
     parser.add_argument(
-        "--orchestrator",
-        action="store_true",
-        help="Enable orchestrator mode (multi-phase workflow with intent classification)",
-    )
-    parser.add_argument(
         "--vi",
         action="store_true",
         help="Enable vi keybindings in the input prompt",

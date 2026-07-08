@@ -295,7 +295,7 @@ class TestShowSettingsSecrets:
     def test_settings_summary_shows_section_key_counts(self, _isolated_env):
         user_dir = Path(os.environ["NEMO_OO_USER_DIR"])
         (user_dir / "settings.yaml").write_text(
-            "tui:\n  default_model: foo\n  vi_mode: true\nagent:\n  orchestrator: true\n"
+            "tui:\n  default_model: foo\n  vi_mode: true\nagent:\n  working_dir: /tmp\n"
         )
         result = CliRunner().invoke(command, ["show"])
         assert result.exit_code == 0

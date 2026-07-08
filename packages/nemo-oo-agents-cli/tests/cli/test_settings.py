@@ -57,15 +57,15 @@ class TestRoundTrip:
         original.tui.default_model = "my-model"
         original.tui.vi_mode = True
         original.tui.libs_dirs = [Path("/a"), Path("/b")]
-        original.agent.orchestrator = True
-        original.agent.summarization.window_size = 123
+        original.agent.working_dir = "/tmp"
+        original.agent.summarization.preserve_recent = 123
         (user_dir / "settings.yaml").write_text(dump_settings(original))
         loaded = load_settings(Config())
         assert loaded.tui.default_model == "my-model"
         assert loaded.tui.vi_mode is True
         assert loaded.tui.libs_dirs == [Path("/a"), Path("/b")]
-        assert loaded.agent.orchestrator is True
-        assert loaded.agent.summarization.window_size == 123
+        assert loaded.agent.working_dir == "/tmp"
+        assert loaded.agent.summarization.preserve_recent == 123
 
     def test_dump_omits_computed_skills_dirs(self):
         data = settings_to_dict(Config())

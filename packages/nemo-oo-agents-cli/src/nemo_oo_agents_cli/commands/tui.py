@@ -65,11 +65,6 @@ _RESUME_LAST = "__last__"
     help="Context limit for summarization",
 )
 @click.option(
-    "--orchestrator",
-    is_flag=True,
-    help="Use orchestrator mode",
-)
-@click.option(
     "--no-trace",
     is_flag=True,
     help="Disable tracing",
@@ -101,7 +96,6 @@ def command(
     no_splash: bool,
     skills_dir: tuple[str, ...],
     context_limit: int | None,
-    orchestrator: bool,
     no_trace: bool,
     vi: bool,
     python: bool,
@@ -131,7 +125,6 @@ def command(
         no_splash=no_splash,
         skills_dir=list(skills_dir) if skills_dir else None,
         context_limit=context_limit,
-        orchestrator=orchestrator,
         no_trace=no_trace,
         vi=vi,
         python=python,

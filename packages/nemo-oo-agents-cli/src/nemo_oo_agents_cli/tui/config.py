@@ -15,7 +15,7 @@ Usage:
     config = Config.load(**vars(parse_args()))
 
     # From click
-    config = Config.load(model="gpt-4o", orchestrator=True)
+    config = Config.load(model="gpt-4o", working_dir="/tmp")
 
     # Programmatic
     config = Config.load()
@@ -43,9 +43,8 @@ class SummarizationConfig(BaseModel):
     integer to pin a specific threshold.
     """
 
-    policy: Literal["token_budget", "sliding_window", "none"] = "token_budget"
+    policy: Literal["token_budget", "none"] = "token_budget"
     max_tokens: int | None = None
-    window_size: int = 50
     preserve_recent: int = 10
     target_chars: int = 4000
 
@@ -55,9 +54,6 @@ class AgentConfig(BaseModel):
 
     # History summarization settings
     summarization: SummarizationConfig = Field(default_factory=SummarizationConfig)
-
-    # Orchestrator mode (multi-phase workflow)
-    orchestrator: bool = False
 
     # Working directory for bash commands. Stored as a string (downstream
     # always str()s it); a Path is accepted and coerced for ergonomics.
@@ -163,7 +159,6 @@ class Config(BaseModel):
         ),
         "trace": ("tui.trace_dir", Path),
         "context_limit": "agent.summarization.max_tokens",
-        "orchestrator": "agent.orchestrator",
         "working_dir": "agent.working_dir",
         "no_splash": "no_splash",
         "no_trace": "no_trace",
@@ -209,8 +204,8 @@ class Config(BaseModel):
             val = overrides.get(key)
             if val is None:
                 continue
-            # Skip False values only for store_true flags (argparse store_true defaults are False)
-            # This allows legitimate False overrides for other boolean fields like orchestrator
+            # All boolean override keys are argparse store_true flags; their False defaults
+            # mean "not provided" and must not overwrite layered settings.
             if isinstance(val, bool) and not val and key in cls._STORE_TRUE_FLAGS:
                 continue
             _set_nested(cfg, *_unpack_target(target, val))

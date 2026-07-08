@@ -687,7 +687,7 @@ NeMo OO Agents is a single repository that ships as several lockstep packages:
 
 ### `nemo-oo` Subcommands
 
-- **Launch the agent REPL** with `nemo-oo tui`, taking `--model/-m`, `--agent MODULE:CLASS`, `--working-dir/-w/-d`, `--mcp-file`, `--skills-dir` (repeatable), `--context-limit`, `--orchestrator`, `--no-trace`, `--vi`, `--python`, `--no-splash`, and `--continue/-c [hash]` to resume a session.
+- **Launch the agent REPL** with `nemo-oo tui`, taking `--model/-m`, `--agent MODULE:CLASS`, `--working-dir/-w/-d`, `--mcp-file`, `--skills-dir` (repeatable), `--context-limit`, `--no-trace`, `--vi`, `--python`, `--no-splash`, and `--continue/-c [hash]` to resume a session.
 - **Serve the web terminal** with `nemo-oo term`, an xterm.js browser frontend over a real PTY; accepts the same agent flags plus `--host` and `--port/-p`.
 - **Run an eval-pipeline job** with `nemo-oo eval`, a passthrough that forwards all args to `eval_pipeline.cli` (e.g. `--config`, `--runs`, `--parallel`, `--test`, `--limit`, `--models`).
 - **Start the trace/eval viewer** with `nemo-oo start-dev`, taking `--port/-p` (default 5001), `--host`, and `--db` (defaults to `~/.config/nemo_oo/traces.db` or `$NEMO_OO_TRACE_DB`).
@@ -735,10 +735,9 @@ NeMo OO Agents is a single repository that ships as several lockstep packages:
 - **Layer TUI settings** via `settings.yaml` (built-in defaults → `~/.config/nemo_oo/` → project `.nemo_oo/` → `$NEMO_OO_SETTINGS`), with CLI flags layered on top by `Config.load`.
 - **Tune TUI behavior** under the `tui:` section: `default_model`, `show_python`, `vi_mode`, `trace_dir`, `libs_dirs`, `skills_dirs`, `mcp_file`, `mcp_servers`, `mcp_auto_connect`, `goal_mode` (persists goal mode across launches), `toolbar_snippet` **(opt-in)**.
 - **Set a persistent toolbar label** via `tui.toolbar_snippet` (a Python snippet evaluated each render, with `datetime`/`config`/`model`/`short_model`/`time`/`agent` in scope) (`tui/config.py`). **(opt-in)**
-- **Tune agent behavior** under the `agent:` section: `orchestrator`, `working_dir`, and `summarization` (`policy` token_budget/sliding_window/none, `max_tokens` null=80% of context window, `window_size`, `preserve_recent`, `target_chars`).
+- **Tune agent behavior** under the `agent:` section: `working_dir` and `summarization` (`policy` token_budget/none, `max_tokens` null=80% of context window, `preserve_recent`, `target_chars`).
 - **Auto-connect MCP servers at startup** by listing them in `tui.mcp_auto_connect`; each attaches as `self.<server>` hidden from `doc(self)` **(opt-in)**.
 - **Load a custom agent class** via `--agent MODULE:CLASS` / `tui.agent_spec`, resolved by `load_agent_class` from a dotted module or a `./file.py:Class` path **(custom)**.
-- **Toggle orchestrator-mode flag** with `--orchestrator` / `agent.orchestrator: true`. The legacy multi-phase state machine was removed; the classify/brainstorm/plan/verify phase methods remain on `TUIAgent` only as LLM-callable CodeAct tools (`agent.py`).
 - **Override paths via env vars**: `NEMO_OO_USER_DIR`, `NEMO_OO_PROJECT_DIR`, `NEMO_OO_LLM_CONFIG`, `NEMO_OO_SETTINGS`, `NEMO_OO_SECRETS`, `NEMO_OO_TRACE_DB`.
 
 ### Web Terminal (`self.web.*`)

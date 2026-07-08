@@ -144,10 +144,6 @@ class TestConfigDefaults:
         cfg = Config.load()
         assert cfg.no_trace is False
 
-    def test_default_orchestrator_false(self):
-        cfg = Config.load()
-        assert cfg.agent.orchestrator is False
-
     def test_default_working_dir(self):
         cfg = Config.load()
         assert cfg.agent.working_dir == "."
@@ -161,16 +157,6 @@ class TestConfigOverrides:
     def test_model_override(self):
         cfg = Config.load(model="gpt-4o")
         assert cfg.tui.default_model == "gpt-4o"
-
-    def test_orchestrator_override_true(self):
-        cfg = Config.load(orchestrator=True)
-        assert cfg.agent.orchestrator is True
-
-    def test_orchestrator_override_false(self):
-        """False override for non-store_true flag SHOULD apply."""
-        cfg = Config.load(orchestrator=False)
-        # orchestrator is not in _STORE_TRUE_FLAGS, so False IS passed through
-        assert cfg.agent.orchestrator is False
 
     def test_context_limit_override(self):
         cfg = Config.load(context_limit=50_000)
@@ -283,11 +269,11 @@ class TestConfigFile:
 
     def test_settings_file_nested_agent_section(self, isolated_config_dir):
         (isolated_config_dir / "settings.yaml").write_text(
-            "agent:\n  orchestrator: true\n  summarization:\n    window_size: 99\n"
+            "agent:\n  working_dir: /tmp\n  summarization:\n    preserve_recent: 99\n"
         )
         cfg = Config.load()
-        assert cfg.agent.orchestrator is True
-        assert cfg.agent.summarization.window_size == 99
+        assert cfg.agent.working_dir == "/tmp"
+        assert cfg.agent.summarization.preserve_recent == 99
 
     def test_explicit_override_beats_settings_file(self, isolated_config_dir):
         (isolated_config_dir / "settings.yaml").write_text("tui:\n  default_model: file-model\n")
@@ -343,7 +329,6 @@ class TestSummarizationConfig:
         # — see install_summarizer. The previous absolute 100K fired at ~10%
         # usage on 1M-context models and made summarization feel constant.
         assert s.max_tokens is None
-        assert s.window_size == 50
         assert s.preserve_recent == 10
 
 

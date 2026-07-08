@@ -113,8 +113,6 @@ Watch for:
   persist. If a skill needs to hand state forward, the prose in the
   skill needs to mention that — a real pass over the skill files is
   still a follow-up.
-- **`orchestrator` config flag**: unused, still accepted. Delete in a
-  follow-up cleanup.
 
 ## Running tests
 
