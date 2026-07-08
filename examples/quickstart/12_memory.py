@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Quickstart 11: Long-term memory — an opt-in, brain-inspired memory add-on.
+"""Quickstart 12: Long-term memory — an opt-in, brain-inspired memory add-on.
 
 Demonstrates the additive memory subsystem end to end WITHOUT needing an LLM
 (uses the deterministic, offline hashing embedder + a FakeLLMClient):
@@ -12,7 +12,7 @@ Demonstrates the additive memory subsystem end to end WITHOUT needing an LLM
   * reflection (offline consolidation: merge duplicates, form edges, prune)
   * forgetting (old, low-value memories decay and are pruned)
 
-    uv run python examples/quickstart/11_memory.py
+    uv run python examples/quickstart/12_memory.py
 """
 
 import time

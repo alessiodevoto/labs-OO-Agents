@@ -1,5 +1,5 @@
 # ruff: noqa: F403,F405
-"""Quickstart 14 — Export an ATIF trajectory.
+"""Quickstart 15 — Export an ATIF trajectory.
 
 Demonstrates how to export ATIF trajectories from OO agents: call
 ``enable_atif()`` once and every agent run writes a trajectory file you
@@ -7,7 +7,7 @@ can hand to downstream tooling (SFT pipelines, evals, dashboards).
 
 Run it::
 
-    uv run python examples/quickstart/14_atif_trajectory.py
+    uv run python examples/quickstart/15_atif_trajectory.py
 """
 
 from pathlib import Path

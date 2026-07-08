@@ -1,15 +1,18 @@
 # ruff: noqa: E402,F403,F405
-"""Quickstart 12: Multimodal — images with CodeAct and PredictStrategy.
+"""Quickstart 13: Multimodal — images with CodeAct and PredictStrategy.
 
 Demonstrates both strategies seeing images:
 - CodeAct: prefill auto-calls show() for Image params → LLM sees the image
 - PredictStrategy: Image params attached as content blocks to the Task event
 
+Requires a vision-capable model (e.g. gpt-4o with a valid OPENAI_API_KEY).
+If the quickstart MODEL doesn't support vision, this example is skipped.
+
 Usage:
-  uv run python examples/quickstart/12_multimodal.py
+  uv run python examples/quickstart/13_multimodal.py
 """
 
-import asyncio
+import sys
 import warnings
 from pathlib import Path
 
@@ -17,18 +20,17 @@ warnings.filterwarnings(
     "ignore", message=".*coroutine.*was never awaited.*", category=RuntimeWarning
 )
 
-from dotenv import load_dotenv
-from pydantic import BaseModel
-
-from nemo_oo_agents import Agent, strategy
 from nemo_oo_agents.media import Image
-from nemo_oo_agents.strategies import PredictStrategy
-from nemo_oo_agents.unifiedllm import get_llm_client
+from nemo_oo_agents.util.quickstart import *
 
-load_dotenv(override=True)
-
-# Vision-capable model (any litellm model name works)
-llm = get_llm_client("gpt-4o")
+# This example requires a vision-capable model
+if not llm.supports_vision():
+    print(
+        f"SKIP: quickstart MODEL ({MODEL}) does not support vision.\n"
+        "Set MODEL to a vision-capable model (e.g. gpt-4o) and configure\n"
+        "OPENAI_API_KEY to run this example."
+    )
+    sys.exit(0)
 
 ASSETS = Path(__file__).parent.parent / "assets"
 
@@ -36,8 +38,6 @@ ASSETS = Path(__file__).parent.parent / "assets"
 # ---------------------------------------------------------------------------
 # CodeAct agent — LLM generates code, show() injects images
 # ---------------------------------------------------------------------------
-
-
 class ImageDescriber(Agent, llm=llm):
     """You are an agent that describes images concisely."""
 
@@ -49,8 +49,6 @@ class ImageDescriber(Agent, llm=llm):
 # ---------------------------------------------------------------------------
 # PredictStrategy agent — single-shot structured output with image
 # ---------------------------------------------------------------------------
-
-
 class ImageAnalysis(BaseModel):
     """Structured analysis of an image."""
 
@@ -73,6 +71,7 @@ class ImageAnalyzer(Agent, llm=llm):
 # ---------------------------------------------------------------------------
 
 
+@autorun
 async def main():
     print(f"Model: {llm.model}\n")
 
@@ -91,7 +90,3 @@ async def main():
     print(f"  Colors: {analysis.colors}")
     print(f"  Text:   {analysis.text_content}")
     print(f"  Desc:   {analysis.description}\n")
-
-
-if __name__ == "__main__":
-    asyncio.run(main())

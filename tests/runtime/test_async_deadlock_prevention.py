@@ -213,8 +213,8 @@ class TestRuntimePatchesCatchCrossBlock:
         # Turn 1: Create a future and store it (validation disabled)
         code1 = """
 import concurrent.futures
-executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-self.stored_future = executor.submit(lambda: "hello")
+# Create a pending future (not submitted to executor, stays pending)
+self.stored_future = concurrent.futures.Future()
 print("future created")
 """
         result1 = await test_agent.runtime.execute_code(code1, validate=False)

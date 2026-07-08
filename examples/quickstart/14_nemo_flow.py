@@ -1,5 +1,5 @@
 # ruff: noqa: F403,F405
-"""Quickstart 13: NeMo Flow integration — guardrails, intercepts, and trajectory export.
+"""Quickstart 14: NeMo Flow integration — guardrails, intercepts, and trajectory export.
 
 NeMo Flow is a multi-language agent runtime that adds
 execution scope management, lifecycle events, and a configurable middleware pipeline
@@ -22,12 +22,18 @@ Prerequisites:
     uv sync --extra nemo-flow
 
 Usage:
-  uv run python examples/quickstart/13_nemo_flow.py
+  uv run python examples/quickstart/14_nemo_flow.py
 """
 
 import json
 
-import nemo_flow
+try:
+    import nemo_flow
+except ModuleNotFoundError:
+    import sys
+
+    print("SKIP: nemo_flow is not installed.\nInstall with: uv sync --extra nemo-flow")
+    sys.exit(0)
 from pydantic import BaseModel
 
 from nemo_oo_agents.nemo_flow_middleware import nemo_flow_scope

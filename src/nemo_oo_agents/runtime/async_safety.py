@@ -50,7 +50,7 @@ def _is_event_loop_thread() -> bool:
 
 def _safe_future_result(self: concurrent.futures.Future[Any], timeout: float | None = None) -> Any:
     """Wrapped Future.result() that blocks deadlocks in agent context."""
-    if _in_agent_context.get() and _is_event_loop_thread():
+    if _in_agent_context.get() and _is_event_loop_thread() and not self.done():
         raise RuntimeError(
             "Can't call Future.result() from async context - "
             "this would deadlock. Use 'await asyncio.wrap_future(future)' instead."
@@ -62,7 +62,7 @@ def _safe_future_exception(
     self: concurrent.futures.Future[Any], timeout: float | None = None
 ) -> BaseException | None:
     """Wrapped Future.exception() that blocks deadlocks in agent context."""
-    if _in_agent_context.get() and _is_event_loop_thread():
+    if _in_agent_context.get() and _is_event_loop_thread() and not self.done():
         raise RuntimeError(
             "Can't call Future.exception() from async context - "
             "this would deadlock. Use 'await asyncio.wrap_future(future)' instead."
