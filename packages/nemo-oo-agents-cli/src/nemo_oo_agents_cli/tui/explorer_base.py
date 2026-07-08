@@ -158,10 +158,6 @@ class ExplorerModel:
         self._last_detail_match_lines: list[int] = []
 
     @property
-    def empty(self) -> bool:
-        return not self.rows
-
-    @property
     def current_index(self) -> int | None:
         if not self.matches:
             return None
@@ -262,7 +258,6 @@ class ExplorerConfig:
         no_match_message: Template for no search results (gets .format(query=...)).
         list_ratio: Fraction of body height for the list pane (0.0-1.0).
         actions: Custom action names mapped to descriptions (for footer hints).
-        start_at_end: If True, cursor starts at last row (e.g. events).
     """
 
     title: str = "Explorer"
@@ -271,7 +266,6 @@ class ExplorerConfig:
     no_match_message: str = "No matches for {query!r}."
     list_ratio: float = 0.33
     actions: dict[str, str] = field(default_factory=dict)
-    start_at_end: bool = False
 
 
 class ExplorerView:
@@ -291,8 +285,6 @@ class ExplorerView:
         self.config = config
         self.title = config.title
         self.pending_input: str | None = None
-        if config.start_at_end and model.matches:
-            model.cursor = max(len(model.matches) - 1, 0)
 
     def format_row(self, row: Any, width: int) -> str:
         """Format a single row for the list. Override in subclasses."""

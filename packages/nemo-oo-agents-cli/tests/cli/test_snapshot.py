@@ -37,16 +37,6 @@ class TestSnapshotSave:
         finally:
             storage.close()
 
-    def test_save_with_non_default_phase(self, tmp_path):
-        """save_snapshot() works when _phase and _workflow_state are non-default."""
-        agent, storage = _make_agent(tmp_path / "s.db")
-        agent._phase = "implementing"
-        agent._workflow_state = {"plan": "do stuff", "step": 3}
-        try:
-            storage.save_snapshot(agent)
-        finally:
-            storage.close()
-
 
 # ---------------------------------------------------------------------------
 # Restore
@@ -80,23 +70,6 @@ class TestSnapshotRestore:
             storage.close()
 
         assert result is False
-
-    def test_phase_and_workflow_state_round_trip(self, tmp_path):
-        """_phase and _workflow_state survive a save/restore cycle."""
-        db = tmp_path / "s.db"
-
-        agent, storage = _make_agent(db)
-        agent._phase = "verifying"
-        agent._workflow_state = {"plan": "my plan", "done": ["step1", "step2"]}
-        storage.save_snapshot(agent)
-        storage.close()
-
-        agent2, storage2 = _make_agent(db)
-        storage2.restore_latest_snapshot(agent2)
-        storage2.close()
-
-        assert agent2._phase == "verifying"
-        assert agent2._workflow_state == {"plan": "my plan", "done": ["step1", "step2"]}
 
     def test_nosnapshot_fields_keep_fresh_values_after_restore(self, tmp_path):
         """Fields marked nosnapshot (shell, repo, libs, _config) are not overwritten."""

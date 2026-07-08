@@ -342,30 +342,8 @@ def _detail_raw_lines(row: SessionExplorerRow) -> list[str]:
     return lines
 
 
-def wrapped_detail_lines(
-    row: SessionExplorerRow, width: int, *, markdown: bool = False
-) -> list[str]:
+def wrapped_detail_lines(row: SessionExplorerRow, width: int) -> list[str]:
     width = max(int(width), 20)
-    if markdown:
-        lines: list[str] = [
-            f"Session: {row.title} ({row.id[:8]})",
-            f"Model: {row.model}",
-            f"Agent: {row.agent}",
-            f"Working dir: {row.working_dir or '(unknown)'}",
-            f"Started: {_format_time(row.started_at)}   Last active: {_format_time(row.last_active)}   Turns: {row.turn_count}",
-            "",
-            "Dialog:",
-        ]
-        for turn in row.turns:
-            if turn.role == "user":
-                lines.append("You:")
-                for raw in turn.content.splitlines() or [""]:
-                    lines.extend(wrap_plain_line(f"  {raw}", width))
-            else:
-                lines.append("OO:")
-                lines.extend(render_markdown_lines(turn.content, width))
-            lines.append("")
-        return lines
     lines: list[str] = []
     for raw in _detail_raw_lines(row):
         lines.extend(wrap_plain_line(raw, width))

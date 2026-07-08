@@ -46,3 +46,41 @@ class TestBangCommand:
         # Should have called the TUI's own bang shell, not the agent's
         bang_shell.run.assert_called_once_with("echo hello")
         agent.shell.run.assert_not_called()
+
+    @staticmethod
+    def _session_with_bang_shell() -> Session:
+        agent = MagicMock()
+        del agent.bash
+        agent.shell = MagicMock()
+        agent.shell.cwd = tempfile.gettempdir()
+
+        session = object.__new__(Session)
+        session.agent = agent
+        bang_shell = MagicMock()
+        bang_shell.cwd = tempfile.gettempdir()
+        bang_shell.run = AsyncMock(return_value=MagicMock(stdout="", stderr="", returncode=0))
+        session._bang_shell = bang_shell
+        session.frontend = AsyncMock()
+        return session
+
+    async def test_bang_strips_whitespace(self):
+        """Leading/trailing whitespace after ! is stripped before running."""
+        session = self._session_with_bang_shell()
+
+        await session._handle_bang("!  git status  ")
+
+        session._bang_shell.run.assert_called_once_with("git status")
+
+    async def test_bang_empty_command_does_not_run(self):
+        """! with no command returns early without calling the shell."""
+        session = self._session_with_bang_shell()
+
+        assert await session._handle_bang("!") is None
+        session._bang_shell.run.assert_not_called()
+
+    async def test_bang_whitespace_only_does_not_run(self):
+        """! followed by only whitespace returns early without calling the shell."""
+        session = self._session_with_bang_shell()
+
+        assert await session._handle_bang("!   ") is None
+        session._bang_shell.run.assert_not_called()

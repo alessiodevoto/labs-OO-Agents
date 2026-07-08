@@ -78,16 +78,6 @@ class HelpOutput:
 
 
 @dataclass
-class UserMessage:
-    """The user's submitted input, echoed with styling after submission."""
-
-    content: str
-
-    def to_json(self) -> dict:
-        return {"type": "user_message", "content": self.content}
-
-
-@dataclass
 class AgentMessage:
     """A markdown-formatted message produced by the agent via ``message()``."""
 
@@ -174,14 +164,6 @@ class ClearScreen:
 
 
 @dataclass
-class SessionEnd:
-    """Signal to the frontend that the session has ended cleanly."""
-
-    def to_json(self) -> dict:
-        return {"type": "bye"}
-
-
-@dataclass
 class Thinking:
     """Show or hide the loading/thinking indicator."""
 
@@ -241,7 +223,6 @@ class BashOutput:
     stdout: str
     stderr: str
     return_code: int
-    command: str = ""
 
     def to_json(self) -> dict:
         return {
@@ -405,7 +386,6 @@ Output = (
     | CodeExecution
     | StartupInfo
     | ClearScreen
-    | SessionEnd
     | Thinking
     | StopReasonOutput
     | BashOutput

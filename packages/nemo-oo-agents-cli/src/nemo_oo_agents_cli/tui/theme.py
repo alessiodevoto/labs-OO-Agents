@@ -226,10 +226,7 @@ def create_theme() -> Theme:
 
 
 # ---------------------------------------------------------------------------
-# Module-level constants (match original export names used by splash.py etc.)
+# Module-level constants
 # ---------------------------------------------------------------------------
 
 CATPPUCCIN_THEME = create_theme()
-SPLASH_TITLE = COLORS["mauve"]
-SPLASH_TAGLINE = COLORS["pink"]
-SPLASH_BORDER = COLORS["lavender"]

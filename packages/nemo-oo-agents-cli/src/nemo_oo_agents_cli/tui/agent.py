@@ -721,8 +721,6 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
     """
 
     _config: Annotated[AgentConfig, hidden, nosnapshot]
-    _phase: Annotated[str, hidden]
-    _workflow_state: Annotated[dict, hidden]
     shell: Annotated[ShellTools, nosnapshot]
     repo: Annotated[RepoTools, nosnapshot]
     libs: Annotated[SkillWriting, nosnapshot]
@@ -750,9 +748,6 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
 
         # Store config for later access
         self._config = config
-        # Phase tracking for multi-turn workflows
-        self._phase: str = "idle"
-        self._workflow_state: dict = {}
 
         self._skills_dirs: list = []  # set by bootstrap with CLI --skills-dir + entry points
 

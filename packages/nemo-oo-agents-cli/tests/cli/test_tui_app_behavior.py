@@ -11,7 +11,7 @@ by tier of concern:
 * Tier 4 — type-ahead queue (queued lines, delivery order, cancel)
 * Tier 5 — hard cases (Ctrl+C, errors, Rich ANSI, spinner, THE BUG)
 
-Tests read logical state (``app.input_buffer.text``, ``app.state.items``,
+Tests read logical state (``app.input_buffer.text``,
 ``app.status_text()``) via the harness's ``capture_*`` helpers rather
 than parsing terminal output — same discipline as the harness canaries.
 
@@ -326,9 +326,8 @@ async def test_queue_displays_above_prompt_while_agent_working():
 
 async def test_queue_multiple_enters_merge_into_one_item():
     """Successive Enters typed while the agent is working compose one
-    queued message joined with newlines — restores the old
-    ``QueueState.submit`` UX so the agent isn't asked to handle each
-    line of a half-finished thought as its own turn."""
+    queued message joined with newlines so the agent isn't asked to
+    handle each line of a half-finished thought as its own turn."""
     agent = _blocking_agent()
     async with TUIHarness(agent=agent) as h:
         await h.submit_async("trigger")

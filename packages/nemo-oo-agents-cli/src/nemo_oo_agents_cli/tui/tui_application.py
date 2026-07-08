@@ -42,7 +42,6 @@ from prompt_toolkit.layout.menus import CompletionsMenuControl
 from prompt_toolkit.layout.processors import BeforeInput
 
 from .completer import expand_mentions
-from .queue_state import QueueState
 from .subapp import InAppSubview, normalize_key_result
 
 logger = logging.getLogger(__name__)
@@ -233,7 +232,6 @@ class TUIApplication:
 
                 qm._set_notify = _set_notify_and_start
         self.full_screen = full_screen
-        self.state = QueueState()
 
         # Output scrollback. Two parallel stores:
         #   * ``output_buffer`` — plain-text view, used by tests and by

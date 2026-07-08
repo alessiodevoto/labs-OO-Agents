@@ -42,22 +42,6 @@ if TYPE_CHECKING:
     from .frontend import Frontend
 
 
-def _to_attr_name(name: str) -> str:
-    """Convert a hyphenated server/skill name to a valid Python attribute name."""
-    return name.replace("-", "_")
-
-
-def _mcp_servers_config(value: object) -> dict[str, dict[str, Any]]:
-    """Return a validated inline MCP server mapping from config/test doubles."""
-    if not isinstance(value, dict):
-        return {}
-    return {
-        name: server_config
-        for name, server_config in value.items()
-        if isinstance(name, str) and isinstance(server_config, dict)
-    }
-
-
 def _mcp_auto_connect_names(value: object) -> list[str]:
     """Return validated MCP auto-connect names from config/test doubles."""
     if isinstance(value, list):
@@ -354,13 +338,7 @@ async def _reset_agent_working_state(agent: "Agent") -> None:
         except Exception:
             pass
 
-    # 5. Workflow phase tracking
-    if hasattr(agent, "_phase"):
-        agent._phase = "idle"
-    if hasattr(agent, "_workflow_state"):
-        agent._workflow_state = {}
-
-    # 6. Notify skills the working state was just reset so they can
+    # 5. Notify skills the working state was just reset so they can
     #    re-initialize session-scoped state (symmetric with TuiSessionResumed).
     em = getattr(agent, "event_manager", None)
     if em is not None:
@@ -693,7 +671,6 @@ class SkillsCommand(Command):
         super().__init__(frontend, config, agent, **kwargs)
         self.skills_dirs = kwargs.get("skills_dirs")
         self._registry: CommandRegistry | None = kwargs.get("registry")
-        self._active_skills: set[str] = set()
 
     @property
     def name(self) -> str:
@@ -2577,8 +2554,6 @@ class CommandRegistry:
         commands: dict[str, Command] = {}
         kwargs: dict[str, Any] = {
             "skills_dirs": self.skills_dirs,
-            "mcp_file": self.mcp_file,
-            "mcp_servers": _mcp_servers_config(getattr(self.config, "mcp_servers", None)),
             "registry": self,
             "session_manager": self.session_manager,
         }
