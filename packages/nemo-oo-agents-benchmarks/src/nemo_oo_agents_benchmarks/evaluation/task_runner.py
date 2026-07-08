@@ -5,9 +5,6 @@ Layer 2: Generic task execution runner with swappable execution engines.
 
 This module provides the core infrastructure for running evaluation tasks
 with pluggable execution strategies (async I/O, multiprocess, distributed, etc.).
-
-This is distinct from runner.py which handles self-improvement loops. This module
-provides the lower-level execution infrastructure that higher-level runners build on.
 """
 
 import json

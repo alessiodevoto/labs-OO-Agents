@@ -1,14 +1,14 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 """
-Benchmark-agnostic evaluation framework for measuring agent self-improvement.
+Task execution infrastructure for agent evaluation.
 
-This module provides:
-- BenchmarkAdapter: Abstract base class for benchmark integrations
-- BenchmarkEnvironment: Abstract base class for interactive execution environments
-- TraceAnalyzer: Analyzes execution traces to identify failure patterns
-- SelfImprovementRunner: Runs tasks with iterative improvement loops
-- Metrics and reporting utilities
+This package provides the layered execution stack:
+- concurrency: pure async execution engines (Layer 0)
+- protocol: execution-engine / trace-analysis protocols and usage-stats types
+- trace_analyzer: extracts usage statistics from OTel traces
+- task_runner: generic task runner with swappable execution engines (Layer 2)
+- agent_adapter: adapts nemo_oo_agents agents into the runner
 
 For LLM clients, use the nemo_oo_agents.unifiedllm subpackage:
     from nemo_oo_agents.unifiedllm import CompletionClient, RetryConfig
@@ -19,34 +19,46 @@ For LLM clients, use the nemo_oo_agents.unifiedllm subpackage:
     )
 """
 
-from nemo_oo_agents_benchmarks.evaluation.metrics import ImprovementMetrics, MetricsCalculator
-from nemo_oo_agents_benchmarks.evaluation.protocol import (
-    BenchmarkAdapter,
-    BenchmarkEnvironment,
-    BenchmarkReport,
-    EvalResult,
-    StepResult,
-    Task,
-    TaskResult,
+from nemo_oo_agents_benchmarks.evaluation.concurrency import (
+    ConcurrencyConfig,
+    ConcurrencyEngine,
+    SubprocessEngine,
 )
-from nemo_oo_agents_benchmarks.evaluation.runner import SelfImprovementRunner
-from nemo_oo_agents_benchmarks.evaluation.trace_analyzer import FailurePattern, TraceAnalyzer
+from nemo_oo_agents_benchmarks.evaluation.protocol import (
+    AggregateUsageStats,
+    EngineConfig,
+    ExecutionEngine,
+    ModelUsageStats,
+    TaskState,
+    TaskUsageStats,
+)
+from nemo_oo_agents_benchmarks.evaluation.task_runner import (
+    EvaluationResult,
+    EvaluationTask,
+    RunnerConfig,
+    TaskRunner,
+    run_evaluation,
+)
+from nemo_oo_agents_benchmarks.evaluation.trace_analyzer import TraceAnalyzer
 
 __all__ = [
-    # Core protocol
-    "Task",
-    "EvalResult",
-    "TaskResult",
-    "BenchmarkReport",
-    "BenchmarkAdapter",
-    "BenchmarkEnvironment",
-    "StepResult",
-    # Analysis
+    # Concurrency engines (Layer 0)
+    "ConcurrencyConfig",
+    "ConcurrencyEngine",
+    "SubprocessEngine",
+    # Protocols and usage-stats types
+    "EngineConfig",
+    "ExecutionEngine",
+    "TaskState",
+    "ModelUsageStats",
+    "TaskUsageStats",
+    "AggregateUsageStats",
+    # Trace analysis
     "TraceAnalyzer",
-    "FailurePattern",
-    # Runner
-    "SelfImprovementRunner",
-    # Metrics
-    "MetricsCalculator",
-    "ImprovementMetrics",
+    # Task runner (Layer 2)
+    "EvaluationResult",
+    "EvaluationTask",
+    "RunnerConfig",
+    "TaskRunner",
+    "run_evaluation",
 ]
