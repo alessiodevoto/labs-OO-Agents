@@ -139,13 +139,13 @@ class TraceExplorerClient:
         return await self._get_text("errors")
 
     async def search(self, pattern: str, *, concise: bool = True) -> str:
-        """Search for a pattern across all trace content.
+        """Search for a pattern (regex) across all trace content.
 
         Args:
-            pattern: Text pattern to search for.
-            concise: Ignored (server always returns full results).
+            pattern: Regex pattern to search for.
+            concise: If True, compact view. If False, full match context.
         """
-        return await self._get_text("search", {"pattern": pattern})
+        return await self._get_text("search", {"pattern": pattern, "concise": concise})
 
     async def get_timeline(self, max_events: int = 50) -> str:
         """Get chronological timeline of events.
@@ -296,7 +296,7 @@ the need to download and parse all spans locally.
 - get_session_list() — List of all sessions as structured dicts
 - get_turn(session_id, turn_index) — Full LLM context at a specific turn
 - get_errors() — All errors with context
-- search(pattern) — Find pattern across all trace content
+- search(pattern, concise=True) — Find regex pattern across all trace content
 - get_timeline(max_events=50) — Chronological event timeline
 - find_span(span_id, json_output=False) — Find span by ID with navigation
 - find_first_error() — Jump to first error

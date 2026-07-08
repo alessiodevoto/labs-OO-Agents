@@ -36,7 +36,6 @@ def _make_trace(code: str):
             stdout="",
             error=None,
             returned_value=None,
-            status="OK",
             tool_call_id="call_test",
         )
     )

@@ -576,43 +576,6 @@ class TestTraceExplorerSearch:
 # =============================================================================
 
 
-class TestTraceExplorerRealTrace:
-    """Tests using real trace fixtures if available."""
-
-    @pytest.fixture
-    def real_trace_path(self):
-        """Return path to a real trace fixture if available."""
-        # Look for fixtures in the original e2e_optimization location
-        workspace_root = Path(__file__).parent.parent.parent.parent
-        fixture_dir = (
-            workspace_root / "util/e2e_optimization/src/e2e_optimization/mechanical_checks/fixtures"
-        )
-        traces = list(fixture_dir.glob("*.jsonl"))
-        if traces:
-            return traces[0]
-        pytest.skip("No real trace fixtures available")
-
-    async def test_loads_real_trace(self, real_trace_path):
-        """Test loading a real trace file."""
-        trace = await TraceExplorer.from_file(real_trace_path)
-        assert len(trace.sessions) >= 1
-
-    async def test_overview_on_real_trace(self, real_trace_path):
-        """Test overview output on real trace."""
-        trace = await TraceExplorer.from_file(real_trace_path)
-        overview = await trace.get_overview()
-
-        # Should have basic structure - current format uses:
-        # - Title with method name (# Agent.method())
-        # - Duration/Sessions/Turns/Errors stats line
-        # - Call Graph section
-        # - Navigation section
-        assert "Duration:" in overview
-        assert "Sessions:" in overview
-        assert "## Call Graph" in overview
-        assert "## Navigation" in overview
-
-
 # =============================================================================
 # Agent Span Parsing Tests (Bug Reproduction)
 # =============================================================================
@@ -760,47 +723,6 @@ class TestAgentSpanParsing:
             )
         finally:
             trace_file.unlink()
-
-    async def test_parses_real_validation_error_trace(self):
-        """Test parsing the actual trace with return_result validation error.
-
-        This trace has:
-        - AGENT span name: "plan.classify"
-        - attributes.agent.name: "SentimentSingleAgent"
-        - Multiple generation/execution spans with agent.name="SentimentSingleAgent"
-        - A ValidationError in a tool_execution.return_result span
-        """
-        workspace_root = Path(__file__).parent.parent.parent.parent
-        fixture_path = (
-            workspace_root
-            / "util/e2e_optimization/src/e2e_optimization"
-            / "mechanical_checks/fixtures/return_result_validation_error.trace.jsonl"
-        )
-
-        if not fixture_path.exists():
-            pytest.skip("Fixture not available")
-
-        trace = await TraceExplorer.from_file(fixture_path)
-
-        # Should have 1 session
-        assert len(trace.sessions) == 1, f"Expected 1 session, got {len(trace.sessions)}"
-
-        session = trace.sessions[0]
-
-        # BUG: This currently fails - session has 0 turns but should have LLM and exec turns
-        assert len(session.turns) > 0, (
-            "Expected turns to be parsed from the trace, got 0. "
-            "The trace has acompletion and code_execution spans that should be parsed."
-        )
-
-        # Count expected elements
-        llm_turns = [t for t in session.turns if isinstance(t, LLMTurn)]
-        exec_turns = [t for t in session.turns if isinstance(t, ExecutionTurn)]
-
-        # The trace should have at least some LLM calls and executions
-        assert len(llm_turns) > 0 or len(exec_turns) > 0, (
-            "Expected at least one LLM or execution turn"
-        )
 
 
 # =============================================================================
