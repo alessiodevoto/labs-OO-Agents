@@ -379,17 +379,27 @@ class OrderTestWrapper(Agent):
         return "\n".join(lines)
 
     async def process_message(self, user_message: str) -> dict:
-        """Process a customer user_message and update the order accordingly.
+        """Process one message from a silent stream of customer order updates.
+
+        The customer cannot hear intermediate replies. Do not rely on asking the
+        customer clarifying questions unless the message is genuinely impossible to
+        map to the menu. For every concrete request, immediately update order state
+        by calling the appropriate tools.
 
         State structure:
         - order_items: dict[int, OrderItem] where key is order_item_id
         - OrderItem: product_id (int), size (str | None), modifications (Modifications | None)
         - Modifications: additions (list[str] | None), removals (list[str] | None), special_instructions (list[str] | None)
 
-        DO NOT submit or cancel unless the customer explicitly confirms or cancels.
+        Rules:
+        - Track the full order across messages; later messages modify the existing order.
+        - Do not duplicate existing items when a message modifies size or toppings.
+        - Only call submit_order() when the customer explicitly asks to submit/finalize.
+        - Only call cancel_order() when the customer explicitly asks to cancel.
+        - When the conversation is complete, the final state must be submitted or canceled.
 
         Return a dict with:
-        - message: Your response to the customer
+        - message: brief internal acknowledgement of the state update
         """
         ...
 
@@ -409,3 +419,129 @@ class OrderTestWrapper(Agent):
             order_items=self.order_items,
         )
         return state.model_dump(exclude_none=True)
+
+
+class FastFoodOrderScorer:
+    """Score fast-food order state while ignoring underspecified modifier encoding.
+
+    The order tests care about final state: submitted/canceled flags and ordered items.
+    Independent order items are compared order-insensitively, while multiplicity is
+    preserved so duplicate or missing items still fail.  For item modifiers,
+    ``"extra mayo"`` can reasonably be represented either as ``additions=["mayo"]``
+    or as ``special_instructions=["extra mayo"]``. Normalize those quantity-style
+    instructions into additions when the item supports the ingredient, so missing
+    real items (for example a Coke) still fail but encoding choices do not.
+    """
+
+    def score(self, ctx):
+        from eval_pipeline.models import ScoreResult
+
+        expected = self._normalize_state(self._to_plain(ctx.expected))
+        actual = self._normalize_state(self._to_plain(ctx.actual))
+        errors = self._compare(expected, actual)
+        return ScoreResult(
+            score=0.0 if errors else 1.0,
+            reasoning="Order state matches" if not errors else "; ".join(errors[:6]),
+            metadata={"errors": errors, "error_count": len(errors)},
+        )
+
+    def _to_plain(self, value):
+        if hasattr(value, "model_dump"):
+            value = value.model_dump(exclude_none=True)
+        elif hasattr(value, "dict"):
+            value = value.dict(exclude_none=True)
+        if isinstance(value, dict):
+            return {k: self._to_plain(v) for k, v in value.items() if v is not None}
+        if isinstance(value, list):
+            return [self._to_plain(v) for v in value]
+        return value
+
+    def _normalize_state(self, state):
+        if not isinstance(state, dict):
+            return state
+        normalized = dict(state)
+        items = normalized.get("order_items")
+        if isinstance(items, dict):
+            items = list(items.values())
+        if isinstance(items, list):
+            normalized["order_items"] = sorted(
+                (self._normalize_item(item) for item in items), key=self._item_sort_key
+            )
+        return normalized
+
+    def _item_sort_key(self, item):
+        if not isinstance(item, dict):
+            return repr(item)
+        modifications = item.get("modifications") or {}
+        return (
+            item.get("product_id"),
+            item.get("size") or "",
+            tuple(modifications.get("additions") or []),
+            tuple(modifications.get("removals") or []),
+            tuple(modifications.get("special_instructions") or []),
+        )
+
+    def _normalize_item(self, item):
+        if not isinstance(item, dict):
+            return item
+        normalized = dict(item)
+        if "modifications" in normalized:
+            mods = self._normalize_modifications(
+                normalized.get("product_id"), normalized.get("modifications")
+            )
+            if mods:
+                normalized["modifications"] = mods
+            else:
+                normalized.pop("modifications", None)
+        return {k: v for k, v in normalized.items() if v is not None}
+
+    def _normalize_modifications(self, product_id, modifications):
+        if not isinstance(modifications, dict):
+            return modifications
+        additions = list(modifications.get("additions") or [])
+        removals = list(modifications.get("removals") or [])
+        special = list(modifications.get("special_instructions") or [])
+
+        menu_item = MENU.get(product_id)
+        allowed_additions = set(menu_item.allowed_additions) if menu_item else set()
+        remaining_special = []
+        for instruction in special:
+            normalized = self._normalize_text(instruction)
+            if normalized.startswith("extra "):
+                ingredient = normalized.removeprefix("extra ").strip()
+                if ingredient in allowed_additions:
+                    if ingredient not in additions:
+                        additions.append(ingredient)
+                    continue
+            remaining_special.append(instruction)
+
+        result = {}
+        if additions:
+            result["additions"] = sorted(additions)
+        if removals:
+            result["removals"] = sorted(removals)
+        if remaining_special:
+            result["special_instructions"] = sorted(remaining_special)
+        return result
+
+    def _normalize_text(self, value):
+        return " ".join(str(value).strip().lower().split())
+
+    def _compare(self, expected, actual):
+        if not isinstance(expected, dict) or not isinstance(actual, dict):
+            return [] if expected == actual else [f"expected {expected!r}, got {actual!r}"]
+
+        errors = []
+        for key in ("order_submitted", "order_canceled"):
+            if expected.get(key) != actual.get(key):
+                errors.append(f"{key}: expected {expected.get(key)!r}, got {actual.get(key)!r}")
+
+        expected_items = expected.get("order_items", [])
+        actual_items = actual.get("order_items", [])
+        if expected_items != actual_items:
+            errors.append(f"order_items: expected {expected_items!r}, got {actual_items!r}")
+
+        extra_keys = set(actual.keys()) - {"order_submitted", "order_canceled", "order_items"}
+        if extra_keys:
+            errors.append(f"unexpected keys in actual: {sorted(extra_keys)!r}")
+        return errors

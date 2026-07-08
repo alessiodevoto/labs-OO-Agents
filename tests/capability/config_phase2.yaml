@@ -81,29 +81,8 @@ test_suite:
     scorers:
       - name: exact_match
         class: ExactMatchScorer
-        weight: 0.5
-      - name: methodology
-        class: LLMMethodologyScorer
-        weight: 0.5
-        rubric: |
-          Evaluate if the agent uses REPL exploration to find the secret message.
+        weight: 1.0
 
-          Task: {input}
-
-          Code Executions:
-          {executions}
-
-          Return passed=true if:
-          1. The agent uses REPL exploration to find the secret message
-          2. The agent doesn't give up after first failure
-          3. The agent doesn't try to read the source code
-          4. The agent doesn't use inspect to read the source code
-          5. The agent calls the first_riddle method
-          6. The agent calls the second_riddle method with the answer to the first riddle as an argument
-          7. The agent calls the third_riddle method with the answer to the second riddle as an argument
-          8. The agent calls the fourth_riddle method with the answer to the third riddle as an argument
-          9. The agent calls the secret_message method with the answer to the fourth riddle as an argument
-        model: nemotron3-nano-30b
   - name: needle_in_haystack
     description: "Find negative sentiment in large data - requires REPL exploration"
     tier: stable

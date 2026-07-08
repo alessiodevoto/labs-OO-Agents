@@ -92,3 +92,153 @@ class PredictAgent(Agent):
         result = await self.combine_extraction(user_info, review_info)
 
         return result
+
+
+class StructuredCombinedValueScorer:
+    # Score nested structured extraction values without requiring exact generated prose.
+    _CONCEPTS = {
+        "Wireless Headphones XP-200": [
+            ("sound quality", ("sound", "quality")),
+            ("8+ hours battery life", ("battery", "8", "hour")),
+            ("comfort", ("comfort",)),
+            ("premium build quality", ("premium", "build")),
+        ],
+        "SmartWatch Pro Series 3": [
+            ("sleek modern design", ("sleek", "design")),
+            ("basic fitness tracking", ("fitness", "tracking")),
+            ("poor battery life", ("battery", ("poor", "disappointing", "daily", "barely"))),
+            ("clunky app integration", ("app", ("clunky", "sync", "integration"))),
+            ("reasonable price", ("price", ("reasonable", "fair"))),
+        ],
+        "Coffee Maker Deluxe Pro": [
+            ("good coffee", ("coffee", ("good", "rich", "flavor"))),
+            ("programmable timer", ("programmable", "timer")),
+            ("easy to clean", (("clean", "dishwasher"),)),
+            ("fair price", ("price", ("fair", "reasonable"))),
+            ("better insulation", (("insulation", "insulated"), ("carafe", "hot"))),
+        ],
+    }
+
+    def score(self, ctx):
+        from eval_pipeline.models import ScoreResult
+
+        expected = self._to_dict(ctx.expected)
+        actual = self._to_dict(ctx.actual)
+        errors = []
+        if not isinstance(expected, dict) or not isinstance(actual, dict):
+            return ScoreResult(
+                score=0.0,
+                reasoning=f"Expected and actual must be mappings, got {type(expected).__name__} and {type(actual).__name__}",
+            )
+        self._check_user(expected.get("user", {}), actual.get("user", {}), errors)
+        expected_review = expected.get("review", {})
+        actual_review = actual.get("review", {})
+        self._check_review(expected_review, actual_review, errors)
+        self._check_summary(expected, actual, errors)
+        ok = not errors
+        return ScoreResult(
+            score=1.0 if ok else 0.0,
+            reasoning="Nested Pydantic values match" if ok else "; ".join(errors[:6]),
+            metadata={"errors": errors, "error_count": len(errors)},
+        )
+
+    def _to_dict(self, value):
+        if hasattr(value, "model_dump"):
+            return value.model_dump()
+        if hasattr(value, "dict"):
+            return value.dict()
+        if isinstance(value, dict):
+            return {k: self._to_dict(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [self._to_dict(v) for v in value]
+        return value
+
+    def _check_user(self, expected, actual, errors):
+        for key in ("name", "age", "email"):
+            if actual.get(key) != expected.get(key):
+                errors.append(
+                    f"user.{key}: expected {expected.get(key)!r}, got {actual.get(key)!r}"
+                )
+
+    def _check_review(self, expected, actual, errors):
+        for key in ("product_name", "rating", "would_recommend"):
+            if actual.get(key) != expected.get(key):
+                errors.append(
+                    f"review.{key}: expected {expected.get(key)!r}, got {actual.get(key)!r}"
+                )
+        product = expected.get("product_name")
+        actual_points = actual.get("key_points")
+        if not isinstance(actual_points, list) or not all(
+            isinstance(p, str) for p in actual_points
+        ):
+            errors.append("review.key_points: expected a list of strings")
+            return
+        actual_text = self._normalize(" ".join(actual_points))
+        missing = []
+        for label, requirements in self._CONCEPTS.get(product, []):
+            if not self._requirements_met(requirements, actual_text):
+                missing.append(label)
+        if missing:
+            errors.append(f"review.key_points missing concepts: {missing}")
+
+    def _check_summary(self, expected, actual, errors):
+        summary = actual.get("summary")
+        if not isinstance(summary, str):
+            errors.append("summary: expected string")
+            return
+        summary_norm = self._normalize(summary)
+        user = expected.get("user", {})
+        review = expected.get("review", {})
+        required = []
+        required.extend(self._normalize(str(user.get("name", ""))).split())
+        required.append(str(user.get("age", "")))
+        required.extend(self._normalize(str(review.get("product_name", ""))).split())
+        # The model is asked for a brief summary mentioning name, age, product,
+        # and recommendation. The rating is validated on review.rating, but is
+        # not required to be repeated in summary prose.
+        missing = [token for token in required if token and token not in summary_norm]
+        if missing:
+            errors.append(f"summary missing required values: {missing}")
+        recommends = review.get("would_recommend")
+        if recommends is True and "recommend" not in summary_norm:
+            errors.append("summary missing recommendation")
+        if recommends is False and not (
+            "not recommend" in summary_norm
+            or "would not recommend" in summary_norm
+            or "wouldnt recommend" in summary_norm
+        ):
+            errors.append("summary missing negative recommendation")
+
+    def _normalize(self, text):
+        import re
+
+        text = text.lower().replace("+", " ")
+        tokens = re.findall(r"[a-z0-9]+", text)
+        stems = []
+        for token in tokens:
+            if token.endswith("ing") and len(token) > 5:
+                token = token[:-3]
+            elif token.endswith("ed") and len(token) > 4:
+                token = token[:-2]
+            elif token.endswith("s") and len(token) > 4:
+                token = token[:-1]
+            stems.append(token)
+        return " ".join(stems)
+
+    def _requirements_met(self, requirements, text):
+        for requirement in requirements:
+            if isinstance(requirement, tuple):
+                if not any(self._normalize(str(option)) in text for option in requirement):
+                    return False
+            elif self._normalize(str(requirement)) not in text:
+                return False
+        return True
+
+
+__all__ = [
+    "CombinedResult",
+    "PredictAgent",
+    "ReviewInfo",
+    "StructuredCombinedValueScorer",
+    "UserInfo",
+]

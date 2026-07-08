@@ -167,16 +167,12 @@ def _get_code_executions(
 def _get_code(trace: TraceExplorer, *, skip_prefill: bool = False) -> str | None:
     """Extract generated code from the trace.
 
-    For CodeAct: returns concatenated code from ExecutionTurn blocks.
-    For PurePython: returns the LLM response text.
-    Returns None if no meaningful code was executed (e.g. direct answer via return_result).
+    For CodeAct/PurePython: returns concatenated code from ExecutionTurn blocks.
+    Direct assistant response text is not code and returns None.
     """
     from nemo_oo_agents.trace_explorer.explorer import ExecutionTurn as _ExecutionTurn
-    from nemo_oo_agents.trace_explorer.explorer import LLMTurn as _LLMTurn
 
     code_blocks: list[str] = []
-    direct_output: str | None = None
-    has_tool_calls = False
 
     for session in _iter_all_sessions(trace):
         for turn in session.turns:
@@ -185,16 +181,9 @@ def _get_code(trace: TraceExplorer, *, skip_prefill: bool = False) -> str | None
                     continue
                 if turn.code:
                     code_blocks.append(turn.code)
-            elif isinstance(turn, _LLMTurn):
-                if turn.tool_calls:
-                    has_tool_calls = True
-                elif turn.response and not has_tool_calls and not code_blocks:
-                    direct_output = turn.response
 
     if code_blocks:
         return "\n\n".join(code_blocks)
-    if direct_output and not has_tool_calls:
-        return direct_output
     return None
 
 
@@ -841,6 +830,78 @@ class ModeSelectionScorer:
         )
 
 
+class FastAgentHelpScorer:
+    """Deterministically score fast_agent help/no-help behavior from traces.
+
+    This scorer deliberately avoids LLM judging. It ignores CodeAct prefill
+    executions and checks only whether agent-initiated code called
+    ``self.call_for_help(...)``. Direct text answers therefore count as no-help
+    behavior instead of being misclassified as executed code.
+    """
+
+    def __init__(self, expect_help: bool):
+        self.expect_help = expect_help
+
+    @staticmethod
+    def _code_calls_help(code: str) -> bool:
+        try:
+            tree = ast.parse(code)
+        except SyntaxError:
+            # Fallback for malformed/incomplete snippets in traces.
+            return "self.call_for_help" in code
+
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            if (
+                isinstance(func, ast.Attribute)
+                and func.attr == "call_for_help"
+                and isinstance(func.value, ast.Name)
+                and func.value.id == "self"
+            ):
+                return True
+        return False
+
+    def score(self, ctx: ScoringContext) -> ScoreResult:
+        if ctx.trace is None:
+            return ScoreResult(
+                score=0.0,
+                reasoning="No trace data available",
+                metadata={"expected_help": self.expect_help},
+            )
+
+        executions = _get_code_executions(ctx.trace, skip_prefill=True)
+        help_executions = [e for e in executions if self._code_calls_help(str(e.get("code") or ""))]
+        called_help = bool(help_executions)
+
+        if self.expect_help:
+            passed = called_help
+            reasoning = (
+                "Expected self.call_for_help(...) and found an agent-initiated call"
+                if passed
+                else "Expected self.call_for_help(...) but no agent-initiated call was found"
+            )
+        else:
+            passed = not called_help
+            if passed:
+                reasoning = "Expected direct answer/no help; no self.call_for_help(...) call found"
+            else:
+                reasoning = "Expected direct answer/no help, but self.call_for_help(...) was called"
+
+        return ScoreResult(
+            score=1.0 if passed else 0.0,
+            reasoning=reasoning,
+            metadata={
+                "expected_help": self.expect_help,
+                "called_help": called_help,
+                "execution_count": len(executions),
+                "help_execution_count": len(help_executions),
+                "help_codes": [e.get("code") for e in help_executions],
+            },
+        )
+
+
 @dataclass
 class Judgment:
     """Structured output from LLM judge.
@@ -867,6 +928,87 @@ class LLMJudgeAgent(Agent):
     async def judge(self, prompt: str) -> Judgment:
         """{prompt}"""
         ...
+
+
+class DumbCodeScorer:
+    """Penalize recursion and naive classifiers — accept direct answers and code-as-interface.
+
+    Inspects executed code for bad patterns:
+    - Recursion: calling self.<method_name>() (the method being tested)
+    - Naive classifiers: if/elif chains with string-in-string checks
+
+    Passes when:
+    - No code was executed (direct return_result tool call)
+    - Code is trivial (just return_result with a literal)
+    - Code uses legitimate reasoning without bad patterns
+
+    Usage in config:
+        scorers:
+          - name: methodology
+            class: DumbCodeScorer
+            weight: 0.5
+    """
+
+    def __init__(self, **kwargs):
+        pass
+
+    def score(self, ctx: ScoringContext) -> ScoreResult:
+        """Score based on absence of dumb code patterns."""
+        if ctx.trace is not None:
+            code = _get_code(ctx.trace, skip_prefill=True)
+        else:
+            return ScoreResult(score=1.0, reasoning="No trace — pass by default", metadata={})
+
+        # No code executed → direct answer → always OK
+        if code is None:
+            return ScoreResult(
+                score=1.0,
+                reasoning="No code execution (direct answer) — accepted",
+                metadata={"mode": "direct", "dumb_patterns": []},
+            )
+
+        # Check for dumb patterns in the code
+        dumb_patterns = []
+
+        # Pattern 1: Recursion — self.classify(), self.answer(), etc.
+        import re as _re
+
+        recursion_matches = _re.findall(r"self\.[a-z_]+\(", code)
+        # Filter out allowed self.* calls (self.call_for_help is OK in help tests)
+        bad_recursion = [
+            m
+            for m in recursion_matches
+            if not any(ok in m for ok in ["self.call_for_help", "self.notes", "self.context"])
+        ]
+        if bad_recursion:
+            dumb_patterns.append(f"recursion: {bad_recursion}")
+
+        # Pattern 2: Naive classifier — if "word" in text / if text contains
+        naive_matches = _re.findall(r'if\s+["\'].+?["\']\s+in\s+', code)
+        naive_matches += _re.findall(r"if\s+.*\.(contains|find|index)\(", code)
+        # Also catch elif chains with string literals
+        elif_with_strings = _re.findall(r'elif\s+["\'].+?["\']\s+in\s+', code)
+        naive_matches += elif_with_strings
+        if naive_matches:
+            dumb_patterns.append(f"naive_classifier: {naive_matches}")
+
+        # Pattern 3: Importing NLP libraries
+        nlp_imports = _re.findall(r"import\s+(nltk|spacy|transformers|sklearn|textblob)", code)
+        if nlp_imports:
+            dumb_patterns.append(f"nlp_import: {nlp_imports}")
+
+        if dumb_patterns:
+            return ScoreResult(
+                score=0.0,
+                reasoning=f"Dumb code detected: {'; '.join(dumb_patterns)}",
+                metadata={"mode": "code", "dumb_patterns": dumb_patterns, "code": code},
+            )
+
+        return ScoreResult(
+            score=1.0,
+            reasoning="Code-as-interface without dumb patterns — accepted",
+            metadata={"mode": "code", "dumb_patterns": [], "code": code},
+        )
 
 
 class LLMJudgeScorer:

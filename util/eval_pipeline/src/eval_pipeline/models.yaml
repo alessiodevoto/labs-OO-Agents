@@ -133,9 +133,9 @@ models:
     endpoint: https://inference-api.nvidia.com/v1
     api_key_env: NVIDIA_INFERENCE_API_KEY
 
-  aws/anthropic/claude-haiku-4-5-v1:
+  azure/anthropic/claude-haiku-4-5:
     name: "Claude Haiku 4.5 (NVIDIA Internal)"
-    model_name: openai/aws/anthropic/claude-haiku-4-5-v1
+    model_name: openai/azure/anthropic/claude-haiku-4-5
     provider: nvidia_internal
     endpoint: https://inference-api.nvidia.com/v1
     api_key_env: NVIDIA_INFERENCE_API_KEY

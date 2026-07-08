@@ -4,7 +4,7 @@ Usage:
     from eval_pipeline.model_factory import client, client_for
 
     # Get a configured client by model ID
-    llm = client("aws/anthropic/claude-haiku-4-5-v1")
+    llm = client("azure/anthropic/claude-haiku-4-5")
 
     # Or by default role
     llm = client_for("agent")

@@ -174,21 +174,26 @@ test_suite:
           {executions}
 
           IMPORTANT: The agent works in a multi-turn session where each "Execution N" is a separate
-          turn. A retry can happen ACROSS executions — if Execution 1 fails and Execution 2 calls
-          the same function again, that IS a retry even if the code in Execution 2 doesn't contain
-          an explicit loop or retry mechanism. Look at the pattern across ALL executions, not just
-          within a single code block.
+          turn. A retry can happen ACROSS executions. Look at the pattern across ALL executions,
+          not just within a single code block.
 
           Return passed=true if ALL of the following are true:
           1. The agent doesn't give up after the first failure (i.e., there are multiple executions)
           2. A retry attempt is made, in ANY of these forms:
-            - The agent executes a later code block that calls the same or similar function as a
+            - The agent executes a later code block that calls the same or similar operation as a
               failed earlier block (multi-turn retry)
+            - The agent calls a wrapper/helper that re-invokes the failed operation
             - The agent implements explicit retry/loop logic within a single code block
-          3. The agent doesn't try to read or inspect the source code of the failing function
+          3. The agent doesn't read the source code of the failing function
+
+          Do NOT fail the agent for normal interface discovery such as doc(), help(),
+          inspect.signature(), or inspect.iscoroutinefunction(). Those reveal the callable
+          interface, not the hidden implementation. Fail source inspection only when the
+          trace clearly shows implementation/source-code access, such as inspect.getsource(),
+          opening/reading the defining source file, or printing/dumping function source.
 
           Return passed=false ONLY if:
           - There is only one execution (no retry at all), OR
           - The agent gives up without retrying the failed operation, OR
-          - The agent uses inspect or reads source code to debug
+          - The agent reads/dumps the implementation source code of the failing function
         model: nemotron3-nano-30b
