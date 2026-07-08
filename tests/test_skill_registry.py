@@ -61,6 +61,19 @@ class TestDiscovery:
             reg = SkillRegistry(agent)
         assert reg.discovered() == []
 
+    def test_entry_returns_record_for_discovered_skill(self, agent):
+        ep = MagicMock()
+        ep.name = "nemo.shell"
+        with patch("nemo_oo_agents.skill_registry.entry_points", return_value=[ep]):
+            reg = SkillRegistry(agent)
+        entry = reg.entry("nemo.shell")
+        assert entry is not None
+        assert entry.name == "nemo.shell"
+        assert entry.category == "nemo"
+
+    def test_entry_returns_none_for_unknown_skill(self, registry):
+        assert registry.entry("does.not.exist") is None
+
 
 # ---------------------------------------------------------------------------
 # Tests: Registration

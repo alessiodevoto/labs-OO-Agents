@@ -447,7 +447,7 @@ class ModelCommand(Command):
             from nemo_oo_agents_cli.tui.agent import apply_model_limits
 
             def _switch():
-                self.agent._llm = get_llm_client(selected)
+                self.agent.set_llm(get_llm_client(selected))
                 apply_model_limits(self.agent)
 
             await self.agent_run_async(_switch)
@@ -512,7 +512,7 @@ class SwitchCommand(Command):
             from nemo_oo_agents_cli.tui.agent import apply_model_limits
 
             def _switch():
-                self.agent._llm = get_llm_client(selected)
+                self.agent.set_llm(get_llm_client(selected))
                 apply_model_limits(self.agent)
 
             await self.agent_run_async(_switch)

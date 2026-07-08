@@ -38,7 +38,7 @@ def build_job_rows(queue_manager: Any) -> list[JobExplorerRow]:
         handle = queue_manager.job(channel_name)
         if handle is None:
             continue
-        ch = queue_manager._channels.get(channel_name)
+        ch = queue_manager.channels().get(channel_name)
         queued = ch.qsize() if ch and hasattr(ch, "qsize") else 0
         values = handle.values
         search_parts = [

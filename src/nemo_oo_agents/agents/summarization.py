@@ -122,13 +122,18 @@ class SummarizationAgent(Agent):
             **kwargs: Passed through to Agent.__init__ (e.g. llm=)
         """
         # Inherit LLM from parent agent unless explicitly provided
-        kwargs.setdefault("llm", agent._llm)
+        kwargs.setdefault("llm", agent.llm)
         self.target_event_manager = agent.event_manager
         self._target_agent = agent
 
         # Extract annotated class attributes from kwargs (max_tokens, preserve_recent, etc.)
+        # Skip descriptors (e.g. Agent's ``llm`` property): they are not summarizer
+        # config fields and must pass through to ``Agent.__init__`` (which resolves
+        # ``llm`` itself). Assigning to a read-only property would also raise.
         for name in list(kwargs.keys()):
-            if hasattr(self.__class__, name):
+            if hasattr(self.__class__, name) and not isinstance(
+                getattr(type(self), name, None), property
+            ):
                 setattr(self, name, kwargs.pop(name))
 
         super().__init__(**kwargs)

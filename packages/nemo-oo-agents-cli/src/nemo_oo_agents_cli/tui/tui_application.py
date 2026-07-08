@@ -208,7 +208,7 @@ class TUIApplication:
         self._session_label_fn: Callable[[], str] | None = session_label
         self._config = config
 
-        # Wrap the agent's QueueManager._set_notify to also start the
+        # Register a QueueManager notify callback to also start the
         # dispatcher when items arrive on non-user channels while idle.
         # Without this, slash commands or spawned jobs that produce output
         # before any user message is typed would queue items indefinitely.
@@ -218,19 +218,7 @@ class TUIApplication:
         if agent is not None:
             qm = getattr(agent, "queue_manager", None)
             if qm is not None:
-                _original_set_notify = qm._set_notify
-
-                def _set_notify_and_start() -> None:
-                    _original_set_notify()
-                    ui_loop = self._loop
-                    if ui_loop is not None and ui_loop.is_running():
-                        ui_loop.call_soon_threadsafe(
-                            lambda: self._ensure_dispatcher_task(start_with_race=True)
-                        )
-                    else:
-                        self._ensure_dispatcher_task(start_with_race=True)
-
-                qm._set_notify = _set_notify_and_start
+                qm.set_notify_callback(self._on_queue_notify)
         self.full_screen = full_screen
 
         # Output scrollback. Two parallel stores:
@@ -1248,7 +1236,7 @@ class TUIApplication:
             # declared channels/events and re-enter with the first arrival.
             # ``kind`` explains why the agent stopped; it does not select a
             # different queue primitive.
-            running = [h for h in qm._handles if h.state == "running"]
+            running = qm.running_handles()
             if running:
                 now = datetime.datetime.now().strftime("%H:%M:%S")
                 lines = "".join(f"  ⠿ {h.label}\n" for h in running)
@@ -1373,16 +1361,33 @@ class TUIApplication:
             return {}
         return self._drain_pending_queue_items(qm, items)
 
+    def _on_queue_notify(self) -> None:
+        """QueueManager notify callback: (re)start the dispatcher on any put.
+
+        Registered via ``QueueManager.set_notify_callback``. May fire from
+        the agent-loop thread (spawned jobs), so marshal onto the UI loop
+        before touching dispatcher state to avoid attaching it to the wrong
+        event loop.
+
+        Fires for every channel put (user/system messages included), but
+        ``_ensure_dispatcher_task`` is idempotent — it early-returns when a
+        dispatcher is already running — so an extra call when a turn is
+        already in flight is a harmless no-op.
+        """
+        ui_loop = self._loop
+        if ui_loop is not None and ui_loop.is_running():
+            ui_loop.call_soon_threadsafe(lambda: self._ensure_dispatcher_task(start_with_race=True))
+        else:
+            self._ensure_dispatcher_task(start_with_race=True)
+
     def _drain_pending_queue_items(self, qm: Any, items: list[tuple[str, Any]]) -> dict[str, list]:
         """Group race winners and already-buffered queue items by channel name."""
         pending: dict[str, list] = {}
         for name, value in items:
             pending.setdefault(name, []).append(value)
-        for ch in qm._channels.values():
+        for ch in qm.channels().values():
             if ch.mode == "queue":
-                while not ch.is_empty():
-                    val = ch._items.popleft()
-                    ch._fire_on_get(val)
+                for val in ch.drain():
                     pending.setdefault(ch.name, []).append(val)
         return pending
 
@@ -1400,9 +1405,9 @@ class TUIApplication:
         qm = getattr(agent, "queue_manager", None) if agent is not None else None
         if qm is None:
             return False
-        if any(h.state == "running" for h in qm._handles):
+        if qm.running_handles():
             return True
-        for name, ch in qm._channels.items():
+        for name, ch in qm.channels().items():
             if name == "user_messages":
                 continue
             if ch.mode == "queue" and not ch.is_empty():

@@ -259,7 +259,7 @@ class Completer:
             for sid in sorted(skills_reg.discovered()):
                 if partial and not sid.startswith(partial):
                     continue
-                entry = skills_reg._discovered.get(sid)
+                entry = skills_reg.entry(sid)
                 desc = getattr(entry, "category", "") if entry else ""
                 items.append(
                     CompletionItem(

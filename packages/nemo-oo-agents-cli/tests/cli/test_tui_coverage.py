@@ -1373,8 +1373,8 @@ from nemo_oo_agents_cli.tui.agent import (  # noqa: E402
 class TestInstallSummarizer:
     def _mk_agent(self, context_window=1_000_000):
         agent = MagicMock()
-        agent._llm = MagicMock(spec=["context_window"])
-        agent._llm.context_window = context_window
+        agent.llm = MagicMock(spec=["context_window"])
+        agent.llm.context_window = context_window
         return agent
 
     def test_policy_none_does_nothing(self):
@@ -1471,8 +1471,8 @@ class TestApplyModelLimits:
         from nemo_oo_agents.config.truncation_config import TruncationConfig
 
         agent = MagicMock()
-        agent._llm = MagicMock(spec=["context_window"])
-        agent._llm.context_window = context_window
+        agent.llm = MagicMock(spec=["context_window"])
+        agent.llm.context_window = context_window
         summarizer = MagicMock()
         summarizer.config = TokenBudgetConfig(
             max_tokens=existing_summarizer_max, preserve_recent=10, target_chars=4000
@@ -1522,7 +1522,7 @@ class TestApplyModelLimits:
         from nemo_oo_agents_cli.tui.agent import apply_model_limits
 
         agent = self._mk_agent(context_window=200_000)
-        agent._llm = MagicMock(spec=[])  # no context_window
+        agent.llm = MagicMock(spec=[])  # no context_window
         apply_model_limits(agent)
         assert agent._summarizers[0].config.max_tokens == 100_000
 
