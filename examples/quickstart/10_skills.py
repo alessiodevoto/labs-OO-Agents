@@ -6,7 +6,7 @@ uv run python examples/quickstart/10_skills.py
 
 from pathlib import Path
 
-from nemo_oo_agents import SkillManager, TextSkill
+from nemo_oo_agents import TextSkill
 from nemo_oo_agents.util.quickstart import *
 
 ASSETS = Path(__file__).parent.parent / "assets"
@@ -25,11 +25,14 @@ class FrontendAgent(Agent, llm=llm):
 
 
 class GenericAgent(Agent, llm=llm):
-    """Agent that loads all skills from a directory."""
+    """Agent that loads all skills from a directory by scanning for SKILL.md."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._skills = SkillManager.install(self, skills_dir=ASSETS)
+        # Load every subdirectory containing a SKILL.md as a TextSkill
+        for entry in sorted(ASSETS.iterdir()):
+            if entry.is_dir() and (entry / "SKILL.md").exists():
+                setattr(self, entry.name.replace("-", "_"), TextSkill(path=entry))
 
     async def respond(self, prompt: str) -> str:
         """Respond to a user message."""

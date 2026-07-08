@@ -807,7 +807,6 @@ class TestAsyncSafety:
         from nemo_oo_agents.runtime.async_safety import agent_async_safety_context
 
         future: concurrent.futures.Future[int] = concurrent.futures.Future()
-        future.set_result(42)
 
         with agent_async_safety_context():
             with pytest.raises(RuntimeError, match="Future.result\\(\\).*deadlock"):
@@ -818,11 +817,32 @@ class TestAsyncSafety:
         from nemo_oo_agents.runtime.async_safety import agent_async_safety_context
 
         future: concurrent.futures.Future[int] = concurrent.futures.Future()
-        future.set_result(42)
 
         with agent_async_safety_context():
             with pytest.raises(RuntimeError, match="Future.exception\\(\\).*deadlock"):
                 future.exception()
+
+    async def test_future_result_allowed_when_done(self):
+        """Future.result() does NOT raise for done futures (no deadlock risk)."""
+        from nemo_oo_agents.runtime.async_safety import agent_async_safety_context
+
+        future: concurrent.futures.Future[int] = concurrent.futures.Future()
+        future.set_result(42)
+
+        with agent_async_safety_context():
+            # Done futures can be safely read without deadlock
+            assert future.result() == 42
+
+    async def test_future_exception_allowed_when_done(self):
+        """Future.exception() does NOT raise for done futures (no deadlock risk)."""
+        from nemo_oo_agents.runtime.async_safety import agent_async_safety_context
+
+        future: concurrent.futures.Future[int] = concurrent.futures.Future()
+        future.set_result(42)
+
+        with agent_async_safety_context():
+            # Done futures can be safely inspected without deadlock
+            assert future.exception() is None
 
     async def test_wait_blocks_in_agent_context(self):
         """concurrent.futures.wait() raises inside agent context on event loop thread."""
