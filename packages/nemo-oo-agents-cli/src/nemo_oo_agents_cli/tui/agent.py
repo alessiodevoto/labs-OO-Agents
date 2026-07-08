@@ -194,7 +194,7 @@ def _summarizer_budget(llm: "UnifiedLLM") -> int:
 
 
 def apply_model_limits(agent: Agent) -> None:
-    """Sync the summarizer trigger against ``agent._llm.context_window``.
+    """Sync the summarizer trigger against ``agent.llm.context_window``.
 
     Call after a model switch so the summarizer threshold moves with the
     new context window. Runtime-level event truncation picks up the new
@@ -202,7 +202,7 @@ def apply_model_limits(agent: Agent) -> None:
     """
     from nemo_oo_agents.config.summarizer_config import TokenBudgetConfig
 
-    summarizer_max = _summarizer_budget(agent._llm)
+    summarizer_max = _summarizer_budget(agent.llm)
     for summarizer in getattr(agent, "_summarizers", []):
         current = summarizer.config
         summarizer.config = TokenBudgetConfig(
@@ -227,7 +227,7 @@ def install_summarizer(config: SummarizationConfig, agent: Agent) -> None:
     from nemo_oo_agents.config.summarizer_config import TokenBudgetConfig
 
     summarizer_max = (
-        config.max_tokens if config.max_tokens is not None else _summarizer_budget(agent._llm)
+        config.max_tokens if config.max_tokens is not None else _summarizer_budget(agent.llm)
     )
 
     TokenBudgetSummarizer.install(

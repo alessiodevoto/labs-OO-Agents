@@ -184,6 +184,15 @@ class SkillRegistry(Skill):
         """All discovered skill names (category/name format)."""
         return sorted(self._discovered.keys())
 
+    def entry(self, name: str) -> "_SkillEntry | None":
+        """Return the discovery record for *name*, or ``None`` if unknown.
+
+        Public accessor for a single discovered entry (``name``,
+        ``category``, ``entry_point``). Host code (e.g. the TUI
+        completer) uses this instead of reaching into ``_discovered``.
+        """
+        return self._discovered.get(name)
+
     def discover_libs(self, libs_path: "Path") -> None:
         """Scan a libs directory and register each skill package.
 

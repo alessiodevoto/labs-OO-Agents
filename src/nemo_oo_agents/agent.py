@@ -409,6 +409,29 @@ class Agent(metaclass=AgentMeta):
         """Most recent context window utilization stats, or None before first generation."""
         return self.runtime._last_context_stats
 
+    @property
+    @hidden
+    def llm(self) -> "UnifiedLLM":
+        """The agent's resolved LLM client.
+
+        Public accessor for the LLM resolved at construction time (see
+        ``_resolve_llm``). Framework/host code (e.g. the TUI's model
+        switcher) reads this instead of reaching into ``_llm``.
+        """
+        return self._llm
+
+    @no_trace
+    @hidden
+    def set_llm(self, llm: "UnifiedLLM") -> None:
+        """Replace the agent's LLM client.
+
+        Used by hosts that switch models at runtime (e.g. the TUI
+        ``/switch`` command). Callers that maintain model-derived state
+        (summarizer budgets, context-window limits) must refresh it after
+        calling this — see ``apply_model_limits``.
+        """
+        self._llm = llm
+
     @no_trace
     @hidden
     def _resolve_system_prompt(self) -> str:

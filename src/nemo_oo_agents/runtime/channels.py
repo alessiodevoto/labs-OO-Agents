@@ -378,6 +378,29 @@ class Channel[T]:
         except BaseException:
             logger.exception("Channel(%s).on_get raised", self.name)
 
+    def drain(self) -> list[T]:
+        """Pop every buffered item now, firing ``on_get`` for each.
+
+        Non-blocking, queue-mode only. Pops items head-to-tail (FIFO),
+        firing ``on_get(item)`` once per item at the queued → consumed
+        transition — the same firing path as ``get()`` and the race
+        winner — then returns them in dequeue order. Returns an empty
+        list for event-mode channels (they don't buffer) and for a
+        drained queue.
+
+        Encapsulates the ``popleft`` + ``_fire_on_get`` loop the TUI
+        dispatcher runs to flush items already buffered when a turn
+        wakes, so callers no longer reimplement channel-drain semantics.
+        """
+        if self.mode != "queue":
+            return []
+        drained: list[T] = []
+        while self._items:
+            item = self._items.popleft()
+            self._fire_on_get(item)
+            drained.append(item)
+        return drained
+
     def set_on_get(self, callback: Callable[[T], None] | None) -> None:
         """Late-bind the ``on_get`` hook (queue-mode only).
 
@@ -589,9 +612,39 @@ class QueueManager:
         # Thread-safe flag: set by _set_notify when it can't deliver a wake
         # (stale/closed loop). race() checks this after recreating the pair.
         self._notify_pending = False
+        # Optional host-supplied hook fired after every channel put(), in
+        # addition to the internal race() wakeup. Lets a host (e.g. the
+        # TUI) react to puts — such as (re)starting its dispatcher — via a
+        # supported API instead of monkey-patching _set_notify.
+        self._notify_callback: Callable[[], None] | None = None
+
+    def set_notify_callback(self, callback: Callable[[], None] | None) -> None:
+        """Register an extra callback fired after each channel ``put()``.
+
+        The callback runs *after* the internal ``race()`` wakeup on every
+        put (both queue- and event-mode), including the first put before
+        ``race()`` has run (when the internal wakeup is a no-op). It fires
+        on whichever thread called ``put()``, so cross-thread hosts must
+        marshal back to their own loop themselves. Pass ``None`` to clear.
+
+        Replaces the previous pattern of monkey-patching ``_set_notify``.
+        """
+        self._notify_callback = callback
 
     def _set_notify(self) -> None:
-        """Callback passed to channels; sets the _notify event.
+        """Callback passed to channels; wakes ``race()`` on every put.
+
+        Fires the internal loop-safe wakeup, then any host callback
+        registered via ``set_notify_callback`` — even when the internal
+        wakeup no-ops because ``race()`` has not created its notify pair
+        yet (e.g. the very first put before the dispatcher starts).
+        """
+        self._signal_notify()
+        if self._notify_callback is not None:
+            self._notify_callback()
+
+    def _signal_notify(self) -> None:
+        """Set the ``_notify`` event so ``race()`` wakes on a put.
 
         Channels can be produced from the TUI thread while ``race()`` is
         waiting on the agent-loop thread, so wake the event via its owning
@@ -682,8 +735,26 @@ class QueueManager:
     def get_channel(self, name: str) -> Channel[Any]:
         return self._channels[name]
 
+    def channels(self) -> dict[str, Channel[Any]]:
+        """Return a snapshot of the channel registry (name → Channel).
+
+        A shallow copy in registration order, so host code can enumerate
+        or look up channels without reaching into ``_channels`` or
+        mutating the live registry.
+        """
+        return dict(self._channels)
+
     def names(self) -> list[str]:
         return list(self._channels.keys())
+
+    def running_handles(self) -> list[JobHandle]:
+        """Return handles for spawned jobs currently in the ``running`` state.
+
+        Public accessor for the subset of ``spawn()`` handles a host
+        (e.g. the TUI) shows as active background work, replacing reads of
+        the private ``_handles`` list.
+        """
+        return [h for h in self._handles if h.state == "running"]
 
     def remove_channel(self, name: str) -> None:
         """Remove a channel by name.

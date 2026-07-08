@@ -203,7 +203,7 @@ class TestJobExplorer:
         qm.job.return_value = handle1
         ch = MagicMock()
         ch.qsize.return_value = 3
-        qm._channels = {"ci": ch}
+        qm.channels.return_value = {"ci": ch}
 
         rows = build_job_rows(qm)
         assert len(rows) == 1
@@ -221,7 +221,7 @@ class TestJobExplorer:
         handle.values = ["ok"]
         qm.jobs.return_value = {"monitor": "done"}
         qm.job.return_value = handle
-        qm._channels = {}
+        qm.channels.return_value = {}
 
         view = JobExplorerView(qm)
         output = view.render(80, 24)
@@ -236,7 +236,7 @@ class TestJobExplorer:
         handle.values = []
         qm.jobs.return_value = {"test-job": "running"}
         qm.job.return_value = handle
-        qm._channels = {}
+        qm.channels.return_value = {}
 
         view = JobExplorerView(qm)
         result = view.handle_key("text", "x")
