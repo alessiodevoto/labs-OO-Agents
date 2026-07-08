@@ -983,6 +983,40 @@ class TestOverridePhaseInteractions:
         assert "task" not in keys, "Decorator removed task"
 
     @pytest.mark.asyncio
+    async def test_disabled_keys_suppress_all_block_sources(self):
+        """Disabled keys are omitted from persistent, strategy, decorator, and scoped phases."""
+        from nemo_oo_agents.runtime.context_builder import build_context
+
+        cm = _make_context_manager(
+            {"notes": "persistent notes", "task": "persistent task"},
+            protected_blocks={"self": DynamicContext("doc(type(self))")},
+        )
+        cm.disable("self", "notes", "strategy_prompt", "decorator_key", "scoped_key")
+        em = _make_event_manager([])
+        strategy = MagicMock()
+        strategy.get_block_overrides.return_value = {
+            "strategy_prompt": "strategy prompt",
+            "notes": "strategy notes",
+        }
+
+        result = await build_context(
+            context_manager=cm,
+            event_manager=em,
+            strategy=strategy,
+            resolve_fn=_identity_resolve,
+            decorator_context={"decorator_key": "decorator", "task": "decorator task"},
+            scoped_context={"scoped_key": "scoped"},
+        )
+
+        by_key = {b.key: b.content for b in result.blocks}
+        assert "self" not in by_key
+        assert "notes" not in by_key
+        assert "strategy_prompt" not in by_key
+        assert "decorator_key" not in by_key
+        assert "scoped_key" not in by_key
+        assert by_key["task"] == "decorator task"
+
+    @pytest.mark.asyncio
     async def test_multiple_independent_overrides(self):
         """Each phase can add new blocks that don't conflict."""
         from nemo_oo_agents.runtime.context_builder import build_context

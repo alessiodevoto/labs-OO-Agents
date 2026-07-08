@@ -155,13 +155,13 @@ class SWEBenchBasicAgent(
           Only use it when you have the final answer.
         - Check ``doc(self)`` for available tools and methods.
         - Pin useful state:
-          ``self.context.set_dynamic("key", "python_expression")``
+          ``self.context["key"] = Context(expr="python_expression")``
           Example::
 
             directory_structure = await self.swebench.execute(
                 "ls -la | grep -v '^\\\\.' | grep -v '__pycache__'"
             )
-            self.context.set_dynamic("directory_structure", "directory_structure")
+            self.context["directory_structure"] = Context(expr="directory_structure")
 
         - Variables persist across REPL turns.
         - Output is auto-truncated; use slices or grep to inspect long output.

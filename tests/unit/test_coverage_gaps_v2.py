@@ -1077,17 +1077,18 @@ class TestAsyncSafety:
 
 
 class TestContextBuilderNoneValue:
-    """_phase_persistent_blocks with None static value → content = "None" (line 295)."""
+    """cm[key] = None suppresses the block (disabled_keys mechanism)."""
 
-    async def test_none_static_value_becomes_string_none(self):
+    async def test_none_value_suppresses_block(self):
         from nemo_oo_agents.runtime.context_builder import _phase_persistent_blocks
         from nemo_oo_agents.runtime.context_manager import ContextManager
 
         cm = ContextManager()
-        cm["my_key"] = None  # type: ignore[assignment]
+        cm["my_key"] = "visible"
+        cm["my_key"] = None  # suppress via new unified semantics
 
         async def _resolve(key: str, value: Any) -> str | None:
-            return None
+            return str(value) if value is not None else None
 
         blocks, cache = await _phase_persistent_blocks(
             blocks=[],
@@ -1095,9 +1096,8 @@ class TestContextBuilderNoneValue:
             resolve_fn=_resolve,
         )
 
-        # Should have one block with content "None"
-        assert len(blocks) == 1
-        assert blocks[0].content == "None"
+        # Block is suppressed (disabled), not rendered
+        assert len(blocks) == 0
 
 
 # =============================================================================

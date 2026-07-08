@@ -151,8 +151,10 @@ class BenchAgent(
         # hint references them, so expose both APIs to the LLM here.
         spec(self, "context", hidden=False)
         spec(self, "events", hidden=False)
-        self.context_manager.set_static("python_tools", doc(RepoTools, ShellTools))
-        self.context_manager.set_static("todo", doc(type(self.todo)))
+        from nemo_oo_agents import Context
+
+        self.context_manager["python_tools"] = Context(doc(RepoTools, ShellTools), prefix=True)
+        self.context_manager["todo"] = Context(doc(type(self.todo)), prefix=True)
 
     def _install_python_tools(self, cwd: str) -> None:
         """Install shell/repo tools rooted at the same working directory."""
@@ -184,7 +186,9 @@ class BenchAgent(
         else:
             cwd = next((d for d in ("/testbed", "/app") if os.path.isdir(d)), os.getcwd())
         self._install_python_tools(cwd)
-        self.context_manager.set_static("todo", doc(type(self.todo)))
+        from nemo_oo_agents import Context
+
+        self.context_manager["todo"] = Context(doc(type(self.todo)), prefix=True)
         self.todo.clear()
         self._seed_todos()
 

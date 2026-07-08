@@ -1,8 +1,6 @@
-
 import json
 import os
 import shlex
-from pathlib import Path
 
 from harbor.agents.installed.base import BaseInstalledAgent
 from harbor.environments.base import BaseEnvironment
@@ -103,7 +101,7 @@ class PiAgent(BaseInstalledAgent):
         return (
             'export NVM_DIR="$HOME/.nvm"; '
             '[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"; '
-            'nvm use default >/dev/null 2>&1 || true; '
+            "nvm use default >/dev/null 2>&1 || true; "
             'export PATH="$HOME/.local/bin:$PATH"; '
             "pi --version; "
             f"pi --provider {shlex.quote(self._provider)} --model {shlex.quote(model_arg)} "

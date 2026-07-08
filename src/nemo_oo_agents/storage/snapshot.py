@@ -46,6 +46,7 @@ class AgentSnapshot(BaseModel):
 
     version: int = SNAPSHOT_VERSION
     context: list[StaticContextBlock | DynamicContextBlock] = []
+    disabled_context: list[str] = []
     attributes: dict[str, Any] = {}
     type_allowlist: set[str] = set()
 
@@ -126,6 +127,7 @@ class AgentSnapshot(BaseModel):
         return AgentSnapshot(
             version=SNAPSHOT_VERSION,
             context=context_blocks,
+            disabled_context=sorted(agent.context_manager.disabled()),
             attributes=attributes,
             type_allowlist=all_allowlist,
         )
@@ -162,6 +164,9 @@ class AgentSnapshot(BaseModel):
                     agent.context_manager.set_static_protected(block.key, value)
                 else:
                     agent.context_manager[block.key] = value
+
+        if self.disabled_context:
+            agent.context_manager.disable(*self.disabled_context)
 
         for attr_name, attr_value in self.attributes.items():
             setattr(agent, attr_name, deserialize(attr_value, self.type_allowlist))

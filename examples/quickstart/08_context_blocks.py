@@ -41,7 +41,9 @@ async def main():
 
     # Dynamic block: the expression is re-evaluated every LLM turn,
     # so the LLM always sees the latest notes without re-passing them
-    agent.context.set_dynamic("notes", "self.render_notes()")
+    from nemo_oo_agents import Context
+
+    agent.context["notes"] = Context(expr="self.render_notes()")
 
     notes = [
         "Deploy uses blue-green strategy with 5-minute health checks.",

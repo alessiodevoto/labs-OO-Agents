@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-
 from harbor.agents.installed.base import BaseInstalledAgent, ExecInput
 from harbor.models.agent.context import AgentContext
 
@@ -29,7 +28,11 @@ class HermesAgent(BaseInstalledAgent):
 
     def _build_config_yaml(self) -> str:
         api_key = os.environ.get("OPENAI_API_KEY") or os.environ.get("NVIDIA_INTERNAL_API_KEY", "")
-        base_url = os.environ.get("OPENAI_BASE_URL") or os.environ.get("OPENAI_API_BASE") or "https://inference-api.nvidia.com/v1"
+        base_url = (
+            os.environ.get("OPENAI_BASE_URL")
+            or os.environ.get("OPENAI_API_BASE")
+            or "https://inference-api.nvidia.com/v1"
+        )
         config: dict[str, Any] = {
             "model": {
                 "provider": "custom",
@@ -52,7 +55,11 @@ class HermesAgent(BaseInstalledAgent):
         escaped_instruction = shlex.quote(instruction)
         model = self._gateway_model()
         api_key = os.environ.get("OPENAI_API_KEY") or os.environ.get("NVIDIA_INTERNAL_API_KEY", "")
-        base_url = os.environ.get("OPENAI_BASE_URL") or os.environ.get("OPENAI_API_BASE") or "https://inference-api.nvidia.com/v1"
+        base_url = (
+            os.environ.get("OPENAI_BASE_URL")
+            or os.environ.get("OPENAI_API_BASE")
+            or "https://inference-api.nvidia.com/v1"
+        )
         config_yaml = self._build_config_yaml()
         env = {
             "HERMES_HOME": "/tmp/hermes",
@@ -122,8 +129,18 @@ class HermesAgent(BaseInstalledAgent):
                 usage = record.get("usage") or record.get("token_usage") or {}
                 if not isinstance(usage, dict):
                     continue
-                total_input_tokens += usage.get("prompt_tokens", 0) or usage.get("input_tokens", 0) or usage.get("input", 0) or 0
-                total_output_tokens += usage.get("completion_tokens", 0) or usage.get("output_tokens", 0) or usage.get("output", 0) or 0
+                total_input_tokens += (
+                    usage.get("prompt_tokens", 0)
+                    or usage.get("input_tokens", 0)
+                    or usage.get("input", 0)
+                    or 0
+                )
+                total_output_tokens += (
+                    usage.get("completion_tokens", 0)
+                    or usage.get("output_tokens", 0)
+                    or usage.get("output", 0)
+                    or 0
+                )
 
         context.n_input_tokens = total_input_tokens or None
         context.n_output_tokens = total_output_tokens or None

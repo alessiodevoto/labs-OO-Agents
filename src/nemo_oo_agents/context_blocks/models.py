@@ -58,6 +58,93 @@ class DynamicContext(BaseModel):
         return f"DynamicContext({self.expr!r})"
 
 
+class Context(BaseModel):
+    """Unified context block value — controls content and placement.
+
+    Two orthogonal axes:
+    - **Content**: literal text (``value``) or re-evaluated expression (``expr``)
+    - **Placement**: cacheable prefix (``prefix=True``) or volatile suffix (default)
+
+    Usage in context dicts (class-level, instance-level, @strategy, ScopedContext, runtime)::
+
+        from nemo_oo_agents import Context
+
+        context={
+            "role": "You are an expert",                              # bare str shorthand (suffix, literal)
+            "shell": Context(expr="doc(self.shell)", prefix=True),    # prefix, evaluated each turn
+            "config": Context("stable config", prefix=True),          # prefix, literal
+            "status": Context(expr="f'{self.done}/{self.total}'"),    # suffix, evaluated
+            "self": None,                                             # suppress block
+        }
+
+    At runtime::
+
+        self.context["shell"] = Context(expr="doc(self.shell)", prefix=True)
+        self.context["status"] = Context(expr="f'{self.done}/{self.total}'")
+        self.context["self"] = None  # suppress
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    value: str | None = Field(default=None, description="Literal text content")
+    expr: str | None = Field(
+        default=None, description="Python expression re-evaluated each LLM turn"
+    )
+    prefix: bool = Field(
+        default=False, description="Place in cacheable prefix if True, volatile suffix if False"
+    )
+
+    def __init__(
+        self,
+        value: str | None = None,
+        *,
+        expr: str | None = None,
+        prefix: bool = False,
+        **kwargs: Any,
+    ):
+        """Create a context block value.
+
+        Args:
+            value: Literal text content (mutually exclusive with expr).
+            expr: Python expression re-evaluated each LLM turn (mutually exclusive with value).
+            prefix: If True, place in the cacheable prefix partition.
+
+        Raises:
+            TypeError: If both value and expr are given, or neither is given.
+            BlockSyntaxError: If expr is not valid Python syntax.
+        """
+        if value is not None and expr is not None:
+            raise TypeError("Context() takes value or expr, not both")
+        if value is None and expr is None:
+            raise TypeError("Context() requires value or expr")
+        if expr is not None:
+            try:
+                compile(expr, "<block_expr>", "eval")
+            except SyntaxError as e:
+                raise BlockSyntaxError(key="<context>", expr=expr, original_error=e) from e
+        super().__init__(value=value, expr=expr, prefix=prefix, **kwargs)
+
+    @property
+    def is_dynamic(self) -> bool:
+        """True if this block uses an expression (re-evaluated each turn)."""
+        return self.expr is not None
+
+    def to_dynamic_context(self) -> "DynamicContext | None":
+        """Convert to a DynamicContext if this is an expression block, else None."""
+        if self.expr is not None:
+            return DynamicContext(self.expr)
+        return None
+
+    def __repr__(self) -> str:
+        if self.expr is not None:
+            parts = [f"expr={self.expr!r}"]
+        else:
+            parts = [repr(self.value)]
+        if self.prefix:
+            parts.append("prefix=True")
+        return f"Context({', '.join(parts)})"
+
+
 class BlockMetadata(BaseModel):
     """Typed metadata for resolved blocks.
 

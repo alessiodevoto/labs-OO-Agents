@@ -219,7 +219,9 @@ class SWEBenchTodoAgent(
         self._last_verify: dict[str, Any] | None = None
         self._verify_bounces = 0
         self._pending_nudge: str | None = None
-        self.context_manager.set_static("self.shell", doc(type(self.shell)))
+        from nemo_oo_agents import Context
+
+        self.context_manager["self.shell"] = Context(doc(type(self.shell)), prefix=True)
 
     @hidden
     def _parse_test_outcome(self, result: Any) -> dict[str, Any]:
@@ -319,7 +321,9 @@ class SWEBenchTodoAgent(
 
         # Reset stateful tools so each evaluation starts clean.
         self.shell = _make_shell(cwd)
-        self.context_manager.set_static("self.shell", doc(type(self.shell)))
+        from nemo_oo_agents import Context
+
+        self.context_manager["self.shell"] = Context(doc(type(self.shell)), prefix=True)
         self.todo.clear()
         self._last_verify = None
         self._verify_bounces = 0

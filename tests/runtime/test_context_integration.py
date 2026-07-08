@@ -61,6 +61,92 @@ class TestContextManager:
         agent.context_manager.set_dynamic("status", "self.format_status()")
         assert "status" in agent.context_manager
 
+    def test_setitem_accepts_context_type(self):
+        """self.context['key'] = Context(...) sets block with correct placement."""
+        from nemo_oo_agents.context_blocks import Context
+
+        fake_llm = FakeLLMClient()
+
+        class TestAgent(Agent, llm=fake_llm):
+            pass
+
+        agent = TestAgent()
+        # Literal, suffix (default)
+        agent.context_manager["a"] = Context("hello")
+        assert agent.context_manager["a"] == "hello"
+        assert agent.context_manager.is_static("a") is False
+
+        # Literal, prefix
+        agent.context_manager["b"] = Context("world", prefix=True)
+        assert agent.context_manager["b"] == "world"
+        assert agent.context_manager.is_static("b") is True
+
+        # Expression, suffix
+        agent.context_manager["c"] = Context(expr="'dynamic'")
+        assert "c" in agent.context_manager
+
+        # Expression, prefix
+        agent.context_manager["d"] = Context(expr="'cached'", prefix=True)
+        assert "d" in agent.context_manager
+        assert agent.context_manager.is_static("d") is True
+
+    def test_setitem_none_suppresses_block(self):
+        """self.context['key'] = None suppresses the block."""
+        fake_llm = FakeLLMClient()
+
+        class TestAgent(Agent, llm=fake_llm):
+            pass
+
+        agent = TestAgent()
+        agent.context_manager["key"] = "hello"
+        agent.context_manager["key"] = None
+        assert agent.context_manager.is_disabled("key") is True
+
+    def test_context_api_can_disable_and_enable_protected_blocks(self):
+        """The public API can suppress default framework blocks by key."""
+        fake_llm = FakeLLMClient()
+
+        class TestAgent(Agent, llm=fake_llm):
+            pass
+
+        agent = TestAgent()
+        agent.context.disable("system_prompt", "self", "state")
+        assert agent.context.disabled() == {"system_prompt", "self", "state"}
+        assert agent.context.is_enabled("self") is False
+        assert "self" in agent.context_manager.protected_keys
+
+        agent.context.enable("self")
+        assert agent.context.disabled() == {"system_prompt", "state"}
+        assert agent.context.is_enabled("self") is True
+
+    def test_init_context_none_disables_protected_blocks(self):
+        """context={key: None} suppresses protected framework blocks instead of erroring."""
+        fake_llm = FakeLLMClient()
+
+        class TestAgent(Agent, llm=fake_llm):
+            pass
+
+        agent = TestAgent(context={"self": None})
+        assert agent.context_manager.is_disabled("self") is True
+        assert "self" in agent.context_manager.protected_keys
+
+    def test_disabled_context_blocks_round_trip_through_snapshot(self):
+        """Disabled block keys survive save/restore snapshot serialization."""
+        from nemo_oo_agents.storage.snapshot import AgentSnapshot
+
+        fake_llm = FakeLLMClient()
+
+        class TestAgent(Agent, llm=fake_llm):
+            pass
+
+        agent = TestAgent()
+        agent.context.disable("self", "strategy_prompt")
+        snapshot = AgentSnapshot.from_agent(agent)
+
+        restored = TestAgent()
+        snapshot.restore(restored)
+        assert restored.context.disabled() == {"self", "strategy_prompt"}
+
     def test_set_dynamic_rejects_invalid_expr(self):
         """set_dynamic() rejects invalid Python expressions."""
         from nemo_oo_agents.context_blocks.exceptions import BlockSyntaxError
@@ -74,16 +160,16 @@ class TestContextManager:
         with pytest.raises(BlockSyntaxError):
             agent.context_manager.set_dynamic("bad", "this is not valid python!!!")
 
-    def test_setitem_rejects_dynamic(self):
-        """self.context['key'] = DynamicContext(...) raises TypeError."""
+    def test_setitem_accepts_dynamic_context(self):
+        """self.context['key'] = DynamicContext(...) stores as dynamic block."""
         fake_llm = FakeLLMClient()
 
         class TestAgent(Agent, llm=fake_llm):
             pass
 
         agent = TestAgent()
-        with pytest.raises(TypeError, match="set_dynamic"):
-            agent.context_manager["key"] = DynamicContext("'value'")
+        agent.context_manager["key"] = DynamicContext("'value'")
+        assert "key" in agent.context_manager
 
     def test_getitem_returns_original_value(self):
         """self.context['key'] returns the original value."""
@@ -558,15 +644,15 @@ class TestDecoratorEventsIntegration:
         assert result2 == "decorated"
 
     @pytest.mark.asyncio
-    async def test_decorator_context_accepts_scopedcontext_only(self):
-        """@strategy(context=...) only accepts ScopedContext, not dict."""
+    async def test_decorator_context_accepts_plain_dict(self):
+        """@strategy(context=...) accepts a plain dict as context overrides."""
         from nemo_oo_agents import strategy
 
-        with pytest.raises(TypeError, match="must be ScopedContext"):
+        class TestAgent(Agent, llm=FakeLLMClient()):
+            @strategy(context={"focus": "testing"})
+            async def good_method(self) -> str: ...
 
-            class TestAgent(Agent, llm=FakeLLMClient()):
-                @strategy(context={"invalid": "dict"})
-                async def bad_method(self) -> str: ...
+        assert TestAgent.good_method._strategy_context == {"focus": "testing"}
 
     @pytest.mark.asyncio
     async def test_decorator_context_with_events(self):

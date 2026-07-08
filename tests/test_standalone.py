@@ -221,13 +221,15 @@ class TestStandaloneErrors:
                 """Double-decorated {x}."""
                 ...
 
-    def test_invalid_context_type_raises_typeerror(self) -> None:
-        with pytest.raises(TypeError, match="must be ScopedContext"):
+    def test_plain_dict_context_accepted(self) -> None:
+        """@strategy(context=dict) is accepted (no longer requires ScopedContext)."""
 
-            @strategy(context={"invalid": "dict"})  # type: ignore[arg-type]
-            async def fn(x: str) -> str:
-                """Process {x}."""
-                ...
+        @strategy(context={"focus": "testing"})
+        async def fn(x: str) -> str:
+            """Process {x}."""
+            ...
+
+        assert fn._strategy_context == {"focus": "testing"}
 
 
 # ---------------------------------------------------------------------------
