@@ -6,8 +6,23 @@ Launches an xterm.js browser terminal connected to a real PTY running the
 NeMo OO Agents TUI.  A rich content side-channel lets the agent push Plotly
 plots, HTML, and images to a collapsible browser panel while the terminal
 session runs normally.
+
+Security: the server exposes a full interactive shell, so it binds to
+127.0.0.1 by default and requires a per-session token.  At startup the
+command prints the full URL (including ``?token=<...>``) — open that URL in
+the browser.  To reach the terminal from outside the machine/container
+(e.g. a sandbox whose loopback the host browser cannot reach), bind all
+interfaces and publish the port, then open the printed token URL:
+
+    nemo-oo term --host 0.0.0.0 --port 8000
+    # publish port 8000 to the host, then open http://<host>:8000/?token=<...>
+
+Requests without a valid token are rejected (HTTP 403 / WebSocket close
+4403).  ``--no-auth`` disables the token check entirely (not recommended).
 """
 
+import ipaddress
+import secrets
 import sys
 
 import click
@@ -63,11 +78,24 @@ _RESUME_LAST = "__last__"
 )
 @click.option(
     "--host",
-    default="0.0.0.0",
+    default="127.0.0.1",
     show_default=True,
-    help="Host to bind the web server to",
+    help=(
+        "Host to bind the web server to. Use 0.0.0.0 to reach the terminal "
+        "from outside the machine/container (access still requires the "
+        "session token printed at startup)."
+    ),
 )
 @click.option("--port", "-p", default=8000, show_default=True, type=int, help="Port to listen on")
+@click.option(
+    "--no-auth",
+    is_flag=True,
+    help=(
+        "Disable session-token authentication (NOT recommended). By default "
+        "a random token is required — even on loopback binds — and the full "
+        "URL including the token is printed at startup."
+    ),
+)
 def command(
     model: str | None,
     agent_spec: str | None,
@@ -82,6 +110,7 @@ def command(
     continue_session: str | None,
     host: str,
     port: int,
+    no_auth: bool,
 ):
     """Launch the NeMo OO Agents web terminal (xterm.js + rich side-channel).
 
@@ -90,11 +119,18 @@ def command(
     to a collapsible side panel using the WebPublisher tool
     (``self.web.plot(fig)``).
 
+    The terminal is a full interactive shell, so access requires the
+    per-session token embedded in the URL printed at startup — open that URL.
+    The server binds to 127.0.0.1 by default; from a container or sandbox,
+    use ``--host 0.0.0.0``, publish the port to the host, and open the
+    printed token URL from the host browser.
+
     Examples:
         nemo-oo term
         nemo-oo term --port 8080
         nemo-oo term --model gpt-4o
         nemo-oo term --agent ./my_agent.py:MyAgent
+        nemo-oo term --host 0.0.0.0 --port 8000   # container/sandbox use
     """
     try:
         import uvicorn  # noqa: F401
@@ -130,16 +166,45 @@ def command(
         continue_session=continue_session,
     )
 
+    # Per-session token protecting the shell (None disables auth entirely).
+    auth_token = None if no_auth else secrets.token_urlsafe(16)
+
     # Rich content endpoint URL that the agent will POST to
     rich_url = f"http://127.0.0.1:{port}/rich"
+    if auth_token is not None:
+        rich_url += f"?token={auth_token}"
     env_extra = {"NEMO_OO_RICH_URL": rich_url}
 
     from nemo_oo_agents_cli.web.pty_server import create_pty_app
 
-    app, kill_all_procs = create_pty_app(tui_argv=tui_argv, env_extra=env_extra)
+    app, kill_all_procs = create_pty_app(
+        tui_argv=tui_argv, env_extra=env_extra, auth_token=auth_token
+    )
 
-    click.echo(f"Starting NeMo OO Agents web terminal at http://{host}:{port}")
+    url = f"http://{host}:{port}"
+    if auth_token is not None:
+        url += f"/?token={auth_token}"
+    click.echo(f"Starting NeMo OO Agents web terminal at {url}")
     click.echo(f"PTY command: {' '.join(tui_argv)}")
+    if not _is_loopback(host):
+        if auth_token is not None:
+            warning = (
+                f"Warning: --host {host} exposes the terminal to the network; "
+                "it is protected only by the session token in the URL above."
+            )
+        else:
+            warning = (
+                f"Warning: --host {host} exposes the terminal to the network; "
+                "authentication is disabled."
+            )
+        click.secho(warning, fg="yellow", err=True)
+    if no_auth:
+        click.secho(
+            "WARNING: --no-auth disables authentication — anyone who can reach "
+            f"http://{host}:{port} gets an interactive shell as your user.",
+            fg="red",
+            err=True,
+        )
 
     import asyncio
     import logging
@@ -219,6 +284,16 @@ def command(
         pass
     click.echo("", err=True)  # newline after countdown
     sys.exit(0)
+
+
+def _is_loopback(host: str) -> bool:
+    """Return True if ``host`` refers to a loopback interface."""
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
 
 
 def _build_tui_argv(
