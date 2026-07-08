@@ -465,3 +465,55 @@ def test_create_from_server_honors_configured_oauth_mode():
 
     assert mock_oauth.call_args.kwargs["manual"] is True
     assert mock_oauth.call_args.kwargs["open_browser"] is False
+
+
+def test_create_from_server_caller_headers_override_config():
+    """Caller-supplied headers win over config headers, matching the stated precedence.
+
+    The config header set for a key must be overridden by a caller-supplied
+    value for the same key (e.g. Authorization), while config-only headers are
+    still merged in.
+    """
+    captured_headers: dict[str, str] = {}
+
+    class RecordingClient:
+        def __init__(self, *args, **kwargs):
+            captured_headers.clear()
+            captured_headers.update(kwargs.get("headers") or {})
+
+        def connect_to_server(self):
+            class Context:
+                async def __aenter__(self):
+                    session = AsyncMock()
+                    session.list_tools.return_value.tools = []
+                    return session
+
+                async def __aexit__(self, exc_type, exc, tb):
+                    return False
+
+            return Context()
+
+    servers = {
+        "jira": {
+            "url": "https://maas.example/mcp",
+            "transport": "streamable-http",
+            "headers": {
+                "Authorization": "Bearer config-token",
+                "X-Config-Only": "keep",
+            },
+        }
+    }
+
+    with patch("nemo_oo_agents.mcp.tool.create_mcp_client", side_effect=RecordingClient):
+        from nemo_oo_agents.mcp.tool import MCPManager
+
+        MCPManager.create_from_server(
+            "jira",
+            servers=servers,
+            headers={"Authorization": "Bearer caller-token"},
+        )
+
+    # Caller value wins for the shared key...
+    assert captured_headers["Authorization"] == "Bearer caller-token"
+    # ...and config-only headers are still merged in.
+    assert captured_headers["X-Config-Only"] == "keep"

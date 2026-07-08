@@ -789,11 +789,11 @@ NeMo OO Agents is a single repository that ships as several lockstep packages:
 ### Typed tool methods
 
 - **Call each MCP tool as a typed async method** — `create_from_server` generates one async method per server tool, with tool names normalized to identifiers (e.g. `find-references` → `find_references`) and the server's tool description as the docstring.
-- **Get schema-typed parameters** — method signatures are built from each tool's JSON-Schema `properties`: JSON types map to Python types, and `default`-bearing params become optional (with `T | None` when the default is null).
+- **Get schema-typed parameters** — method signatures are built from each tool's JSON-Schema `properties`: JSON types map to Python types, and optionality follows the schema's `required` list (params not in `required` become optional — carrying their `default` if any, otherwise `T | None = None` — while params in `required` stay mandatory even if they declare a `default`).
 - **See validation constraints in docstrings** — generated docstrings document numeric (min/max/exclusive/multipleOf), string (pattern/format), array (min/max/uniqueItems), object (min/max properties), and enum/const constraints from the schema.
 - **Omit unset optionals automatically** — generated methods drop arguments left at their schema default and `_call_tool` strips `None` values, since MCP servers reject nulls for optional params.
 - **Define a custom typed tool class** — subclass `MCPTool` and implement methods that call `await self._call_tool(name, args)` to hand-write a server interface instead of using the generated class. **(custom)**
-- **Inspect tool specs** — each tool is described by a public `MCPToolSpec` dataclass (`name`, `description`, `input_schema`, `required`, `server`).
+- **Inspect tool specs** — each tool is described by a public `MCPToolSpec` dataclass (`name`, `description`, `input_schema`, `required`).
 
 ## 16. NeMo Flow Integration & ATIF Export
 
