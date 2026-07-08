@@ -654,19 +654,19 @@ from nemo_oo_agents_cli.completion import (  # noqa: E402
 class TestRenderScript:
     def test_bash_script_rendered(self):
         result = _render_script(_BASH_SCRIPT)
-        assert "_nemo_completion" in result
-        assert "_NEMO_COMPLETE" in result
-        assert "nemo" in result
+        assert "_nemo_oo_completion" in result
+        assert "_NEMO_OO_COMPLETE" in result
+        assert "nemo-oo" in result
 
     def test_zsh_script_rendered(self):
         result = _render_script(_ZSH_SCRIPT)
-        assert "_nemo_completion" in result
-        assert "nemo" in result
+        assert "_nemo_oo_completion" in result
+        assert "nemo-oo" in result
 
     def test_fish_script_rendered(self):
         result = _render_script(_FISH_SCRIPT)
-        assert "nemo" in result
-        assert "_NEMO_COMPLETE" in result
+        assert "nemo-oo" in result
+        assert "_NEMO_OO_COMPLETE" in result
 
 
 class TestDetectShell:
@@ -698,18 +698,18 @@ class TestCompletionCommands:
     def test_bash_command(self):
         result = self.runner.invoke(bash)
         assert result.exit_code == 0
-        assert "_nemo_completion" in result.output
-        assert "_NEMO_COMPLETE" in result.output
+        assert "_nemo_oo_completion" in result.output
+        assert "_NEMO_OO_COMPLETE" in result.output
 
     def test_zsh_command(self):
         result = self.runner.invoke(zsh)
         assert result.exit_code == 0
-        assert "#compdef nemo" in result.output
+        assert "#compdef nemo-oo" in result.output
 
     def test_fish_command(self):
         result = self.runner.invoke(fish)
         assert result.exit_code == 0
-        assert "complete -c nemo" in result.output
+        assert "complete -c nemo-oo" in result.output
 
     def test_install_unknown_shell(self):
         with patch("nemo_oo_agents_cli.completion._detect_shell", return_value=None):
@@ -726,7 +726,7 @@ class TestCompletionCommands:
         ):
             result = self.runner.invoke(install)
         # Either success or file writing worked
-        assert result.exit_code == 0 or "_NEMO_COMPLETE" in profile.read_text()
+        assert result.exit_code == 0 or "_NEMO_OO_COMPLETE" in profile.read_text()
 
     def test_install_zsh(self, tmp_path):
         profile = tmp_path / ".zshrc"
@@ -738,9 +738,47 @@ class TestCompletionCommands:
             result = self.runner.invoke(install)
         assert result.exit_code == 0
 
+    def test_install_line_invokes_declared_console_script(self, tmp_path):
+        """Regression (#322): the rc line written by `completion install` must
+        invoke the executable name declared in [project.scripts]."""
+        import tomllib
+
+        pyproject = Path(__file__).parents[2] / "pyproject.toml"
+        scripts = tomllib.loads(pyproject.read_text())["project"]["scripts"]
+        (script_name,) = scripts  # the package ships exactly one console script
+
+        profile = tmp_path / ".bashrc"
+        profile.write_text("")
+        with (
+            patch("nemo_oo_agents_cli.completion._detect_shell", return_value="bash"),
+            patch("nemo_oo_agents_cli.completion.Path.home", return_value=tmp_path),
+        ):
+            result = self.runner.invoke(install)
+        assert result.exit_code == 0
+        (rc_line,) = [ln for ln in profile.read_text().splitlines() if "bash_source" in ln]
+        assert rc_line == f'eval "$(_NEMO_OO_COMPLETE=bash_source {script_name})"'
+
+    def test_install_removes_stale_pre_rename_line(self, tmp_path):
+        """A pre-rename install wrote `_NEMO_COMPLETE=... nemo-oo` (#322); once
+        the `nemo-oo` binary exists that line evals help text on every shell
+        startup, so `completion install` must remove it."""
+        stale = 'eval "$(_NEMO_COMPLETE=bash_source nemo-oo)"'
+        profile = tmp_path / ".bashrc"
+        profile.write_text(f"# stuff\n{stale}\n")
+        with (
+            patch("nemo_oo_agents_cli.completion._detect_shell", return_value="bash"),
+            patch("nemo_oo_agents_cli.completion.Path.home", return_value=tmp_path),
+        ):
+            result = self.runner.invoke(install)
+        assert result.exit_code == 0
+        content = profile.read_text()
+        assert stale not in content
+        assert 'eval "$(_NEMO_OO_COMPLETE=bash_source nemo-oo)"' in content
+        assert "# stuff" in content
+
     def test_install_already_installed(self, tmp_path):
         profile = tmp_path / ".bashrc"
-        profile.write_text("eval $(_NEMO_COMPLETE=bash_source nemo-oo)\n")
+        profile.write_text("eval $(_NEMO_OO_COMPLETE=bash_source nemo-oo)\n")
         with (
             patch("nemo_oo_agents_cli.completion._detect_shell", return_value="bash"),
             patch("nemo_oo_agents_cli.completion.Path.home", return_value=tmp_path),

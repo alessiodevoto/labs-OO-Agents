@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""``nemo oo config`` — inspect and customize the project's config files.
+"""``nemo-oo config`` — inspect and customize the project's config files.
 
 Subcommands:
 
@@ -345,12 +345,12 @@ def eject_cmd(force: bool):
 
     click.echo(f"Wrote {target}")
     click.echo(
-        "Edit it to customize. `nemo oo` will load it as a layer on top of the bundled defaults."
+        "Edit it to customize. `nemo-oo` will load it as a layer on top of the bundled defaults."
     )
 
     if os.environ.get("NEMO_OO_LLM_CONFIG", "").strip():
         click.echo("")
         click.echo(
             "Note: $NEMO_OO_LLM_CONFIG is set; paths in that variable load *after* the file you "
-            "just wrote and may override it. Run `nemo oo config show` to inspect resolution."
+            "just wrote and may override it. Run `nemo-oo config show` to inspect resolution."
         )

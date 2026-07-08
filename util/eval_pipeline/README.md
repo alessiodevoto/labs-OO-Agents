@@ -309,7 +309,7 @@ export OTLP_ENDPOINT=http://localhost:5001/v1/traces
 python -m eval_pipeline --config config.yaml --runs 3
 ```
 
-Start the viewer (e.g. `nemo oo start-dev` or the combined viewer on port 5001) before running so the endpoint is available. Experiments will appear in the eval viewer under distinct names (e.g. `capability_20260309_080455_207319_r3_p40`).
+Start the viewer (e.g. `nemo-oo start-dev` or the combined viewer on port 5001) before running so the endpoint is available. Experiments will appear in the eval viewer under distinct names (e.g. `capability_20260309_080455_207319_r3_p40`).
 
 **Example: traces to disk only (default)**
 

@@ -8,9 +8,9 @@ traces under ``artifacts/traces/*.jsonl``, enriches them with Harbor metadata
 the viewer.
 
 Usage:
-    nemo oo import-harbor ./jobs/my-job/
-    nemo oo import-harbor ./workspaces/ --endpoint http://host:5001
-    nemo oo import-harbor ./jobs/ --experiment my-eval --batch-id run-42
+    nemo-oo import-harbor ./jobs/my-job/
+    nemo-oo import-harbor ./workspaces/ --endpoint http://host:5001
+    nemo-oo import-harbor ./jobs/ --experiment my-eval --batch-id run-42
 """
 
 import json
@@ -416,10 +416,10 @@ def command(
 
     \b
     Examples:
-        nemo oo import-harbor ./jobs/my-job/
-        nemo oo import-harbor ./workspaces/ --endpoint http://host:5001
-        nemo oo import-harbor ./jobs/ --experiment my-eval
-        nemo oo import-harbor ./jobs/ --batch-lines 2000 --batch-bytes 8000000
+        nemo-oo import-harbor ./jobs/my-job/
+        nemo-oo import-harbor ./workspaces/ --endpoint http://host:5001
+        nemo-oo import-harbor ./jobs/ --experiment my-eval
+        nemo-oo import-harbor ./jobs/ --batch-lines 2000 --batch-bytes 8000000
 
     OTLP lines are posted in batches (combining many resourceSpans into one
     request) to keep large imports fast; tune with --batch-lines/--batch-bytes.

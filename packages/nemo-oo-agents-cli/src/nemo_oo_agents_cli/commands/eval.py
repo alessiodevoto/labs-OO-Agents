@@ -6,9 +6,9 @@ Thin passthrough to `python -m eval_pipeline`. All arguments are forwarded
 as-is, so this command always stays in sync with eval_pipeline's own CLI.
 
 Usage:
-    nemo oo eval --config config.yaml
-    nemo oo eval --config config.yaml --runs 3 --parallel 10
-    nemo oo eval --config config.yaml --test sentiment --limit 5
+    nemo-oo eval --config config.yaml
+    nemo-oo eval --config config.yaml --runs 3 --parallel 10
+    nemo-oo eval --config config.yaml --test sentiment --limit 5
 """
 
 import click
@@ -30,12 +30,12 @@ def command(ctx: click.Context, args: tuple[str, ...]):
 
     \b
     Examples:
-        nemo oo eval --config config.yaml
-        nemo oo eval --config config.yaml --runs 3 --parallel 10
-        nemo oo eval --config config.yaml --test sentiment --limit 5
-        nemo oo eval --config config.yaml --models gpt-4,claude-3 -q
-        nemo oo eval --config config.yaml --default_strategy codeact
-        nemo oo eval --help
+        nemo-oo eval --config config.yaml
+        nemo-oo eval --config config.yaml --runs 3 --parallel 10
+        nemo-oo eval --config config.yaml --test sentiment --limit 5
+        nemo-oo eval --config config.yaml --models gpt-4,claude-3 -q
+        nemo-oo eval --config config.yaml --default_strategy codeact
+        nemo-oo eval --help
     """
     import asyncio
     import faulthandler

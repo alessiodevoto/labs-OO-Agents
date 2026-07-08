@@ -3,8 +3,8 @@
 """Delete imported trace batches from the viewer.
 
 Usage:
-    nemo oo delete-traces --batch-id my-experiment-v2
-    nemo oo delete-traces --batch-id my-experiment-v2 --endpoint http://host:5001
+    nemo-oo delete-traces --batch-id my-experiment-v2
+    nemo-oo delete-traces --batch-id my-experiment-v2 --endpoint http://host:5001
 """
 
 import json

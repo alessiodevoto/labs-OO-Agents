@@ -387,7 +387,7 @@ async def bootstrap(
     # never see it. The ``restored`` flag is carried on BootstrapResult.
 
     # ------------------------------------------------------------------
-    # Rich content replay (nemo oo term, session resume only)
+    # Rich content replay (nemo-oo term, session resume only)
     # ------------------------------------------------------------------
     # When resuming inside a web terminal, replay stored RichOutput events
     # so the browser panel is restored.  Uses the public event_manager.filter()

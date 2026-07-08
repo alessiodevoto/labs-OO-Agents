@@ -15,7 +15,7 @@ This test pins exactly that round-trip:
       -> the file on disk has full messages on its LLM span (T1 covers
       that file is complete).
   2.  Spin up an *empty* viewer-B.
-  3.  ``nemo oo import-traces <saved.jsonl> --endpoint <viewer-B>``
+  3.  ``nemo-oo import-traces <saved.jsonl> --endpoint <viewer-B>``
   4.  ``GET /api/trace/export?session_id=...`` from viewer-B.
   5.  Compare span-by-span with the original file: same span ids, same
       ``llm.input_messages.*`` / ``llm.output_messages.*``.

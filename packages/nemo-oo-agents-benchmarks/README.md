@@ -172,7 +172,7 @@ whether the local viewer is reachable.
 Start the viewer before launching Harbor:
 
 ```bash
-uv run nemo oo start-dev          # Terminal 1 — viewer on http://localhost:5001
+uv run nemo-oo start-dev          # Terminal 1 — viewer on http://localhost:5001
 harbor run --config util/harbor/dabstep_baseline.yaml   # Terminal 2
 ```
 
@@ -192,7 +192,7 @@ The probe fails silently (0.5 s timeout) and traces fall back to JSONL in
 completes:
 
 ```bash
-nemo oo import-harbor /path/to/harbor/jobs/my-job/
+nemo-oo import-harbor /path/to/harbor/jobs/my-job/
 ```
 
 ### Docker containers

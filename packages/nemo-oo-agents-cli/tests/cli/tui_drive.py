@@ -12,7 +12,7 @@ Not invoked by pytest; kept under ``tests/cli/`` as a dev diagnostic.
 
 Example::
 
-    tests/cli/tui_drive.py -- uv run nemo oo tui <<'EOF'
+    tests/cli/tui_drive.py -- uv run nemo-oo tui <<'EOF'
     SLEEP 7
     TYPE /help
     KEY enter

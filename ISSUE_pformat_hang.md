@@ -6,7 +6,7 @@ The TUI becomes permanently unresponsive when the tracing hook's `truncating_pfo
 
 ## Reproduction
 
-1. Start a TUI session: `nemo oo tui`
+1. Start a TUI session: `nemo-oo tui`
 2. Have the agent generate code that creates `importlib.metadata` objects:
    ```python
    from importlib.metadata import entry_points

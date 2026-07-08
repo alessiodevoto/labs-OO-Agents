@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
-# nemo oo TUI installer — designed for `curl ... | sh` one-liner UX.
+# nemo-oo TUI installer — designed for `curl ... | sh` one-liner UX.
 #
 # What it does:
 #   1. Installs `uv` if not already present.
@@ -192,8 +192,8 @@ prompt_api_key() {
     # run (non-clobbering) — no shell-rc edit needed.
     tmp_file="${SECRETS_FILE}.tmp.$$"
     {
-        printf '# Written by nemo oo install.sh on %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-        printf '# Loaded automatically by the nemo oo CLI (non-clobbering — a\n'
+        printf '# Written by nemo-oo install.sh on %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        printf '# Loaded automatically by the nemo-oo CLI (non-clobbering — a\n'
         printf '# value already exported in your shell wins). Add more keys under env:.\n'
         printf 'env:\n'
         printf '  NVIDIA_INTERNAL_API_KEY: "%s"\n' "$escaped_key"
@@ -218,7 +218,7 @@ print_next_steps() {
         printf '  2. Run the TUI — your API key is loaded automatically from\n'
         printf '     %s:\n' "$SECRETS_FILE"
         printf '\n'
-        printf '       %s\n' "$(bold 'nemo oo tui')"
+        printf '       %s\n' "$(bold 'nemo-oo tui')"
         printf '\n'
     else
         printf '%s\n' "$(bold 'Next steps:')"
@@ -233,13 +233,13 @@ print_next_steps() {
         printf '\n'
         printf '  3. Run the TUI:\n'
         printf '\n'
-        printf '       %s\n' "$(bold 'nemo oo tui')"
+        printf '       %s\n' "$(bold 'nemo-oo tui')"
         printf '\n'
     fi
 
     printf '%s\n' "$(bold 'Inspect / customize the bundled LLM aliases:')"
-    printf '       nemo oo config show     # which YAMLs are loading\n'
-    printf '       nemo oo config eject    # local copy at ~/.config/nemo_oo/llm_config.yaml\n'
+    printf '       nemo-oo config show     # which YAMLs are loading\n'
+    printf '       nemo-oo config eject    # local copy at ~/.config/nemo_oo/llm_config.yaml\n'
     printf '\n'
     printf '%s\n' "$(bold 'Upgrade later:')"
     printf '       uv tool upgrade nemo-oo-agents-cli\n'
@@ -251,7 +251,7 @@ print_next_steps() {
 # ---------------------------------------------------------------------------
 
 main() {
-    info "nemo oo TUI installer — ref=${REPO_REF}"
+    info "nemo-oo TUI installer — ref=${REPO_REF}"
     require_prereqs
     ensure_uv
     ensure_python

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """The currently-active, resolved file config as typed objects.
 
-``resolved_config()`` is the programmatic equivalent of ``nemo oo config
+``resolved_config()`` is the programmatic equivalent of ``nemo-oo config
 show``: it reads the three layered config files (``settings.yaml``,
 ``secrets.yaml``, ``llm_config.yaml``) through the shared loader and returns
 a typed :class:`ResolvedConfig` rather than raw dicts.

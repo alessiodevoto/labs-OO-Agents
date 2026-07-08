@@ -9,7 +9,7 @@ An exhaustive, developer-facing inventory of what you can **build, configure, an
 NeMo OO Agents is a single repository that ships as several lockstep packages:
 
 - **`nemo-oo-agents`** — the core framework. Bundles the agent runtime, generation strategies, context blocks (`nemo_oo_agents.context_blocks`), the unified LLM client (`nemo_oo_agents.unifiedllm`), runtime documentation (`nemo_oo_agents.agentdoc`), storage/snapshots, events, summarization, multimodal, MCP, tracing, the viewer backend, the trace explorer, and NeMo Flow integration. Optional extras: `[tracing]`, `[viewer]`, `[mcp]`, `[nemo-flow]`.
-- **`nemo-oo-agents-cli`** — the `nemo oo` command, the agent TUI, and the `nemo oo term` web terminal. Optional extras: `[datascience]`, `[web]`.
+- **`nemo-oo-agents-cli`** — the `nemo-oo` command, the agent TUI, and the `nemo-oo term` web terminal. Optional extras: `[datascience]`, `[web]`.
 - **`nemo-oo-agents-benchmarks`** — pre-built benchmark agents and the `nemo-harbor` container runner.
 - **`nemo-oo-agents-nvidia`** — opt-in NVIDIA-gateway model aliases.
 - **`nat-oo-agents`** — bridge for running agents inside the NVIDIA Agent Toolkit (NAT).
@@ -193,7 +193,7 @@ NeMo OO Agents is a single repository that ships as several lockstep packages:
 - **Capture credentials at install time** — `install.sh` prompts (via `/dev/tty`) for `NVIDIA_INTERNAL_API_KEY` and writes a chmod-600 `~/.config/nemo_oo/secrets.yaml`; skip with `NEMO_OO_INSTALL_NONINTERACTIVE=1`. **(opt-in)**
 - **Set up a dev checkout** with `setup.sh` — `uv sync --all-extras` + `pre-commit install`.
 - **Auto-load secrets on every CLI run** — the CLI preloads `secrets.yaml` into the env on each invocation (and the TUI bootstrap reloads the registry from `llm_config_chain()`); no shell-rc edit needed.
-- **Inspect and edit the LLM config chain** with `nemo oo config show` (per-layer presence, alias counts, dedup notes, referenced `api_key_env` vars + whether set, plus settings/secrets layers), `nemo oo config path`, and `nemo oo config eject [--force]` (copies bundled defaults to the user path; refuses on multiple providers / symlink / dir targets).
+- **Inspect and edit the LLM config chain** with `nemo-oo config show` (per-layer presence, alias counts, dedup notes, referenced `api_key_env` vars + whether set, plus settings/secrets layers), `nemo-oo config path`, and `nemo-oo config eject [--force]` (copies bundled defaults to the user path; refuses on multiple providers / symlink / dir targets).
 - **View, set, and inspect TUI settings** with the in-TUI `/config` skill — `/config show|set|libs|skills|path`; `/config set` writes the project `settings.yaml` with friendly key aliases (`model`→`default_model`, `python`→`show_python`, `vi`→`vi_mode`, `trace`→`trace_dir`).
 - **Configure the TUI declaratively** with layered `settings.yaml` (`Config`/`TUIConfig`/`AgentConfig`/`SummarizationConfig`) loaded via `Config.load(**overrides)` — defaults → layered file → CLI flags; round-trips through `dump_settings`/`load_settings`, with a commented `SETTINGS_TEMPLATE` scaffold on first run.
 
@@ -212,7 +212,7 @@ NeMo OO Agents is a single repository that ships as several lockstep packages:
 
 ### Web rich-output publisher
 
-- **Render charts and rich content inline** — `WebPublisher` (`self.web`) pushes content to the `nemo oo term` web panel via `plot(fig)`, `markdown(text)`, `html(html)`, `image(src)`, `json(data)`, and `clear()`; fire-and-forget, silently skipped if no browser. **(opt-in)**
+- **Render charts and rich content inline** — `WebPublisher` (`self.web`) pushes content to the `nemo-oo term` web panel via `plot(fig)`, `markdown(text)`, `html(html)`, `image(src)`, `json(data)`, and `clear()`; fire-and-forget, silently skipped if no browser. **(opt-in)**
 - **Persist and replay rich output** — published items are stored as `RichOutput` events on the agent's `EventManager` and replayed on session resume (`--continue`); `WebPublisher.attach()` wires the event manager automatically.
 
 ### Skill / library authoring tools
@@ -345,7 +345,7 @@ NeMo OO Agents is a single repository that ships as several lockstep packages:
 - **Author libraries with the `SkillWriting` skill (`nemo.libwriting`)** — scaffolds a package (`create`), resolves paths (`path`), lints + hot-reloads (`reload`), lists (`list`), shows the tree (`repo_tree`), and runs pytest (`run_tests`); requires `nemo.shell`. **(opt-in)**
 - **Lint library code on reload** — `SkillWriting.reload` parses every non-`__init__.py` file with the `SecurityValidator` (`library_writing_lib.py`); E001 (forbidden builtins) is a hard error that blocks the reload, all other findings (e.g. E003 `from ... import *` / forbidden dunder access) are reported as warnings via a `LintReport`. (No restricted/blocked import list is passed, so E002 does not fire on this path.)
 - **Teach helper/sub-call patterns with the `MethodWriting` skill (`nemo.methodwriting`)** — a docstring-only guide on defining plain helpers and `@strategy(...)` ellipsis sub-functions at the top of a REPL cell. **(opt-in)**
-- **Publish rich web output with the `WebPublisher` skill (`nemo.web`)** — `self.web.plot/html/image/markdown/json/clear` push inline content to the `nemo oo term` web panel; fire-and-forget, persisted as `RichOutput` events for session replay. **(opt-in)**
+- **Publish rich web output with the `WebPublisher` skill (`nemo.web`)** — `self.web.plot/html/image/markdown/json/clear` push inline content to the `nemo-oo term` web panel; fire-and-forget, persisted as `RichOutput` events for session replay. **(opt-in)**
 
 ## 7. Context Management
 
@@ -639,7 +639,7 @@ NeMo OO Agents is a single repository that ships as several lockstep packages:
 - **Resolve an alias's API key** — `resolve_api_key_from_config(model_name, config)` reads the declared `api_key_env`, returning its value and WARN-logging when the env var is unset.
 - **Ship aliases as an installable package** — register a zero-arg callable under the `nemo_oo_agents.bundled_configs` entry-point group to inject a lowest-priority YAML layer; installing `nemo-oo-agents-nvidia` adds the NVIDIA-gateway aliases automatically (**opt-in**).
 - **Use NVIDIA-gateway aliases** — `nemo-oo-agents-nvidia` bundles aliases like `claude-opus-4-8`, `claude-haiku`, `claude-sonnet`, `claude-*-reasoning-high`, `nemotron-3-ultra`, `qwen3-80b`, `gpt-5.5`, `gpt-5.3-codex`, `gemini-3-pro`, routed via `NVIDIA_INTERNAL_API_KEY` / `NVIDIA_API_KEY` (**opt-in**).
-- **Inspect & eject config from the CLI** — `nemo oo config show` lists which layers load and `nemo oo config eject` writes a per-user copy of the bundled YAML.
+- **Inspect & eject config from the CLI** — `nemo-oo config show` lists which layers load and `nemo-oo config eject` writes a per-user copy of the bundled YAML.
 
 ### Reliability & HTTP
 
@@ -685,17 +685,17 @@ NeMo OO Agents is a single repository that ships as several lockstep packages:
 
 *Ships in: `nemo-oo-agents-cli`*
 
-### `nemo oo` Subcommands
+### `nemo-oo` Subcommands
 
-- **Launch the agent REPL** with `nemo oo tui`, taking `--model/-m`, `--agent MODULE:CLASS`, `--working-dir/-w/-d`, `--mcp-file`, `--skills-dir` (repeatable), `--context-limit`, `--orchestrator`, `--no-trace`, `--vi`, `--python`, `--no-splash`, and `--continue/-c [hash]` to resume a session.
-- **Serve the web terminal** with `nemo oo term`, an xterm.js browser frontend over a real PTY; accepts the same agent flags plus `--host` and `--port/-p`.
-- **Run an eval-pipeline job** with `nemo oo eval`, a passthrough that forwards all args to `eval_pipeline.cli` (e.g. `--config`, `--runs`, `--parallel`, `--test`, `--limit`, `--models`).
-- **Start the trace/eval viewer** with `nemo oo start-dev`, taking `--port/-p` (default 5001), `--host`, and `--db` (defaults to `~/.config/nemo_oo/traces.db` or `$NEMO_OO_TRACE_DB`).
-- **Sweep trace/eval files** with `nemo oo traces delete|list|stats`, where `delete` supports `--dry-run/-n`, `--older-than DAYS`, `--all`, `--evals`, `--evals-only`, and `-y/--yes`.
-- **Import OTLP traces into the viewer** with `nemo oo import-traces <path>`, taking `--endpoint` and `--batch-id`.
-- **Import Harbor job traces** with `nemo oo import-harbor <path>`, taking `--endpoint`, `--experiment`, `--batch-id`, `--batch-lines`, and `--batch-bytes` (enriches with trial name, task, reward score).
-- **Delete an imported batch** with `nemo oo delete-traces --batch-id <id>` (calls the viewer's DELETE API), taking `--endpoint`.
-- **Install shell completions** with `nemo oo completion bash|zsh|fish|install` (or `eval "$(_NEMO_COMPLETE=bash_source nemo-oo)"`).
+- **Launch the agent REPL** with `nemo-oo tui`, taking `--model/-m`, `--agent MODULE:CLASS`, `--working-dir/-w/-d`, `--mcp-file`, `--skills-dir` (repeatable), `--context-limit`, `--orchestrator`, `--no-trace`, `--vi`, `--python`, `--no-splash`, and `--continue/-c [hash]` to resume a session.
+- **Serve the web terminal** with `nemo-oo term`, an xterm.js browser frontend over a real PTY; accepts the same agent flags plus `--host` and `--port/-p`.
+- **Run an eval-pipeline job** with `nemo-oo eval`, a passthrough that forwards all args to `eval_pipeline.cli` (e.g. `--config`, `--runs`, `--parallel`, `--test`, `--limit`, `--models`).
+- **Start the trace/eval viewer** with `nemo-oo start-dev`, taking `--port/-p` (default 5001), `--host`, and `--db` (defaults to `~/.config/nemo_oo/traces.db` or `$NEMO_OO_TRACE_DB`).
+- **Sweep trace/eval files** with `nemo-oo traces delete|list|stats`, where `delete` supports `--dry-run/-n`, `--older-than DAYS`, `--all`, `--evals`, `--evals-only`, and `-y/--yes`.
+- **Import OTLP traces into the viewer** with `nemo-oo import-traces <path>`, taking `--endpoint` and `--batch-id`.
+- **Import Harbor job traces** with `nemo-oo import-harbor <path>`, taking `--endpoint`, `--experiment`, `--batch-id`, `--batch-lines`, and `--batch-bytes` (enriches with trial name, task, reward score).
+- **Delete an imported batch** with `nemo-oo delete-traces --batch-id <id>` (calls the viewer's DELETE API), taking `--endpoint`.
+- **Install shell completions** with `nemo-oo completion bash|zsh|fish|install` (or `eval "$(_NEMO_COMPLETE=bash_source nemo-oo)"`).
 - **Add custom subcommands** by dropping a `.py` file exporting a module-level `command` (a `click.Command`/`Group`) into `commands/`; auto-discovered, with an optional `NAME` override **(custom)**.
 
 ### TUI Chat Interface
@@ -731,7 +731,7 @@ NeMo OO Agents is a single repository that ships as several lockstep packages:
 
 ### Configuration & Persistence
 
-- **Inspect the config chain** with `nemo oo config show` (resolved `llm_config.yaml`, `settings.yaml`, `secrets.yaml` layers with redaction and dedup notes), `nemo oo config path`, and `nemo oo config eject [--force]`.
+- **Inspect the config chain** with `nemo-oo config show` (resolved `llm_config.yaml`, `settings.yaml`, `secrets.yaml` layers with redaction and dedup notes), `nemo-oo config path`, and `nemo-oo config eject [--force]`.
 - **Layer TUI settings** via `settings.yaml` (built-in defaults → `~/.config/nemo_oo/` → project `.nemo_oo/` → `$NEMO_OO_SETTINGS`), with CLI flags layered on top by `Config.load`.
 - **Tune TUI behavior** under the `tui:` section: `default_model`, `show_python`, `vi_mode`, `trace_dir`, `libs_dirs`, `skills_dirs`, `mcp_file`, `mcp_servers`, `mcp_auto_connect`, `goal_mode` (persists goal mode across launches), `toolbar_snippet` **(opt-in)**.
 - **Set a persistent toolbar label** via `tui.toolbar_snippet` (a Python snippet evaluated each render, with `datetime`/`config`/`model`/`short_model`/`time`/`agent` in scope) (`tui/config.py`). **(opt-in)**
@@ -743,10 +743,10 @@ NeMo OO Agents is a single repository that ships as several lockstep packages:
 
 ### Web Terminal (`self.web.*`)
 
-- **Push rich content to a browser side-panel** from agent code: `self.web.plot(fig)`, `self.web.html(html)`, `self.web.image(src)`, `self.web.markdown(text)`, `self.web.json(data)`, and `self.web.clear()` — `self.web` is wired onto the TUIAgent only when `NEMO_OO_RICH_URL` is set (i.e. under `nemo oo term`).
+- **Push rich content to a browser side-panel** from agent code: `self.web.plot(fig)`, `self.web.html(html)`, `self.web.image(src)`, `self.web.markdown(text)`, `self.web.json(data)`, and `self.web.clear()` — `self.web` is wired onto the TUIAgent only when `NEMO_OO_RICH_URL` is set (i.e. under `nemo-oo term`).
 - **Render inline and scroll-aware** — payloads POST to `/rich`, broadcast over a `/ws/rich` WebSocket, and overlay anchored to xterm.js buffer markers so plots clip as they scroll.
 - **Replay rich content on reload/resume** — the PTY server keeps a bounded `_rich_history` replayed to new browser connections, and resumed-session plots re-POST with `_replay=True` so they don't push the prompt down.
-- **Bridge a real PTY** over `/ws/pty` (base64-framed I/O + resize), spawning `nemo oo tui` as a child with the rich-URL env injected; SIGINT shows a shutdown countdown and kills PTY children cleanly.
+- **Bridge a real PTY** over `/ws/pty` (base64-framed I/O + resize), spawning `nemo-oo tui` as a child with the rich-URL env injected; SIGINT shows a shutdown countdown and kills PTY children cleanly.
 
 ## 15. MCP Integration
 
@@ -891,12 +891,12 @@ NeMo OO Agents is a single repository that ships as several lockstep packages:
 
 ### Launch & Ingest
 
-- **Start the unified trace + eval viewer** — `nemo oo start-dev` (CLI) or `python -m nemo_oo_agents.viewer` boots the FastAPI app on port 5001 serving the React SPA from `frontend-react/dist`; `start-dev` accepts `--port`/`-p` and `--host`/`-h`, while `python -m nemo_oo_agents.viewer` honors `NEMO_OO_TRACE_VIEWER_PORT` (host fixed to `0.0.0.0`).
+- **Start the unified trace + eval viewer** — `nemo-oo start-dev` (CLI) or `python -m nemo_oo_agents.viewer` boots the FastAPI app on port 5001 serving the React SPA from `frontend-react/dist`; `start-dev` accepts `--port`/`-p` and `--host`/`-h`, while `python -m nemo_oo_agents.viewer` honors `NEMO_OO_TRACE_VIEWER_PORT` (host fixed to `0.0.0.0`).
 - **Point the store at a SQLite DB** — traces persist in `traces.db` (in the working directory by default; the `start-dev` CLI resolves it to the user config dir instead); override with `--db` or `NEMO_OO_TRACE_DB`, letting you run side-by-side viewers **(opt-in)**.
 - **Ingest OTLP traces** — `POST /v1/traces` accepts OTLP JSON `ExportTraceServiceRequest`, queued onto an async write queue and committed by a single SQLite-writer thread so parallel eval runs never block ingest.
 - **Block until spans are queryable** — `POST /v1/sync` drains the ingest queue (30s timeout) so a freshly flushed trace is readable before scoring fetches it.
 - **Stream content-addressed LLM message journals** — `POST /v1/journal/messages`, `/v1/journal/blocks` (with `X-Session-Id`), and `/v1/journal/calls` store deduplicated message blocks and per-call input/output hash lists, reconstructed via `GET /api/traces/{session_id}/calls`.
-- **Import .jsonl traces from disk** — `nemo oo import-traces <file_or_dir> [--endpoint] [--batch-id]` recursively POSTs OTLP-JSON files, derives `session.id` from filenames, and tags each with a `batch_id` resource attribute **(opt-in)**.
+- **Import .jsonl traces from disk** — `nemo-oo import-traces <file_or_dir> [--endpoint] [--batch-id]` recursively POSTs OTLP-JSON files, derives `session.id` from filenames, and tags each with a `batch_id` resource attribute **(opt-in)**.
 
 ### Browse, Search & Manage Traces
 
@@ -1055,7 +1055,7 @@ NeMo OO Agents is a single repository that ships as several lockstep packages:
 
 ### Run evaluations
 
-- **Run an eval suite from YAML** — `nemo oo eval --config config.yaml` forwards verbatim to `eval_pipeline` (`eval_pipeline.cli.main_async`), loading models, tests, scorers, and `default_strategy` from the config.
+- **Run an eval suite from YAML** — `nemo-oo eval --config config.yaml` forwards verbatim to `eval_pipeline` (`eval_pipeline.cli.main_async`), loading models, tests, scorers, and `default_strategy` from the config.
 - **Scope a run with CLI flags** — `--test`/`--models` (comma lists), `--runs N` (self-consistency), `--limit N`, `--task-ids ID...`, `--parallel N`, `--timeout SECS`, `--output-dir`, and `-q/--quiet`.
 - **Pick an execution engine** — `--engine asyncio` (default, I/O-bound LLM APIs) or `--engine subprocess` with `--batch-size` and `--memory-limit MB` (per-worker RSS cap, diagnostics captured at 85%, worker killed past the cap).
 - **Override the strategy for all agents** — `--default_strategy` accepts `pure_python`, `codeact`, `codeact_lite`, `reflexion`, `predict`, or `structured_output`; YAML `default_strategy:` may instead name a custom `module`/`class`. **(opt-in)**
@@ -1082,7 +1082,7 @@ NeMo OO Agents is a single repository that ships as several lockstep packages:
 - **Write incremental `.noo-eval.jsonl`** — `ExperimentWriter.start/append_result/finalize` emits a versioned `EvalMetadataLine`, one `EvalTestResult` per sample (`scores`, token counts, `trace_file`, timing, `peak_rss_mb`, `eval_metadata`), and a final `EvalCompletionLine`; `NullExperimentWriter` is the `--no-files` no-op.
 - **Parse and check experiment status** — `EvalFileParser`, `get_experiment_status`, `EvalParseError`, `SUPPORTED_VERSIONS`, and the `EvalLine` union (`metadata`/`result`/`completion`/`annotation`).
 - **Read run results in code** — `EvalResults` exposes `.summary()`, `.pass_rate`, `.passed`, `.total`, and `.output_file`.
-- **Browse runs in the viewer** — `nemo oo start-dev` launches the unified trace + evaluation viewer (default port 5001), which recognizes `.noo-eval.jsonl` files and supports appended `EvalAnnotationLine` notes.
+- **Browse runs in the viewer** — `nemo-oo start-dev` launches the unified trace + evaluation viewer (default port 5001), which recognizes `.noo-eval.jsonl` files and supports appended `EvalAnnotationLine` notes.
 - **Append eval spans to a trace** — `write_eval_span_to_trace(trace_file, test_id, passed, weighted_score, model, agent_class, method, scores, ...)` writes a `name="eval"` span (with `eval.*` attributes) into an existing trace JSONL so the viewer's EvalPlugin picks it up (`trace_eval_span.py`).
 
 ### Self-improvement runner (nemo_oo_agents_benchmarks.evaluation)
@@ -1170,14 +1170,14 @@ Corrections and renames surfaced while re-verifying against current code. These 
 - `@agent` / `@plan` decorators are **removed** — agents are plain `class X(Agent, llm=...)` with bare `...` methods.
 - `agentdoc`, `context_blocks`, `unifiedllm`, and `trace_explorer` are now **core submodules** — import as `nemo_oo_agents.<name>` (`import agentdoc` no longer works).
 - The `LibraryWriting` skill was renamed to **`SkillWriting`**; `SkillManager` is **removed** (use `SkillRegistry` + `discover_skills_dirs()`).
-- The entire **layered-config + secrets + setup/credentials** system is new (`config/`, `layered_config.py`, `secrets.py`, the `install.sh` credential flow, `nemo oo config`, TUI `settings.yaml`).
+- The entire **layered-config + secrets + setup/credentials** system is new (`config/`, `layered_config.py`, `secrets.py`, the `install.sh` credential flow, `nemo-oo config`, TUI `settings.yaml`).
 - The LLM registry is now **YAML-driven**; `MODELS` is the merged runtime dict populated via config layers, not a Python dict you mutate.
 - `enable_tracing()` **no longer takes `trace_dir=`** — pass exporters, e.g. `exporters.jsonl(...)`. (The in-repo example comment is itself stale.)
 - Snapshots do **not** restore LLM-defined methods — `AgentSnapshot.from_agent` skips callables. The old "resume incl LLM-defined methods" claim was never accurate.
 - Experimental strategies (`ReflexionStrategy`, `CodeActLiteStrategy`, `PurePythonStrategy`) moved to `nemo_oo_agents.experimental`; legacy import paths emit `FutureWarning`.
 - "Nexus" is fully renamed to **NeMo Flow** (extra `[nemo-flow]`, dep `nemo-flow`); a native **ATIF v1.7** trajectory exporter is new.
 - TUI slash commands are now **skill-based** (`@slash_command`), not hard-coded `Command` classes.
-- The evaluation surface is **`eval_pipeline`** (`util/eval_pipeline`); `nemo oo eval` is a thin passthrough to it.
+- The evaluation surface is **`eval_pipeline`** (`util/eval_pipeline`); `nemo-oo eval` is a thin passthrough to it.
 - Context truncation is now total-budget **eviction** (with an `EVICTED` notice in `ContextWindowStats`), not per-block trimming.
 - Shell tooling was consolidated: the registered `nemo.shell` builtin is the new 4-method `ShellTools`; the verbose `ShellToolsLegacy` is effectively dead.
 

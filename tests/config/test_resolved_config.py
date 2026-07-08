@@ -3,7 +3,7 @@
 """Tests for the typed file-config API under ``nemo_oo_agents.config``.
 
 ``resolved_config()`` / ``ModelConfig`` / ``Secrets`` are the typed boundary
-over the layered YAML files (the programmatic ``nemo oo config show``).
+over the layered YAML files (the programmatic ``nemo-oo config show``).
 """
 
 from __future__ import annotations

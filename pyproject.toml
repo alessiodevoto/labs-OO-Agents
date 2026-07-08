@@ -107,7 +107,7 @@ nvidia = [
 
 # CLI/TUI ship as a separate package: `uv add nemo-oo-agents-cli`.
 # Data-science stack for the LLM REPL: `uv add nemo-oo-agents-cli[datascience]`.
-# Web-served TUI (`nemo oo term`):     `uv add nemo-oo-agents-cli[web]`.
+# Web-served TUI (`nemo-oo term`):     `uv add nemo-oo-agents-cli[web]`.
 
 [build-system]
 requires = ["hatchling>=1.26.0", "uv-dynamic-versioning>=0.14.0"]
