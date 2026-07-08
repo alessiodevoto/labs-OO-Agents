@@ -189,13 +189,23 @@ class TruncationConfig(BaseModel):
         int,
         Field(description="Minimum number of recent events preserved during eviction"),
     ] = 5
-    # L4 eviction: when max_event_tokens is unset but the LLM exposes a
-    # context_window, derive an event budget as
-    # `model_context_window - response_reserve_tokens - context_blocks_tokens`.
-    # Set to 0 to disable auto-derivation.
+    # Output-token planning reserve. When a call sets ``max_tokens``
+    # explicitly, THAT value is reserved out of the model window (the provider
+    # rejects prompt + max_tokens > window); when it doesn't, this value is
+    # used instead. The reserve shrinks the usable window for the default
+    # context-block budget (``(context_window - reserve) // 2``), for the
+    # ``ctx N%`` utilization / nearly-full warning, and for post-error archive
+    # sizing. Set to 0 to disable both the reserve and the auto-derived
+    # default budget.
     response_reserve_tokens: Annotated[
         int,
-        Field(description="Tokens reserved for the LLM response when auto-deriving event budget"),
+        Field(
+            description=(
+                "Tokens reserved for the LLM response when the call does not "
+                "set max_tokens explicitly. Shrinks the usable context window "
+                "for budgeting and utilization. 0 disables."
+            )
+        ),
     ] = 4_096
     capture: CaptureConfig = CaptureConfig()
     media_capture: MediaCaptureConfig = MediaCaptureConfig()

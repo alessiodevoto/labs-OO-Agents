@@ -1,13 +1,19 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Tests for char_approximate_token_counter and explicit-opt-in token counting.
+"""Tests for char_approximate_token_counter and chars→tokens estimation.
 
-gl-89 (revised): No silent fallback. When max_context_tokens / max_event_tokens is
-set but the LLM has no count_tokens, a RuntimeError is raised pointing the user to
-char_approximate_token_counter as an explicit opt-in.
+gl-89 history: an earlier revision raised a RuntimeError when token limits were
+set but the LLM had no count_tokens. That requirement has since been removed:
+the runtime now sizes eviction with a provider-calibrated chars→tokens ratio
+(prompt_tokens / total_chars from the last response, defaulting to ~4 chars per
+token). No LLM token counter is required, and there is no RuntimeError.
+``char_approximate_token_counter`` remains a public utility (the same 4-chars
+heuristic) that users may still attach to an LLM as ``count_tokens``.
 """
 
 from unittest.mock import Mock
+
+import pytest
 
 
 class TestCharApproximateTokenCounter:
@@ -48,26 +54,60 @@ class TestCharApproximateTokenCounter:
         assert llm.count_tokens("x" * 40) == 10
 
 
-class TestNoSilentFallback:
-    """Runtime raises RuntimeError when token limits set but LLM has no count_tokens."""
+class TestCalibratedFallback:
+    """Runtime needs no LLM count_tokens: eviction is sized with a
+    provider-calibrated chars→tokens ratio, not the LLM tokenizer."""
 
     def test_actor_has_no_get_token_counter(self):
-        """_get_token_counter was removed — no silent fallback."""
+        """_get_token_counter was removed long ago — no per-call counter lookup."""
         import nemo_oo_agents.runtime.actor as actor_mod
 
-        assert not hasattr(actor_mod, "_get_token_counter"), (
-            "_get_token_counter should have been removed; silent fallback was replaced "
-            "by an explicit RuntimeError pointing to char_approximate_token_counter"
-        )
+        assert not hasattr(actor_mod, "_get_token_counter")
 
-    def test_error_message_mentions_char_approximate(self):
-        """RuntimeError message guides the user to the explicit opt-in."""
-        # We verify the error text by directly inspecting the actor source.
+    def test_actor_does_not_require_an_llm_token_counter(self):
+        """The old RuntimeError demanding an LLM count_tokens is gone; the
+        runtime defines a cold-start chars→tokens ratio instead."""
         import inspect
 
         import nemo_oo_agents.runtime.actor as actor_mod
 
         source = inspect.getsource(actor_mod)
-        assert "char_approximate_token_counter" in source, (
-            "RuntimeError message should mention char_approximate_token_counter"
-        )
+        assert "has no count_tokens method" not in source
+        assert "_DEFAULT_TOKENS_PER_CHAR" in source
+
+    @pytest.mark.asyncio
+    async def test_build_messages_without_llm_counter_does_not_raise(self):
+        """An LLM that exposes a context_window but no usable token counter
+        still builds messages — eviction uses the calibrated ratio."""
+        from nemo_oo_agents import Agent
+        from nemo_oo_agents.events import Message
+        from nemo_oo_agents.runtime.actor import _current_llm_var
+        from nemo_oo_agents.unifiedllm import FakeLLMClient
+
+        class _NoCounterLLM(FakeLLMClient):
+            @property
+            def context_window(self):  # type: ignore[override]
+                return 200_000
+
+            # No count_tokens override — the runtime must not need one.
+
+        llm = _NoCounterLLM()
+
+        class A(Agent, llm=llm):
+            async def respond(self, prompt: str) -> str:
+                """Respond to {prompt}."""
+                ...
+
+        agent = A()
+        for _ in range(5):
+            agent.event_manager.add(Message(content="hello"))
+
+        method = type(agent).respond
+        token = _current_llm_var.set(llm)
+        try:
+            messages = await agent.runtime._build_messages(
+                method, call_args=(agent, "hi"), call_kwargs={}
+            )
+        finally:
+            _current_llm_var.reset(token)
+        assert messages is not None

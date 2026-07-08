@@ -444,24 +444,20 @@ class Session:
     def _context_usage_label(self) -> str:
         """Compact ``"ctx N%"`` label from the most recent ContextWindowStats.
 
-        Returns an empty string if no generation has run yet, or if the
-        agent/runtime can't supply a bounded context window (no max).
+        The percentage is the provider-reported prompt-token count over the
+        USABLE context window (model window minus the output-token reserve) —
+        so 100% means "the next call at the current completion budget will be
+        rejected", not "the window is byte-full". Until the first response
+        returns usage (``prompt_tokens`` is None) we show the placeholder
+        ``"ctx —"`` rather than a local estimate.
         """
         stats = getattr(self.agent, "context_stats", None)
         if stats is None:
-            return ""
-        max_context = stats.max_context_tokens
-        max_event = stats.max_event_tokens
-        if max_context and max_event:
-            max_total = max_context + max_event
-        elif stats.model_context_window:
-            max_total = stats.model_context_window
-        else:
-            return ""
-        if max_total <= 0:
-            return ""
-        pct = stats.total_tokens / max_total * 100
-        return f"ctx {pct:.0f}%"
+            return "ctx —"
+        util = stats.overall_utilization  # prompt / (window - output reserve)
+        if util is None:
+            return "ctx —"
+        return f"ctx {util * 100:.0f}%"
 
     # ------------------------------------------------------------------
     # Exit diagnostics

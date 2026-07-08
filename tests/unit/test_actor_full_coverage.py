@@ -20,11 +20,10 @@ from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
 
 # Minimal stats object for mocking render_context return values
 _EMPTY_STATS = ContextWindowStats(
-    context_blocks_tokens=0,
     context_blocks_count=0,
-    events_tokens=0,
     events_count=0,
-    total_tokens=0,
+    context_blocks_chars=0,
+    events_chars=0,
 )
 
 # ---------------------------------------------------------------------------

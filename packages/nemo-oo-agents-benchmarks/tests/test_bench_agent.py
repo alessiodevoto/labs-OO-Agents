@@ -81,13 +81,13 @@ def test_context_usage_block_includes_collapse_hint():
 
     agent = BenchAgent(llm=FakeLLMClient())
     agent.runtime._last_context_stats = ContextWindowStats(
-        context_blocks_tokens=100,
         context_blocks_count=2,
-        events_tokens=900,
         events_count=12,
-        total_tokens=1000,
+        prompt_tokens=1000,
+        context_blocks_chars=100,
+        events_chars=900,
         max_context_tokens=1000,
-        max_event_tokens=1000,
+        model_context_window=1000,
     )
 
     block = agent._context_usage_block()

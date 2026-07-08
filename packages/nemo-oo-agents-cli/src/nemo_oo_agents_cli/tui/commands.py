@@ -1027,7 +1027,7 @@ class CompactCommand(Command):
         tokens_before = 0
         stats = self.agent.context_stats
         if stats:
-            tokens_before = stats.total_tokens
+            tokens_before = stats.total_tokens or 0
         summarizers = getattr(self.agent, "_summarizers", [])
 
         if summarizers:
