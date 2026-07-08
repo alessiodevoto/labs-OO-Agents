@@ -6,8 +6,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from eval_pipeline.otlp_io import _otlp_attrs_to_dict
 from eval_pipeline.pipeline import PipelineConfig, process_sample
+from tests.otlp_helpers import _otlp_attrs_to_dict
 
 
 class TestProcessSampleEvalSpan:

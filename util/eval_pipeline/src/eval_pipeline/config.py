@@ -11,12 +11,11 @@ handles all configuration loading and conversion.
 from __future__ import annotations
 
 import importlib
-import inspect
 import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, get_type_hints
+from typing import TYPE_CHECKING
 
 import yaml
 
@@ -376,91 +375,6 @@ def load_tasks(data_file: Path, limit: int | None = None) -> list[Task]:
                 )
             )
     return tasks
-
-
-# =============================================================================
-# Schema Introspection
-# =============================================================================
-
-
-def get_method_schema(cls: type, method_name: str) -> tuple[dict[str, str], set[str]]:
-    """Extract input schema from method signature.
-
-    Args:
-        cls: The agent class
-        method_name: Name of the method to introspect
-
-    Returns:
-        Tuple of (kwargs dict, optional set):
-        - kwargs: {param_name: type_str}
-        - optional: set of param names with defaults
-    """
-    method = getattr(cls, method_name)
-    sig = inspect.signature(method)
-
-    # Try to get type hints, fall back to empty dict
-    try:
-        hints = get_type_hints(method)
-    except Exception:
-        hints = {}
-
-    kwargs = {}
-    optional = set()
-
-    for name, param in sig.parameters.items():
-        # Skip self, *args, **kwargs
-        if name == "self":
-            continue
-        if param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
-            continue
-
-        # Get type string
-        if name in hints:
-            type_hint = hints[name]
-            type_str = getattr(type_hint, "__name__", str(type_hint))
-        else:
-            type_str = "Any"
-
-        kwargs[name] = type_str
-
-        # Track if optional (has default)
-        if param.default is not inspect.Parameter.empty:
-            optional.add(name)
-
-    return kwargs, optional
-
-
-def validate_tasks(
-    tasks: list[Task],
-    schema_kwargs: dict[str, str],
-    schema_optional: set[str],
-) -> list[str]:
-    """Validate all tasks against schema.
-
-    Args:
-        tasks: Tasks to validate
-        schema_kwargs: Expected kwargs from method introspection
-        schema_optional: Set of optional kwargs (have defaults)
-
-    Returns:
-        List of error messages (empty if all valid)
-    """
-    errors = []
-
-    for task in tasks:
-        _, kwargs = task.input
-
-        # Check required kwargs are present
-        for kwarg_name in schema_kwargs:
-            if kwarg_name not in schema_optional and kwarg_name not in kwargs:
-                errors.append(f"{task.id}: missing required kwarg '{kwarg_name}'")
-
-        # Check for unexpected kwargs
-        for kwarg_name in kwargs:
-            if kwarg_name not in schema_kwargs:
-                errors.append(f"{task.id}: unexpected kwarg '{kwarg_name}'")
-
-    return errors
 
 
 # =============================================================================

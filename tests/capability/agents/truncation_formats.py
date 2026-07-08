@@ -25,7 +25,7 @@ agent while controlling how the prefill renders that data:
       unchanged on the underlying value.
 
 ``_patch_eval_pipeline_loader()`` is called at import time by the agent
-modules. It monkey-patches ``eval_pipeline.config_loader.load_tasks`` to
+modules. It monkey-patches ``eval_pipeline.config.load_tasks`` to
 wrap any kwargs dict that carries the trio ``(data, type_tag, fmt)`` with
 a ``Wrapped`` instance. This is the *only* injection point we need — once
 ``data`` is a ``Wrapped`` in the per-task kwargs, the framework's prefill
@@ -344,7 +344,7 @@ _PATCHED = False
 
 
 def _patch_eval_pipeline_loader() -> None:
-    """Patch ``eval_pipeline.config_loader.load_tasks`` to wrap fixture kwargs.
+    """Patch ``eval_pipeline.config.load_tasks`` to wrap fixture kwargs.
 
     Idempotent — safe to call from each agent module's import.
     Only wraps kwargs dicts that carry the trio ``(data, type_tag, fmt)``,

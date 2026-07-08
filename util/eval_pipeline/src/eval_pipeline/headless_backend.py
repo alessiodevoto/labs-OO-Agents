@@ -6,9 +6,9 @@ Spins up a minimal FastAPI/uvicorn server in a background thread that:
 - Serves them back at GET /api/trace?session_id=... (same API as the full viewer)
 
 Subprocess workers POST spans over HTTP — crossing the process boundary — and
-scorers fetch them back via fetch_trace_as_jsonl pointing at the local endpoint.
-No InMemorySpanExporter needed; all span data travels over HTTP so asyncio and
-subprocess engines behave identically.
+scorers fetch them back via ``TraceExplorer.from_viewer`` pointing at the local
+endpoint. No InMemorySpanExporter needed; all span data travels over HTTP so
+asyncio and subprocess engines behave identically.
 """
 
 from __future__ import annotations
