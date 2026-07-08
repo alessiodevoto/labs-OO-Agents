@@ -26,8 +26,35 @@ router = APIRouter(prefix="/api/explorer", tags=["explorer"])
 _CACHE_MAX_SIZE = 16
 _explorer_cache: OrderedDict[str, Any] = OrderedDict()
 _cache_lock = threading.Lock()
-_build_locks: dict[str, threading.Lock] = {}
+
+# Per-session build locks serialize concurrent first-builds. This map is bounded:
+# once it exceeds _BUILD_LOCKS_MAX we evict the least-recently-used entries that
+# are not currently held, so it can't grow one entry per session ever explored.
+_BUILD_LOCKS_MAX = 256
+_build_locks: OrderedDict[str, threading.Lock] = OrderedDict()
 _build_locks_lock = threading.Lock()
+
+
+def _get_build_lock(session_id: str) -> threading.Lock:
+    """Return the build lock for a session, creating and bounding the map."""
+    with _build_locks_lock:
+        lock = _build_locks.get(session_id)
+        if lock is None:
+            lock = threading.Lock()
+            _build_locks[session_id] = lock
+        _build_locks.move_to_end(session_id)
+
+        if len(_build_locks) > _BUILD_LOCKS_MAX:
+            for key in list(_build_locks):
+                if len(_build_locks) <= _BUILD_LOCKS_MAX:
+                    break
+                if key == session_id:
+                    continue
+                # Only evict locks no request is currently holding.
+                if not _build_locks[key].locked():
+                    del _build_locks[key]
+
+        return lock
 
 
 def _get_cached_explorer(session_id: str):
@@ -66,32 +93,17 @@ def _build_explorer_for_span(session_id: str, span_id: str):
     then parses just that subset into a TraceExplorer. Much faster
     for large traces when drilling into a specific session.
     """
-    from nemo_oo_agents.trace_explorer.explorer import (
-        TraceExplorer,
-        _normalize_otlp_span,
-        _parse_trace_from_spans,
-        get_quiet_mode,
-        set_quiet_mode,
-    )
+    from nemo_oo_agents.trace_explorer.explorer import TraceExplorer
 
     otlp_spans = otlp_store.get_descendant_spans(session_id, span_id)
     if not otlp_spans:
         raise HTTPException(status_code=404, detail=f"Span not found: {span_id}")
 
-    raw_spans = [_normalize_otlp_span(s) for s in otlp_spans]
-    prev_quiet = get_quiet_mode()
-    set_quiet_mode(True)
-    try:
-        sessions = _parse_trace_from_spans(raw_spans)
-    finally:
-        set_quiet_mode(prev_quiet)
-
-    return TraceExplorer(
-        sessions=sessions,
+    return TraceExplorer.from_otlp_spans(
+        otlp_spans,
         trace_file=f"viewer://{session_id}",
-        eval_result=None,
-        raw_spans=raw_spans,
-        viewer_url=None,
+        extract_eval=False,
+        quiet=True,
     )
 
 
@@ -106,10 +118,7 @@ def _build_explorer(session_id: str):
         return cached
 
     # Serialize builds for the same session to avoid duplicate work
-    with _build_locks_lock:
-        if session_id not in _build_locks:
-            _build_locks[session_id] = threading.Lock()
-        build_lock = _build_locks[session_id]
+    build_lock = _get_build_lock(session_id)
 
     with build_lock:
         # Double-check after acquiring lock
@@ -117,13 +126,7 @@ def _build_explorer(session_id: str):
         if cached is not None:
             return cached
 
-        from nemo_oo_agents.trace_explorer.explorer import (
-            TraceExplorer,
-            _normalize_otlp_span,
-            _parse_trace_from_spans,
-            get_quiet_mode,
-            set_quiet_mode,
-        )
+        from nemo_oo_agents.trace_explorer.explorer import TraceExplorer
 
         if not otlp_store.session_exists(session_id):
             raise HTTPException(status_code=404, detail=f"Session not found: {session_id}")
@@ -135,22 +138,11 @@ def _build_explorer(session_id: str):
                 detail=f"No spans found for session: {session_id}",
             )
 
-        raw_spans = [_normalize_otlp_span(s) for s in otlp_spans]
-
-        prev_quiet = get_quiet_mode()
-        set_quiet_mode(True)
-        try:
-            sessions = _parse_trace_from_spans(raw_spans)
-            eval_result = TraceExplorer._extract_eval_from_spans(raw_spans)
-        finally:
-            set_quiet_mode(prev_quiet)
-
-        explorer = TraceExplorer(
-            sessions=sessions,
+        explorer = TraceExplorer.from_otlp_spans(
+            otlp_spans,
             trace_file=f"viewer://{session_id}",
-            eval_result=eval_result,
-            raw_spans=raw_spans,
-            viewer_url=None,
+            extract_eval=True,
+            quiet=True,
         )
 
         _put_cached_explorer(session_id, explorer)

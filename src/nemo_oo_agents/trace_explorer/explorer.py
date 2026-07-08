@@ -2107,6 +2107,51 @@ class TraceExplorer:
         return await asyncio.to_thread(_load)
 
     @classmethod
+    def from_otlp_spans(
+        cls,
+        otlp_spans: list[dict[str, Any]],
+        *,
+        trace_file: str,
+        viewer_url: str | None = None,
+        extract_eval: bool = True,
+        quiet: bool = True,
+    ) -> TraceExplorer:
+        """Build a TraceExplorer from raw OTLP span dicts.
+
+        Encapsulates OTLP span normalization, trace parsing, and (optionally)
+        eval-context extraction. Warning suppression is controlled per call via
+        ``quiet`` and scoped with a ContextVar token, so callers never toggle the
+        process-wide quiet mode themselves — avoiding a race where concurrent
+        request handlers could silence or unsilence each other's work.
+
+        This is a synchronous, CPU-bound builder; callers running inside an event
+        loop should wrap it in ``asyncio.to_thread``.
+
+        Args:
+            otlp_spans: Raw OTLP span dicts (as returned by the viewer store).
+            trace_file: Identifier for the trace source (e.g. ``viewer://<id>``).
+            viewer_url: Base viewer URL, if the spans came from a viewer.
+            extract_eval: Whether to extract eval-context data from the spans.
+            quiet: Suppress parser warnings for the duration of this build.
+        """
+        raw_spans = [_normalize_otlp_span(s) for s in otlp_spans]
+
+        token = _quiet_mode.set(quiet)
+        try:
+            sessions = _parse_trace_from_spans(raw_spans)
+            eval_result = cls._extract_eval_from_spans(raw_spans) if extract_eval else None
+        finally:
+            _quiet_mode.reset(token)
+
+        return cls(
+            sessions=sessions,
+            trace_file=trace_file,
+            eval_result=eval_result,
+            raw_spans=raw_spans,
+            viewer_url=viewer_url,
+        )
+
+    @classmethod
     async def from_viewer(
         cls,
         base_url: str,

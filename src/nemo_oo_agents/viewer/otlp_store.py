@@ -803,14 +803,12 @@ def ingest_batch_write_bytes(payloads: list[bytes]) -> list[dict[str, Any]]:
     for raw in payloads:
         try:
             body = json.loads(raw)
-            # Log oversized payloads with the biggest span names/attributes
+            # Log oversized payloads with the biggest span names/attributes.
+            # We deliberately do NOT dump the raw payload to disk: it contains
+            # full trace contents and previously landed in a fixed, world-readable
+            # /tmp path. _log_oversized_payload() provides the diagnostics needed.
             if len(raw) > 1 * 1024 * 1024:  # 1 MB
                 _log_oversized_payload(body, len(raw))
-                # Dump first oversized payload for inspection
-                dump_path = Path("/tmp/oversized_otlp_payload.json")
-                if not dump_path.exists():
-                    dump_path.write_bytes(raw)
-                    log.warning("[OVERSIZED] dumped to %s", dump_path)
             results.append(_ingest_one(body, db))
         except Exception:
             log.exception("[ingest_batch_write_bytes] Failed to process one payload, skipping")
@@ -1511,24 +1509,30 @@ def get_session_sizes() -> dict[str, int]:
 
 
 def delete_session(session_id: str) -> bool:
-    """Delete a single session and its spans and annotations. Returns True if deleted."""
+    """Delete a single session and all associated data (spans, spans_fts, llm_calls, msg_blocks, annotations). Returns True if deleted."""
     db = _get_db()
     exists = db.execute("SELECT 1 FROM sessions WHERE session_id = ?", (session_id,)).fetchone()
     if not exists:
         return False
     db.execute("DELETE FROM annotations WHERE session_id = ?", (session_id,))
     db.execute("DELETE FROM spans WHERE session_id = ?", (session_id,))
+    db.execute("DELETE FROM spans_fts WHERE session_id = ?", (session_id,))
+    db.execute("DELETE FROM llm_calls WHERE session_id = ?", (session_id,))
+    db.execute("DELETE FROM msg_blocks WHERE session_id = ?", (session_id,))
     db.execute("DELETE FROM sessions WHERE session_id = ?", (session_id,))
     db.commit()
     return True
 
 
 def delete_all_sessions() -> dict[str, int]:
-    """Delete all sessions, spans, and annotations. Returns counts before deletion."""
+    """Delete all sessions and associated data (spans, spans_fts, llm_calls, msg_blocks, annotations). Returns counts before deletion."""
     db = _get_db()
     stats = get_stats()
     db.execute("DELETE FROM annotations")
     db.execute("DELETE FROM spans")
+    db.execute("DELETE FROM spans_fts")
+    db.execute("DELETE FROM llm_calls")
+    db.execute("DELETE FROM msg_blocks")
     db.execute("DELETE FROM sessions")
     db.commit()
     return stats
@@ -1547,6 +1551,9 @@ def delete_sessions_by_batch(batch_id: str) -> int:
     placeholders = ",".join("?" * len(session_ids))
     db.execute(f"DELETE FROM annotations WHERE session_id IN ({placeholders})", session_ids)
     db.execute(f"DELETE FROM spans WHERE session_id IN ({placeholders})", session_ids)
+    db.execute(f"DELETE FROM spans_fts WHERE session_id IN ({placeholders})", session_ids)
+    db.execute(f"DELETE FROM llm_calls WHERE session_id IN ({placeholders})", session_ids)
+    db.execute(f"DELETE FROM msg_blocks WHERE session_id IN ({placeholders})", session_ids)
     db.execute(f"DELETE FROM sessions WHERE session_id IN ({placeholders})", session_ids)
     db.commit()
     return len(session_ids)
