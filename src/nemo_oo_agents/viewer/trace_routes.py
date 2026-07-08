@@ -30,7 +30,17 @@ log = logging.getLogger(__name__)
 router = APIRouter()
 
 # Models config: look in cwd or env-provided path
-_MODELS_CONFIG_ENV = os.environ.get("AGENT006_MODELS_CONFIG")
+_MODELS_CONFIG_ENV = os.environ.get("NEMO_OO_MODELS_CONFIG")
+if _MODELS_CONFIG_ENV is None:
+    # Deprecated: AGENT006_MODELS_CONFIG carried the internal codename into the
+    # public config surface. Honored for one release; prefer NEMO_OO_MODELS_CONFIG.
+    _legacy_models_config_env = os.environ.get("AGENT006_MODELS_CONFIG")
+    if _legacy_models_config_env is not None:
+        log.warning(
+            "AGENT006_MODELS_CONFIG is deprecated and will be removed; "
+            "use NEMO_OO_MODELS_CONFIG instead."
+        )
+        _MODELS_CONFIG_ENV = _legacy_models_config_env
 MODELS_CONFIG_FILE = Path(_MODELS_CONFIG_ENV) if _MODELS_CONFIG_ENV else Path.cwd() / "models.yaml"
 
 CUSTOM_MODELS_FILE = Path.cwd() / "custom_models.json"
@@ -110,7 +120,6 @@ def get_known_api_key_patterns() -> list[str]:
             "OPENAI_API_KEY",
             "ANTHROPIC_API_KEY",
             "NVIDIA_API_KEY",
-            "NVIDIA_INFERENCE_API_KEY",
             "GOOGLE_API_KEY",
             "AZURE_OPENAI_API_KEY",
             "TOGETHER_API_KEY",

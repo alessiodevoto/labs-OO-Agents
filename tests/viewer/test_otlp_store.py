@@ -617,6 +617,54 @@ class TestDelete:
         assert stats["sessions"] == 0
         assert stats["spans"] == 0
 
+    @staticmethod
+    def _searchable_span(span_id: str, token: str) -> dict:
+        """A span whose string attribute lands in the FTS content column."""
+        return {
+            "traceId": "trace001",
+            "spanId": span_id,
+            "name": "agent.run",
+            "kind": 1,
+            "startTimeUnixNano": "1700000000000000000",
+            "endTimeUnixNano": "1700000001000000000",
+            "attributes": [
+                {"key": "content", "value": {"stringValue": f"needle {token} haystack"}}
+            ],
+        }
+
+    def test_delete_session_purges_fts_rows(self):
+        # Regression for #340: FTS returned hits for deleted sessions because
+        # delete_session left spans_fts rows behind.
+        store.ingest(_make_body(session_id="s1", spans=[self._searchable_span("sp1", "alpha")]))
+        assert store.search_spans_fts("s1", "alpha")  # indexed and searchable
+
+        assert store.delete_session("s1") is True
+
+        assert store.search_spans_fts("s1", "alpha") == []
+        db = store._get_db()
+        assert db.execute("SELECT COUNT(*) FROM spans_fts WHERE session_id='s1'").fetchone()[0] == 0
+
+    def test_delete_all_sessions_purges_fts_rows(self):
+        store.ingest(_make_body(session_id="s1", spans=[self._searchable_span("sp1", "beta")]))
+        store.ingest(_make_body(session_id="s2", spans=[self._searchable_span("sp2", "beta")]))
+        store.delete_all_sessions()
+        assert store.search_spans_fts("s1", "beta") == []
+        assert store.search_spans_fts("s2", "beta") == []
+        db = store._get_db()
+        assert db.execute("SELECT COUNT(*) FROM spans_fts").fetchone()[0] == 0
+
+    def test_delete_sessions_by_batch_purges_fts_rows(self):
+        store.ingest(
+            _make_body(
+                session_id="s1",
+                resource_extra={"batch_id": "b1"},
+                spans=[self._searchable_span("sp1", "gamma")],
+            )
+        )
+        assert store.search_spans_fts("s1", "gamma")
+        assert store.delete_sessions_by_batch("b1") == 1
+        assert store.search_spans_fts("s1", "gamma") == []
+
 
 # ---------------------------------------------------------------------------
 # get_stats
