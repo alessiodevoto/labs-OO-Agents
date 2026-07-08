@@ -61,14 +61,16 @@ from nemo_oo_agents.skill_registry import skill_from_module  # noqa: E402
 # Export storage
 from nemo_oo_agents.storage import StorageManager  # noqa: E402
 
-# Export strategy base class and implementations
+# Export strategy base class and implementations.
+# NOTE: CodeActLiteStrategy and ReflexionStrategy are experimental. They are NOT
+# imported raw here — that would bypass the FutureWarning gate in
+# nemo_oo_agents.experimental. Instead they are exposed lazily via __getattr__
+# below, which returns the warning-emitting factories.
 from nemo_oo_agents.strategies import (  # noqa: E402
-    CodeActLiteStrategy,
     CodeActStrategy,
     GenerationStrategy,
     InspectInputsPrefill,
     PredictStrategy,
-    ReflexionStrategy,
     get_default_strategy,
     set_default_strategy,
 )
@@ -84,6 +86,13 @@ def __getattr__(name):
         from nemo_oo_agents.llm_config import llm_config_chain
 
         return llm_config_chain
+    # Experimental strategies: route through the warning factories so that
+    # `from nemo_oo_agents import CodeActLiteStrategy; CodeActLiteStrategy()`
+    # emits the same FutureWarning as importing from nemo_oo_agents.experimental.
+    if name in ("CodeActLiteStrategy", "ReflexionStrategy"):
+        from nemo_oo_agents import experimental
+
+        return getattr(experimental, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 

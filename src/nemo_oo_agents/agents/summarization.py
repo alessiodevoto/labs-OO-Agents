@@ -372,7 +372,9 @@ class SummarizationAgent(Agent):
     def _get_events_in_range(self, start_tag: str, end_tag: str) -> list[tuple[str, "EventBase"]]:
         """Get events between start_tag and end_tag (inclusive).
 
-        Use this in generated code to programmatically investigate raw events.
+        Internal ``@hidden`` helper for the agent's own Python methods to
+        investigate raw events. Not part of the generated-code surface (the
+        agent runs single-shot PredictStrategy, which executes no code).
 
         Args:
             start_tag: First event tag in the range
@@ -606,7 +608,7 @@ class TokenBudgetSummarizer(SummarizationAgent):
             return False
 
         try:
-            actual = getattr(agent.runtime, "_last_prompt_tokens_actual", None)
+            actual = agent.runtime.last_prompt_tokens_actual
         except Exception:
             logger.warning(
                 "TokenBudgetSummarizer: failed to read API-reported token count", exc_info=True

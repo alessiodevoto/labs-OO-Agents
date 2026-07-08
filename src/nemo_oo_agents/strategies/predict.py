@@ -56,7 +56,9 @@ class PredictStrategy(GenerationStrategy):
         max_retries: Maximum validation retry attempts
 
     Example:
-        @strategy(PredictStrategy(max_retries=3))
+        from nemo_oo_agents.config import PredictConfig
+
+        @strategy(PredictStrategy(config=PredictConfig(max_retries=3)))
         def analyze(self, data: str) -> AnalysisResult:
             '''Analyze data and return structured results.'''
     """

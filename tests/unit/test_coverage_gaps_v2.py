@@ -1465,7 +1465,7 @@ class TestCodeValidatorInfiniteLoopDetection:
         tree = ast.parse("while 1: pass")
         issues = v.validate(tree, ctx)
         assert len(issues) == 1
-        assert issues[0].code == "W303"
+        assert issues[0].code == "E303"
 
     def test_while_not_false_detected(self):
         """Lines 420-421: while not False: ... is treated as infinite loop."""
@@ -1478,7 +1478,7 @@ class TestCodeValidatorInfiniteLoopDetection:
         tree = ast.parse("while not False: pass")
         issues = v.validate(tree, ctx)
         assert len(issues) == 1
-        assert issues[0].code == "W303"
+        assert issues[0].code == "E303"
 
     def test_while_true_with_for_orelse_raise_no_warning(self):
         """Lines 461-464: nested for with raise in orelse counts as exit."""
@@ -1494,8 +1494,8 @@ class TestCodeValidatorInfiniteLoopDetection:
         )
         tree = ast.parse(code)
         issues = v.validate(tree, ctx)
-        # No W303 because the for/else has a raise
-        assert all(i.code != "W303" for i in issues)
+        # No E303 because the for/else has a raise
+        assert all(i.code != "E303" for i in issues)
 
     def test_while_true_with_nested_for_orelse_return_no_warning(self):
         """Lines 463-464: return in for loop's orelse counts as exit for outer while."""
@@ -1508,8 +1508,8 @@ class TestCodeValidatorInfiniteLoopDetection:
         code = "while True:\n    for x in items:\n        pass\n    else:\n        return None"
         tree = ast.parse(code)
         issues = v.validate(tree, ctx)
-        # No W303 because there's a return in for/else
-        assert all(i.code != "W303" for i in issues)
+        # No E303 because there's a return in for/else
+        assert all(i.code != "E303" for i in issues)
 
 
 class TestCodeValidatorVisitCallPaths:
@@ -2128,8 +2128,8 @@ class TestCodeValidatorNestedLoopExitDetection:
         code = "while True:\n    for x in items:\n        return x"
         tree = ast.parse(code)
         issues = v.validate(tree, ctx)
-        # No W303 because return in for body propagates out
-        assert all(i.code != "W303" for i in issues)
+        # No E303 because return in for body propagates out
+        assert all(i.code != "E303" for i in issues)
 
 
 class TestCodeValidatorClassNamesExceptionHandling:

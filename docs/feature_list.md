@@ -136,7 +136,7 @@ NeMo OO Agents is a single repository that ships as several lockstep packages:
 
 ### Experimental Strategies
 
-- **Opt into unmaintained strategies** — `PurePythonStrategy`, `CodeActLiteStrategy`, and `ReflexionStrategy` are importable from `nemo_oo_agents.experimental`; instantiating via that module emits a `FutureWarning` (the same classes re-exported elsewhere do not warn). **(opt-in)**
+- **Opt into unmaintained strategies** — `PurePythonStrategy`, `CodeActLiteStrategy`, and `ReflexionStrategy` are importable from `nemo_oo_agents.experimental`; instantiating any of them emits a `FutureWarning`. The top-level `nemo_oo_agents.CodeActLiteStrategy` / `nemo_oo_agents.ReflexionStrategy` names are routed through the same warning factories, so they warn on instantiation too. **(opt-in)**
 - **Run raw-Python generation** — `PurePythonStrategy(max_iterations=..., max_retries=..., prefill=...)` executes the LLM's raw code output directly and exposes a `message(text)` builtin for caller-facing messages. **(opt-in)**
 - **Render clean CodeAct turns** — `CodeActLiteStrategy` subclasses CodeAct to scope events to the current call and render messages as plain text without XML/type wrappers. **(opt-in)**
 - **Reflect and retry** — `ReflexionStrategy(base=..., config=ReflexionConfig(max_iterations=...))` wraps a base strategy with a self-reflection loop. **(opt-in)**

@@ -21,20 +21,29 @@ Usage:
 # =============================================================================
 # Error Code Registry
 # =============================================================================
-# SecurityValidator:
-#   E001 — Forbidden builtin usage (exec, eval, compile, __import__, etc.)
+# The codes below match what the validators actually emit. Every code is emitted
+# with severity="error" (the historical "W" prefix on the infinite-loop check was
+# renamed to E303 to reflect that it is an error, not a warning).
+# SecurityValidator (_SecurityVisitor):
+#   E001 — Forbidden builtin / attribute call (exec, eval, compile, __import__,
+#          input, globals, locals, breakpoint; their aliases; calls that could
+#          modify runtime restrictions; getattr() of any such name)
 #   E002 — Restricted or blocked import (module in restricted_imports or blocked_modules)
-#   E003 — Forbidden dunder attribute access (__class__, __subclasses__, etc.)
-#   E004 — Forbidden escape via sys/os attributes (sys.modules, os.system, etc.)
-#   E005 — Process termination (raise SystemExit, sys.exit()/os._exit(), exit()/quit())
+#   E003 — Wildcard import ('from ... import *')
+#   E004 — Recursive self-call (self.<method>() listed in forbidden_self_calls)
+#   E005 — Process/control-flow termination (raise SystemExit/KeyboardInterrupt,
+#          sys.exit()/os._exit()/os.abort() and their aliases)
+#   E101 — Forbidden dunder attribute access (__class__, __subclasses__, etc.)
+#          and access to '__builtins__'
+#   E102 — Base-class/super dunder access that bypasses Agent runtime guards
+#          (object.__setattr__, type.__setattr__, super().__setattr__, etc.)
+#   E104 — setattr()/delattr()/getattr() targeting a dunder attribute name
 # REPLPolicyValidator:
-#   E101 — Bare function/class definition without assignment or call
-#   E104 — Import statement (use exec_globals instead)
-#   E301 — Missing await on async call
-#   W303 — Async def without await (warning)
+#   E301 — Missing await on an async method call
+#   E303 — Potential infinite loop ('while True' without break/return)
 # ClassAssignmentValidator:
-#   E401 — Forbidden class attribute assignment (self.X = ...)
-#   E402 — Forbidden class method call (self.X(...))
+#   E401 — Forbidden class attribute assignment (ClassName.x = ..., type(self).x = ...)
+#   E402 — Forbidden class-level setattr() (setattr(ClassName, ...), setattr(type(self), ...))
 # BlockingCallValidator:
 #   E310 — Blocking call that would freeze the event loop
 # ReturnTypeShadowValidator:
@@ -574,8 +583,8 @@ class _REPLPolicyVisitor(ast.NodeVisitor):
                     col=node.col_offset,
                     message="Potential infinite loop detected (while True without break/return) - "
                     "add a break condition or use an iteration limit",
-                    code="W303",
-                    severity="error",  # Make this an error, not warning
+                    code="E303",
+                    severity="error",
                 )
             )
         self.generic_visit(node)

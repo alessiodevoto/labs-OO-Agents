@@ -16,12 +16,15 @@ import pytest
 from nemo_oo_agents import (
     Agent,
     CodeActStrategy,
-    ReflexionStrategy,
     get_default_strategy,
     set_default_strategy,
 )
 from nemo_oo_agents.config import CodeActConfig
 from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
+
+# Experimental strategies are exposed at the top level only as FutureWarning
+# factories; import the concrete class here for instantiation/isinstance checks.
+from nemo_oo_agents.strategies.reflexion import ReflexionStrategy
 
 
 class TestGetDefaultStrategy:

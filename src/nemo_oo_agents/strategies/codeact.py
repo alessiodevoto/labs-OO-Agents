@@ -2560,15 +2560,25 @@ Standard Python builtins and agent instance (`self`) are available."""
         def return_result(*args: Any, **kwargs: Any) -> None:
             """Submit the final answer from within execute_python code.
 
-            Args:
-                *args: Single positional argument (e.g., return_result(42))
-                **kwargs: Named fields matching the return type
-                    (e.g., return_result(field1=val1, field2=val2))
+            Usage:
+                - return_result(value)               # single positional -> "result" field
+                - return_result(field1=v1, field2=v2)  # named fields of the return type
+
+            Positional and keyword arguments cannot be mixed, except for return
+            types with a ``kind`` discriminator field (see the implementation
+            comment below).
             """
             if args:
                 if len(args) > 1:
                     raise ValueError("return_result() takes at most 1 positional argument")
                 if kwargs:
+                    # Mixing positional + keyword args is only allowed when the
+                    # return type has a "kind" discriminator field: the positional
+                    # is routed to "kind" and the kwargs fill the rest, so
+                    # return_result("respond", content="hi") is equivalent to
+                    # return_result(kind="respond", content="hi"). Do NOT remove
+                    # this branch: it is relied on in production (the TUI's
+                    # RespondResult and skills-sw SKILL.md).
                     model_fields = getattr(call.return_type, "model_fields", {})
                     if "kind" not in model_fields:
                         raise ValueError("Cannot mix positional and keyword arguments")

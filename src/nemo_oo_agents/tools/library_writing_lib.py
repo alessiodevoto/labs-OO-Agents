@@ -123,14 +123,14 @@ class SkillWriting(Skill):
         await self.libs.create("stats", "Statistical utilities.")
 
         # 2. Write code using self.shell
-        await self.shell.write(self.libs.path("stats", "stats.py"), source)
+        await self.shell.write_file(self.libs.path("stats", "stats.py"), source)
 
         # 3. Lint + reload
         await self.libs.reload("stats")
         # -> lints, hot-reloads; self.stats is now available
 
-        # 4. Edit using self.shell
-        await self.shell.edit(self.libs.path("stats", "stats.py"), old, new)
+        # 4. Edit using self.shell (replace(path, old, new); old must be unique)
+        await self.shell.replace(self.libs.path("stats", "stats.py"), old, new)
         await self.libs.reload("stats")
 
         # 5. Test
@@ -193,7 +193,7 @@ class SkillWriting(Skill):
     async def create(self, lib_name: str, description: str) -> str:
         """Scaffold a new library: writes pyproject.toml + __init__.py.
 
-        Nothing is loaded yet. Write code with self.shell.write() then
+        Nothing is loaded yet. Write code with self.shell.write_file() then
         call self.libs.reload() to lint and activate.
 
         Args:
@@ -295,10 +295,15 @@ class SkillWriting(Skill):
         Returns:
             Tree output as a string.
         """
-        shell = self._agent.shell
-        path = str(self._path / directory) if directory != "." else str(self._path)
-        result = await shell.find("*", path)
-        return "\n".join(result.matches)
+        root = (self._path / directory) if directory != "." else self._path
+        if not root.exists():
+            return f"{root} does not exist"
+        lines = []
+        for p in sorted(root.rglob("*")):
+            rel = p.relative_to(root)
+            depth = len(rel.parts) - 1
+            lines.append("  " * depth + p.name + ("/" if p.is_dir() else ""))
+        return "\n".join(lines)
 
     async def run_tests(self, lib_name: str) -> str:
         """Run pytest on the library's tests/ directory.
