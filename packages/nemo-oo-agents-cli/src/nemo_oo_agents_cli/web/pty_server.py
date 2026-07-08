@@ -10,6 +10,13 @@ Endpoints:
   WS   /ws/pty  — PTY I/O bridge (base64-framed JSON)
   WS   /ws/rich — rich content push (agent → browser)
   POST /rich    — HTTP endpoint the agent POSTs rich payloads to
+
+Authentication: when ``create_pty_app`` is given an ``auth_token``, every
+endpoint requires it.  ``GET /`` accepts the token as a ``?token=`` query
+parameter and sets it in a cookie, which the WebSocket handshakes and
+``POST /rich`` then validate (a ``?token=`` query parameter also works).
+Requests without a valid token get HTTP 403; WebSockets are accepted and
+immediately closed with code 4403 before any PTY is spawned.
 """
 
 import asyncio
@@ -17,8 +24,12 @@ import base64
 import json
 import logging
 import os
+import secrets
 import threading
 from typing import Any
+
+#: Cookie set by ``GET /?token=...`` and checked by the other endpoints.
+_TOKEN_COOKIE = "nemo_oo_term_token"
 
 _log = logging.getLogger("nemo_oo_agents.pty_server")
 
@@ -174,8 +185,12 @@ window.addEventListener('resize', () => fitAddon.fit());
 
 // ---- PTY WebSocket ----
 const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-const ptyWs  = new WebSocket(`${proto}//${location.host}/ws/pty`);
-const richWs = new WebSocket(`${proto}//${location.host}/ws/rich`);
+// Token is injected by GET / into window.__NEMO_TERM_TOKEN and passed on the WS
+// URL, so reconnects don't depend on the host-scoped (port-agnostic) cookie —
+// two terminals on different ports of localhost no longer clobber each other.
+const tokenQS = window.__NEMO_TERM_TOKEN ? `?token=${window.__NEMO_TERM_TOKEN}` : '';
+const ptyWs  = new WebSocket(`${proto}//${location.host}/ws/pty${tokenQS}`);
+const richWs = new WebSocket(`${proto}//${location.host}/ws/rich${tokenQS}`);
 
 ptyWs.binaryType = 'arraybuffer';
 
@@ -429,7 +444,9 @@ term.focus();
 
 
 def create_pty_app(
-    tui_argv: list[str], env_extra: dict[str, str] | None = None
+    tui_argv: list[str],
+    env_extra: dict[str, str] | None = None,
+    auth_token: str | None = None,
 ) -> "tuple[Any, Any]":
     """Create the FastAPI PTY terminal application.
 
@@ -441,6 +458,9 @@ def create_pty_app(
     Args:
         tui_argv: Command + arguments to spawn in the PTY (e.g. ``["python", "-m", ...]``).
         env_extra: Extra environment variables to inject into the PTY process.
+        auth_token: Per-session token required by every endpoint (via
+            ``?token=`` query parameter or the cookie set by ``GET /``).
+            ``None`` disables authentication entirely.
     """
     try:
         from fastapi import FastAPI, Request
@@ -476,7 +496,38 @@ def create_pty_app(
             except Exception:
                 pass
 
-    app = FastAPI(title="NeMo OO Agents Terminal", docs_url=None, redoc_url=None, lifespan=lifespan)
+    app = FastAPI(
+        title="NeMo OO Agents Terminal",
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
+        lifespan=lifespan,
+    )
+
+    # -----------------------------------------------------------------------
+    # Session-token authentication.  The terminal is a full interactive shell,
+    # so every endpoint validates the token (query param or cookie) when one
+    # is configured.  auth_token=None disables the checks (--no-auth).
+    def _token_valid(provided: str | None) -> bool:
+        if auth_token is None:
+            return True
+        if not provided:
+            return False
+        # compare_digest(str, str) is ASCII-only and raises on non-ASCII input.
+        # Compare UTF-8 bytes instead; malformed surrogate input fails closed.
+        try:
+            provided_bytes = provided.encode("utf-8")
+        except UnicodeEncodeError:
+            return False
+        return secrets.compare_digest(provided_bytes, auth_token.encode("utf-8"))
+
+    def _http_authorized(request) -> bool:
+        return _token_valid(request.query_params.get("token") or request.cookies.get(_TOKEN_COOKIE))
+
+    def _ws_authorized(websocket) -> bool:
+        return _token_valid(
+            websocket.query_params.get("token") or websocket.cookies.get(_TOKEN_COOKIE)
+        )
 
     # Rich content state shared across all browser connections to this server.
     # _rich_history: ordered list of payloads (up to _RICH_HISTORY_LIMIT).
@@ -507,13 +558,37 @@ def create_pty_app(
 
     # -----------------------------------------------------------------------
     @app.get("/", response_class=HTMLResponse)
-    async def index():
-        return HTMLResponse(_HTML)
+    async def index(request: Request):
+        if not _http_authorized(request):
+            return HTMLResponse(
+                "<h1>403 Forbidden</h1>"
+                "<p>Missing or invalid session token. Open the URL printed at "
+                "server startup (it includes <code>?token=...</code>).</p>",
+                status_code=403,
+            )
+        html = _HTML
+        if auth_token is not None:
+            # Inject the token so the WS URLs carry it as a query param (see the
+            # PTY WebSocket block). token_urlsafe() is JS/HTML-safe; json.dumps
+            # yields a proper quoted string literal regardless.
+            html = html.replace(
+                "// ---- PTY WebSocket ----",
+                f"window.__NEMO_TERM_TOKEN = {json.dumps(auth_token)};\n// ---- PTY WebSocket ----",
+                1,
+            )
+        response = HTMLResponse(html)
+        if auth_token is not None:
+            # Also set a cookie as a fallback for the /rich fetch and any
+            # same-origin reconnect that drops the query string.
+            response.set_cookie(_TOKEN_COOKIE, auth_token, httponly=True, samesite="strict")
+        return response
 
     # -----------------------------------------------------------------------
     @app.post("/rich")
     async def rich_post(request: Request):
         """Agent POSTs rich payloads here; forwarded to all /ws/rich subscribers."""
+        if not _http_authorized(request):
+            return JSONResponse({"error": "missing or invalid token"}, status_code=403)
         try:
             payload = await request.json()
         except Exception:
@@ -535,6 +610,12 @@ def create_pty_app(
     # -----------------------------------------------------------------------
     @app.websocket("/ws/rich")
     async def rich_ws(websocket: WebSocket):
+        if not _ws_authorized(websocket):
+            # Accept first so real uvicorn/browser clients observe close code 4403
+            # instead of an HTTP-level handshake abort reported as 1006.
+            await websocket.accept()
+            await websocket.close(code=4403)
+            return
         await websocket.accept()
         # Replay stored history before subscribing to live updates so a
         # page reload restores the rich panel without restarting the TUI.
@@ -565,6 +646,14 @@ def create_pty_app(
     async def pty_ws(websocket: WebSocket):
         """Bridge the browser xterm.js ↔ a real PTY process."""
         import ptyprocess
+
+        if not _ws_authorized(websocket):
+            # Accept first so real uvicorn/browser clients observe close code 4403
+            # instead of an HTTP-level handshake abort reported as 1006. No PTY is
+            # spawned for unauthenticated connections.
+            await websocket.accept()
+            await websocket.close(code=4403)
+            return
 
         await websocket.accept()
 
