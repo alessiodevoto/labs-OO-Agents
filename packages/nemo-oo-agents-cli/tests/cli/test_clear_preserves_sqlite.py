@@ -381,32 +381,6 @@ async def test_clear_resets_shell(tmp_path):
     agent.shell.reset.assert_awaited_once()
 
 
-@pytest.mark.asyncio
-async def test_clear_resets_workflow_phase(tmp_path):
-    """``/clear`` must reset ``_phase`` and ``_workflow_state``."""
-    with patch("nemo_oo_agents_cli.tui.session_manager.SESSIONS_DIR", tmp_path):
-        old_sm = _make_sm(tmp_path)
-        agent = _make_mock_agent(old_sm._storage)
-        agent._phase = "brainstorming"
-        agent._workflow_state = {"step": 3, "plan": "old"}
-
-        cmd = ClearCommand(
-            agent=agent,
-            config=MagicMock(default_model="test"),
-            frontend=AsyncMock(),
-            session_manager=old_sm,
-        )
-        result = await cmd.execute([])
-        await _apply_post_session_swap(result)
-
-        if result.new_session_manager is not None:
-            result.new_session_manager.close()
-        old_sm.close()
-
-    assert agent._phase == "idle", f"/clear left _phase={agent._phase!r}"
-    assert agent._workflow_state == {}, "/clear left stale _workflow_state"
-
-
 # ── /session new resets agent state ────────────────────────────────────
 
 

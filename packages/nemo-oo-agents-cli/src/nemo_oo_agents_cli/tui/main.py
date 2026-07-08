@@ -20,17 +20,6 @@ if TYPE_CHECKING:
     from .config import Config
 
 
-async def handle_bang_command(user_input: str, bash) -> object:
-    """Run a !command through bash. Returns BashResult or None for empty/whitespace input.
-
-    Backward-compat wrapper kept for external callers and tests.
-    """
-    cmd = user_input[1:].strip()
-    if not cmd:
-        return None
-    return await bash.run(cmd)
-
-
 def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(

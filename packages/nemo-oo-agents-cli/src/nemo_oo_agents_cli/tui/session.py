@@ -1492,7 +1492,6 @@ class Session:
                     stdout=result.stdout or "",
                     stderr=result.stderr or "",
                     return_code=result.returncode,
-                    command=cmd,
                 )
                 if defer_render:
 

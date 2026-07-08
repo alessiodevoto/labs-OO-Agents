@@ -440,8 +440,8 @@ from nemo_oo_agents_cli.tui.commands import (  # noqa: E402
     PythonCommand,
     SkillsCommand,
     SwitchCommand,
-    _to_attr_name,
 )
+from nemo_oo_agents_cli.tui.mcp_registry import _to_attr_name  # noqa: E402
 from nemo_oo_agents_cli.tui.output import (  # noqa: E402
     ClearScreen,
     HelpOutput,
@@ -1534,8 +1534,7 @@ class TestTUIAgentInit:
                 with patch("nemo_oo_agents_cli.tui.agent.SkillWriting"):
                     with patch("nemo_oo_agents_cli.tui.agent.install_summarizer"):
                         agent = TUIAgent(llm=MagicMock())
-        assert agent._phase == "idle"
-        assert agent._workflow_state == {}
+        assert agent._config is not None
 
     def test_init_no_summarizer_for_none_policy(self):
         config = AgentConfig()

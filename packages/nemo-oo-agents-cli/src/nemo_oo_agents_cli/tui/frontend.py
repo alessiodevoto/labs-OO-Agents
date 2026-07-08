@@ -31,7 +31,6 @@ from .output import (
     TableOutput,
     TextOutput,
     Thinking,
-    UserMessage,
 )
 from .theme import COLORS
 
@@ -274,7 +273,6 @@ class TerminalFrontend:
             RichOutput: self._render_rich,
             DiffOutput: self._render_diff,
             HistoryReplay: self._render_history_replay,
-            UserMessage: self._render_user_message,
         }
 
     def _render_help(self, output: HelpOutput) -> None:
@@ -449,18 +447,6 @@ class TerminalFrontend:
                 os.unlink(tmp_path)
             except Exception:
                 pass
-
-    def _render_user_message(self, output: UserMessage) -> None:
-        """Render the user's submitted text with a high-contrast background bar."""
-        from rich.text import Text
-
-        c = self._console.console
-        # Full-width bar: white text on light grey background
-        width = c.size.width
-        # Pad to full terminal width so the background spans the whole line
-        display = f" {output.content} "
-        text = Text(display.ljust(width), style=f"{COLORS['text']} on {COLORS['surface2']}")
-        c.print(text)
 
     def _render_history_replay(self, output: HistoryReplay) -> None:
         """Render past conversation turns in a dimmed style.

@@ -21,9 +21,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# Built-in ! commands
-_BANG_BUILTINS: dict[str, str] = {}
-
 # An inline @ file/dir mention: an "@" at start-of-string or after whitespace,
 # followed by a no-whitespace path fragment. Anchored with \Z by _active_mention
 # (token being typed at the cursor) and used unanchored by expand_mentions (all
@@ -477,11 +474,6 @@ class Completer:
 
     def _bang_completions(self, text: str) -> list[CompletionItem]:
         items: list[CompletionItem] = []
-
-        # Built-in bang commands
-        for cmd, desc in _BANG_BUILTINS.items():
-            if cmd.lower().startswith(text.lower()):
-                items.append(CompletionItem(text=cmd, display=cmd, description=desc))
 
         rest = text[1:]  # strip leading !
         if " " not in rest:

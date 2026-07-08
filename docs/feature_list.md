@@ -702,7 +702,7 @@ NeMo OO Agents is a single repository that ships as several lockstep packages:
 
 - **Compose multi-line input** with `Enter` to submit and `Alt/Option+Enter`, `Ctrl+J`, or `Shift+Enter` (CSI-u terminals) to insert a newline.
 - **Recall prior input** with `Up`/`Down` history navigation on an empty buffer plus `Ctrl+R` reverse-search.
-- **Type ahead while the agent works** — submitted lines queue in a visible `│` pane via `QueueState`, drained in submission order, with consecutive plain-text lines merged into one multi-line message.
+- **Type ahead while the agent works** — submitted lines queue in a visible `│` pane, drained in submission order, with consecutive plain-text lines merged into one multi-line message.
 - **Edit a queued message** by pressing `Up` on an empty buffer, which pops the last queued item back into the input.
 - **Soft-cancel a running turn** with `Esc` (cancels the agent task but preserves queued input); `Ctrl+C` cancels the turn while thinking or exits when idle; `Ctrl+C ×2`/`Ctrl+D` exit.
 - **Run a shell command inline** by prefixing `!` (e.g. `!ls -la`); routed to a dedicated TUI-owned `ShellTools` that tracks the agent's cwd, not recorded as a conversation turn.
