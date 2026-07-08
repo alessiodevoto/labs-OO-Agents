@@ -443,7 +443,7 @@ upload-test-report:
     - main
 
 # Capability testing - runs nemo_oo_agents against LLM test suite
-# Requires NVIDIA_INFERENCE_API_KEY environment variable to be set
+# Requires NVIDIA_INTERNAL_API_KEY environment variable to be set
 # Runs on main commits and on MRs that touch core framework files.
 # Skipped for MRs that only change packages/ (benchmark agents, adapters).
 # Blocks merge if STABLE tier tests fail (Frontier/Horizon are non-blocking)
