@@ -21,7 +21,7 @@ Cache lifecycle for DynamicContext blocks:
 from collections.abc import ItemsView, Iterator, KeysView
 from typing import Any
 
-from nemo_oo_agents.context_blocks import DynamicContext
+from nemo_oo_agents.context_blocks import Context, DynamicContext
 from nemo_oo_agents.context_blocks.exceptions import DynamicNotResolvedError, ProtectedBlockError
 
 _SENTINEL = object()
@@ -49,28 +49,88 @@ class ContextManager:
         self.protected_keys: set[str] = set()
         self._dynamic_cache: dict[str, Any] = {}
         self._static: dict[str, bool] = {}
+        self.disabled_keys: set[str] = set()
 
     def __setitem__(self, key: str, value: Any) -> None:
-        """Set a dynamic context block via dict syntax.
+        """Set a context block via dict syntax.
 
-        Blocks set this way are placed in the volatile (dynamic) partition.
-        Use ``set_static()`` for blocks that should be in the cacheable prefix.
+        Accepts the same value types as declarative ``context={}`` dicts:
+        - ``str``: Literal text, placed in volatile suffix.
+        - ``Context(value=...|expr=..., prefix=bool)``: Full control over content and placement.
+        - ``DynamicContext("expr")``: Expression block (deprecated, use Context(expr=...)).
+        - ``None``: Suppress the block from prompt rendering.
 
         Args:
             key: Block key (unique identifier).
-            value: Any value. Stored as-is; pprint formatting happens at
-                   render time in _prepare_context().
+            value: Block value (str, Context, DynamicContext, None, or any pformat-able object).
 
         Raises:
-            ProtectedBlockError: If key is protected.
-            TypeError: If value is a DynamicContext (use set_dynamic() instead).
+            ProtectedBlockError: If key is protected and value is not None/Context.
         """
+        if value is None:
+            self.disable(key)
+            if key in self._blocks and key not in self.protected_keys:
+                del self._blocks[key]
+                self._static.pop(key, None)
+            return
+        if isinstance(value, Context):
+            if value.is_dynamic:
+                if value.prefix:
+                    if key in self.protected_keys:
+                        self.set_static_protected(key, expr=value.expr)
+                    else:
+                        self.set_static(key, expr=value.expr)
+                else:
+                    if key in self.protected_keys:
+                        self.set_dynamic_protected(key, value.expr)
+                    else:
+                        self.set_dynamic(key, value.expr)
+            else:
+                if value.prefix:
+                    if key in self.protected_keys:
+                        self.set_static_protected(key, value.value)
+                    else:
+                        self.set_static(key, value.value)
+                else:
+                    if key in self.protected_keys:
+                        self.set_dynamic_protected(key, value=value.value)
+                    else:
+                        self.set_dynamic(key, value=value.value)
+            return
         if isinstance(value, DynamicContext):
-            raise TypeError(
-                f"Use self.context.set_dynamic({key!r}, {value.expr!r}) "
-                f"instead of self.context[{key!r}] = DynamicContext(...)"
-            )
+            if key in self.protected_keys:
+                self.set_dynamic_protected(key, value.expr)
+            else:
+                self.set_dynamic(key, value.expr)
+            return
         self.set_dynamic(key, value=value)
+
+    def set(
+        self, key: str, value: str | None = None, *, expr: str | None = None, prefix: bool = False
+    ) -> None:
+        """Set a context block — convenience method with keyword arguments.
+
+        Equivalent to ``context_manager[key] = Context(value, expr=expr, prefix=prefix)``
+        but friendlier for callers who prefer explicit keyword args.
+
+        Args:
+            key: Block key.
+            value: Literal text content (mutually exclusive with expr).
+            expr: Python expression re-evaluated each LLM turn.
+            prefix: Place in cacheable prefix if True, volatile suffix if False.
+        """
+        if value is not None and expr is not None:
+            raise TypeError("set() takes value or expr, not both")
+        if value is None and expr is None:
+            self[key] = None
+            return
+        if expr is not None:
+            self[key] = Context(expr=expr, prefix=prefix)
+        else:
+            if prefix:
+                self[key] = Context(value, prefix=True)
+            else:
+                self[key] = value
 
     def set_static(self, key: str, value: Any = _SENTINEL, *, expr: str | None = None) -> None:
         """Set a static context block (placed in the cacheable prefix).
@@ -112,6 +172,7 @@ class ContextManager:
             raise TypeError("set_static() requires either value or expr=")
 
         self._static[key] = True
+        self.disabled_keys.discard(key)
         self._invalidate(key)
 
     def set_dynamic(self, key: str, expr: str | None = None, *, value: Any = _SENTINEL) -> None:
@@ -142,6 +203,7 @@ class ContextManager:
         else:
             raise TypeError("set_dynamic() requires either expr or value=")
         self._static[key] = False
+        self.disabled_keys.discard(key)
         self._invalidate(key)
 
     def is_static(self, key: str) -> bool:
@@ -186,6 +248,7 @@ class ContextManager:
             raise ProtectedBlockError(key, "remove")
         del self._blocks[key]
         self._static.pop(key, None)
+        self.disabled_keys.discard(key)
         self._invalidate(key)
 
     def __contains__(self, key: object) -> bool:
@@ -201,6 +264,36 @@ class ContextManager:
     def keys(self) -> KeysView[str]:
         """Return block keys."""
         return self._blocks.keys()
+
+    def disable(self, *keys: str) -> None:
+        """Suppress named blocks from prompt construction without deleting them.
+
+        Disabled keys are omitted no matter which source would provide them:
+        framework defaults (``system_prompt``, ``self``, ``state``), strategy
+        blocks (``strategy_prompt``, ``execution_context``), user blocks,
+        decorator/scoped context, or skill-registered blocks. Disabling is
+        reversible with :meth:`enable` and is allowed for protected blocks.
+        """
+        self.disabled_keys.update(keys)
+        for key in keys:
+            self._invalidate(key)
+
+    def enable(self, *keys: str) -> None:
+        """Re-enable named blocks previously suppressed with :meth:`disable`."""
+        for key in keys:
+            self.disabled_keys.discard(key)
+
+    def is_enabled(self, key: str) -> bool:
+        """Return True if a block key is eligible for rendering."""
+        return key not in self.disabled_keys
+
+    def is_disabled(self, key: str) -> bool:
+        """Return True if a block key is currently suppressed."""
+        return key in self.disabled_keys
+
+    def disabled(self) -> "set[str]":
+        """Return a copy of currently suppressed block keys."""
+        return set(self.disabled_keys)
 
     def _raw_items(self) -> ItemsView[str, Any]:
         """Return raw key-value pairs including DynamicContext markers.
@@ -241,6 +334,7 @@ class ContextManager:
 
         del self._blocks[key]
         self._static.pop(key, None)
+        self.disabled_keys.discard(key)
         self._invalidate(key)
         return value
 
@@ -266,10 +360,15 @@ class ContextManager:
         is_static_block = self._static.get(key, False)
 
         if value is None:
-            if is_protected:
-                self.remove_protected(key)
-            else:
-                self.pop(key, None)
+            self.disable(key)
+            if not is_protected and key in self._blocks:
+                # Remove block definition without clearing disabled_keys
+                # (pop() would discard from disabled_keys, undoing the disable)
+                del self._blocks[key]
+                self._static.pop(key, None)
+        elif isinstance(value, Context):
+            # Route through __setitem__ which handles all Context cases
+            self[key] = value
         elif isinstance(value, DynamicContext):
             if is_protected:
                 if is_static_block:
@@ -318,6 +417,7 @@ class ContextManager:
             self._blocks[key] = value
         self.protected_keys.add(key)
         self._static[key] = True
+        self.disabled_keys.discard(key)
         self._invalidate(key)
 
     def set_dynamic_protected(
@@ -341,6 +441,7 @@ class ContextManager:
             raise TypeError("set_dynamic_protected() requires either expr or value=")
         self.protected_keys.add(key)
         self._static[key] = False
+        self.disabled_keys.discard(key)
         self._invalidate(key)
 
     def remove_protected(self, key: str) -> None:
@@ -357,4 +458,5 @@ class ContextManager:
         del self._blocks[key]
         self.protected_keys.discard(key)
         self._static.pop(key, None)
+        self.disabled_keys.discard(key)
         self._invalidate(key)

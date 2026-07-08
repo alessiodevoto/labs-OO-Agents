@@ -354,7 +354,9 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
         # to the LLM every turn — the agent reads queue depth straight
         # from the ``queues`` context block. Composed via
         # ``QueueManager.status()`` so adding new channels Just Works.
-        self.context.set_dynamic("queues", "self.queue_manager.status()")
+        from nemo_oo_agents import Context
+
+        self.context["queues"] = Context(expr="self.queue_manager.status()")
         if os.environ.get("NEMO_OO_RICH_URL"):
             from nemo_oo_agents.tools.web_publisher import RichOutput
 
@@ -364,7 +366,9 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
             )
             # The WebPublisher's doc is static across the session, so
             # it goes into the cacheable prefix with the system prompt.
-            self.context_manager.set_static("web", doc(self.web))
+            from nemo_oo_agents import Context
+
+            self.context["web"] = Context(doc(self.web), prefix=True)
 
     @property
     def v(self) -> AgentVars:
@@ -771,7 +775,9 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
         self.skills.activate(builtin_skills)
 
         # Render Python tool docs together so ShellTools/RepoTools stay paired in context.
-        self.context.set_static("python_tools", expr="doc(RepoTools, ShellTools)")
+        from nemo_oo_agents import Context
+
+        self.context["python_tools"] = Context(expr="doc(RepoTools, ShellTools)", prefix=True)
 
         # Skills register their own context blocks via context_block class attr
 
@@ -782,8 +788,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
         # Show context-window usage to the LLM every turn (lets the agent
         # decide when to call /compact). Value is from the PREVIOUS turn's
         # render, so the very first respond() call sees an empty string.
-        self.context.set_dynamic(
-            "context_usage",
+        self.context["context_usage"] = Context(
             expr="self.context_stats.format() if self.context_stats else ''",
         )
 

@@ -34,10 +34,10 @@ def test_setitem_raises_on_protected_key():
         ctx["system_prompt"] = "overwrite"
 
 
-def test_setitem_raises_for_dynamic_context_value():
+def test_setitem_accepts_dynamic_context_value():
     ctx = _ctx()
-    with pytest.raises(TypeError, match="set_dynamic"):
-        ctx["bad"] = DynamicContext("'expr'")
+    ctx["dynamic"] = DynamicContext("'expr'")
+    assert "dynamic" in ctx._context
 
 
 def test_set_static_expr_lands_in_static_partition():

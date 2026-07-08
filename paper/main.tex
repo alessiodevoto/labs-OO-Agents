@@ -27,62 +27,82 @@
 % Placeholder command for sections awaiting results
 \newcommand{\placeholder}[1]{\textcolor{red!60!black}{\textbf{[TODO: #1]}}}
 
-\title{Helpers Beat Prompts:\\Object-Oriented AI Agent Programming}
+\title{NeMo OO Agents:\\Object-Oriented Harnesses for Reliable AI Agents}
 
-\author{Paul Furgale, Ricardo Silveira Cabral, Severin Klingler, James Nolan, Matt Staats, Gaia Di Lorenzo, Elisa Martinez Abad, Christian Schueler}
+\author{Paul Furgale, Severin Klingler, James Nolan, Matt Staats, Gaia Di Lorenzo, Elisa Martinez Abad, Christian Schueler, Ricardo Silveira Cabral}
 
 \begin{document}
 
 \begin{abstract}
-We present Agent006, a Python framework for building AI agents where an agent
-is a Python object---its class defines scope, its methods define capabilities,
-and its type annotations define contracts. The framework enables seamless
-interleaving of deterministic code (``Software 1.0'') and LLM reasoning
-(``Software 3.0'') within a single class, letting developers express what should
-be computed by code and what should be reasoned by an LLM using familiar
-object-oriented constructs.
+We present NeMo OO Agents, a Python framework for building reliable AI agents by
+making the agent a Python object embedded in an auditable harness. Its classes
+define state and scope, its methods define capabilities, and its type
+annotations define contracts; generation methods cross into LLM execution while
+ordinary Python methods remain deterministic helpers. This unifies prompt
+engineering with software engineering: behavior can be tested, traced,
+versioned, refactored, and optimized in the same object model developers already
+use.
 
-We make five contributions.
+We make four contributions.
 %
-(1)~We introduce a \textbf{programming model} where method signatures,
-docstrings, and return types fully specify an agent's behavior---eliminating the
-gap between prompt engineering and software engineering.
+(1)~We introduce an \textbf{object-oriented agent programming model} where
+method signatures, docstrings, return types, and visibility constrain the underlying LLM.
 %
-(2)~We demonstrate empirically that \textbf{helpers beat prompts}: moving
-deterministic logic from LLM prompts into typed Python methods dramatically
-improves accuracy, achieving 80\% on DABStep (vs.\ 16\% SOTA) and 95\%
-Pass\textsuperscript{1} on $\tau$-bench retail.
+(2)~We describe the \textbf{harness layer} around the model: pass-by-reference
+Python values, object state, context blocks, event history, queues, background
+jobs, hot-reloadable skills, trace/eval viewing, and Agent Mesh coordination.
 %
-(3)~We introduce \textbf{capability tests}, a new evaluation methodology for
-validating that agents select the correct execution mode---answering directly
-when the task is semantic (e.g., sentiment analysis) and writing code when the
-task is computational (e.g., counting characters in ``strawberry''). Capability
-tests score output correctness and method correctness independently, catching
-``right answer, wrong approach'' failures invisible to standard benchmarks.
+(3)~We demonstrate empirically that \textbf{helpers beat prompts}: deterministic
+logic expressed as typed Python methods improves reliability on rule-heavy agent
+tasks, including DABStep and $\tau$-bench case studies. We report \textbf{full-benchmark evaluations} across Terminal
+Bench and SWE-bench Verified, showing these ideas make better use of the underlying models than traditionalharness designs.
 %
-(4)~We show that Agent006's method-level decomposition enables
-\textbf{compositional end-to-end optimization}: because each method has its own
-prompt, strategy, and model, sub-tasks can be optimized independently and
-improvements compose without the competing-constraints problem that plagues
-monolithic prompt engineering.
+(4)~We show how the same traces, skills, and queues support a
+\textbf{self-evolving harness}: agents can diagnose failures, edit and hot reload
+skills, coordinate over a mesh, and launch monitored evaluation campaigns.
 \end{abstract}
 
 \maketitle
 
 % ===========================================================================
+
 \section{Introduction}
 \label{sec:intro}
 % ===========================================================================
 
-Building reliable AI agents remains difficult. Current frameworks typically
-separate prompt templates from application code, creating an impedance mismatch:
-the prompt is where behavior is defined, but the code is where behavior is
-tested, versioned, and optimized. This separation makes end-to-end iteration
-slow and error-prone---a change to a prompt may break downstream expectations
-that only surface at runtime.
+Building reliable AI agents remains
+difficult~\cite{anthropic2024effectiveagents,anthropic2025longrunningharnesses,anthropic2025multiagent}.
+We identify three recurring obstacles in how agents are built today.
 
-We observe that Python's object-oriented programming model already provides the
-abstractions needed for agent construction:
+\paragraph{Prompts are divorced from code.} Current frameworks such as
+LangChain~\cite{langchain2023} and LlamaIndex~\cite{llamaindex2023} separate
+prompt templates from application code, creating an impedance mismatch: the
+prompt is where behavior is defined, but the code where that behavior is tested,
+versioned, and optimized is relegated to a second plane. This separation makes
+end-to-end iteration slow and error-prone---a change to a prompt may break
+downstream expectations that only surface at runtime.
+
+\paragraph{Iteration recomputes everything.} The cost is sharpest in multi-step
+agents, where the natural development loop is to tweak one phase and re-run.
+Because efficient LLM serving relies on prefix KV-caching, a change near the top
+of a long prompt invalidates the cache for everything that follows, so each edit
+forces a full, expensive recomputation---even of the steps that did not change.
+What we want instead is to decompose a workflow into phases, freeze the outputs of
+the phases we are not editing, and iterate on a single downstream phase while
+\emph{replaying} the frozen results of the phases before it.
+
+\paragraph{The wrong tool for each subtask.} Agents routinely ask an LLM to do
+work that ordinary code does more reliably and cheaply---counting the letters in
+a word, summing a column, enforcing a business rule---while the same systems make
+it awkward to drop back to code for the parts that are genuinely deterministic.
+Conversely, LLMs excel at subtasks that are hard to express as code, such as
+judging the sentiment of a sentence. Most frameworks leave this boundary
+implicit, so developers cannot cleanly choose the appropriate execution mode for
+each subtask.
+
+NeMo OO Agents addresses all three obstacles by collapsing the prompt/code divide
+into a single artifact. We observe that the object-oriented programming model
+already provides the abstractions needed for agent construction:
 
 \begin{itemize}
   \item \textbf{Classes} define scope and encapsulation---an agent's state and
@@ -95,206 +115,525 @@ abstractions needed for agent construction:
         descriptions of what a method does.
 \end{itemize}
 
-Agent006 exploits this observation. A method whose body is \texttt{...}
+These abstractions are not specific to any one language; the same mapping holds
+in any object-oriented language. We implement NeMo OO Agents in Python for a
+deliberate reason that is central to this paper's thesis: Python is heavily
+represented in the training corpora of modern code-capable LLMs, so the model
+already \emph{understands} idiomatic classes, methods, type annotations, and
+docstrings without additional training. By keeping the agent-facing surface
+in-distribution---ordinary code the model has seen millions of examples of---we
+avoid teaching the model a bespoke harness DSL or prompt format. Frameworks that
+introduce out-of-distribution abstractions must fight the model's priors; we ride
+them. A practical consequence is that improvements to the underlying model
+transfer for free: as base models get better at reading and writing Python, they
+get better at our agents without any retraining, fine-tuning, or harness-specific
+adaptation.
+
+NeMo OO Agents exploits this observation. A method whose body is \texttt{...}
 (ellipsis) is implemented by an LLM at runtime; a method with a real body
 executes as regular Python. The docstring \emph{is} the prompt. The return type
 \emph{is} the contract. The class's other methods \emph{are} the tools the LLM
 can call. No separate tool registration, prompt template system, or schema
-definition is needed.
-
-This design yields five insights that we develop in this paper:
-
-\paragraph{The programming model matters (\S\ref{sec:model}).} By making agents
-Python objects, we inherit the full software engineering toolkit: unit testing,
-type checking, profiling, refactoring, and code review all apply directly.
-Visibility controls (\texttt{@hidden}, \texttt{with visible:}) give developers
-fine-grained control over what the LLM can discover.
-
-\paragraph{Helpers beat prompts (\S\ref{sec:helpers}).} Not every task should be
-delegated to an LLM. Sentiment analysis is native to LLMs; counting characters
-in ``strawberry'' is not. When deterministic logic is expressed as a Python
-method rather than a prompt instruction, accuracy improves dramatically. We
-validate this on DABStep~\cite{dabstep2025} and $\tau$-bench~\cite{taubench2024}
-with detailed ablation studies.
-
-\paragraph{Capability tests (\S\ref{sec:helpers:captests}).} Standard benchmarks
-measure whether the agent got the right answer, but not whether it \emph{used
-the right approach}. We introduce capability tests---paired evaluations that
-validate mode selection (LLM reasoning vs.\ code execution) by scoring output
-correctness and method correctness independently. This catches a critical blind
-spot: agents that produce correct outputs through fundamentally wrong methods.
-
-\paragraph{Compositional optimization (\S\ref{sec:optimization}).} Because
-agents are decomposed into typed methods with explicit signatures, each
-sub-task can be optimized independently---swap strategies, refine docstrings,
-change models---and improvements compose without the competing-constraints
-problem that plagues monolithic prompts. We show how trace-informed
-optimization enables systematic improvement of agent performance.
-
-% ===========================================================================
-\section{The Agent006 Programming Model}
-\label{sec:model}
-% ===========================================================================
-
-% ---------------------------------------------------------------------------
-\subsection{Agent as Python Object}
-\label{sec:model:agent}
-% ---------------------------------------------------------------------------
-
-An Agent006 agent is a Python class that inherits from \texttt{Agent}. The
-framework uses metaclass inspection at class creation time to identify
-\emph{generation methods}---methods whose body is the ellipsis literal
-(\texttt{...})---and wraps them for LLM execution. All other methods execute
-as standard Python.
+definition is needed. A complete agent is just a class:
 
 \begin{lstlisting}
-class InventoryAgent(Agent, llm=llm):
-    """Agent that checks inventory."""
+class SupportAgent(Agent, llm=llm):
+    # Ordinary Python: deterministic, testable, callable as a tool.
+    def lookup_order(self, order_id: str) -> Order:
+        return DB.get_order(order_id)
 
-    # SW1: Deterministic Python -- available as tool
+    # LLM generation: the `...` body is filled in by the model at
+    # runtime; the docstring is the prompt and `Ticket` is the contract.
+    async def triage(self, message: str) -> Ticket:
+        """Triage the customer {message}. Call self.lookup_order()
+        if it refers to an existing order."""
+        ...
+\end{lstlisting}
+
+There is nothing to learn here that is not already Python. A developer reads this
+class and immediately knows what it does---\texttt{lookup\_order} is a normal
+method, \texttt{triage} is a method the model implements---without studying a new
+framework's vocabulary of chains, nodes, runnables, or prompt templates. The same
+is true for the model: because the class is ordinary, in-distribution code, the
+model can read it, call \texttt{triage}, extend \texttt{SupportAgent} with a new
+method, or write a brand-new agent from scratch as fluently as it writes any other
+Python. The single artifact is legible to both audiences at once---humans edit it
+as code, and models both \emph{consume} it (as the agent's runtime interface) and
+\emph{produce} it (when generating or modifying agents). This dual legibility is
+what lets the harness improve as base models improve, with no framework-specific
+adaptation on either side.
+
+This single artifact resolves the three obstacles directly. Prompt and code are
+no longer divorced: the class \emph{is} the prompt, the contract, and the tested,
+versioned, refactorable code, so agent development becomes ordinary Python-native
+software engineering in which object-oriented APIs, executable helpers, traces,
+and evaluation gates make behavior inspectable and improvable. The execution-mode
+boundary becomes explicit and local---an ellipsis body delegates a subtask to the
+model, a real body keeps it in deterministic code, and that choice lives in the
+method where it belongs. And because each phase is just a method call with typed
+inputs and outputs, prior phases can be replayed from stored results, so iteration
+cost scales with the phase under development rather than with the whole pipeline.
+
+The rest of the paper is structured as follows.
+
+
+\paragraph{Related work.} We position NeMo OO Agents against agent frameworks,
+code-generating agents, memory systems, and optimization frameworks.
+
+\paragraph{Harness, ideas, and contributions.} We explain the programming model
+and harness: typed methods, CodeAct/Predict boundaries, pass-by-reference Python
+values, object state, context/events, queues, skills, trace viewing, capability
+tests, case studies, and qualitative harness behavior.
+
+\paragraph{Experimental results.} We report benchmark results on
+Terminal Bench and SWE-bench Verified.
+
+% ===========================================================================
+
+\section{Related Work}
+\label{sec:related}
+% ===========================================================================
+
+\paragraph{Agent frameworks.}
+LangChain~\cite{langchain2023} and LlamaIndex~\cite{llamaindex2023} provide
+tool-use abstractions but separate prompt templates from application logic.
+AutoGen~\cite{wu2023autogen} and CrewAI~\cite{crewai2024} focus on multi-agent
+conversation patterns. DSPy~\cite{khattab2023dspy} introduces programmatic
+optimization of LLM pipelines via signatures and teleprompters. NeMo OO Agents shares
+DSPy's optimization philosophy but uses standard Python OOP as the abstraction
+layer and treats deterministic code as a first-class optimization lever.
+
+\paragraph{Practitioner agent engineering.}
+Anthropic engineering guidance emphasizes workflows and agents, tool design,
+context engineering, long-running harnesses, MCP-based tool integration, code
+execution, computer use, and multi-agent systems~\cite{anthropic2024effectiveagents,anthropic2025tools,anthropic2025contextengineering,anthropic2025longrunningharnesses,anthropic2024mcp,anthropic2025codeexecutionmcp,anthropic2025advancedtooluse,anthropic2024computeruse,anthropic2025multiagent}.
+This literature is operational rather than benchmark-driven, but it motivates
+the same design pressure as NeMo OO Agents: agent reliability depends on the
+harness surrounding the model, including tool interfaces, context management,
+execution sandboxes, and observable long-running workflows.
+\paragraph{Code-generating agents and recursive harnesses.}
+SWE-Agent~\cite{yang2024sweagent} and OpenHands~\cite{openhands2024} build
+agents for software engineering tasks. CodeAct~\cite{wang2024codeact} proposes
+code execution as the primary action modality. Recent survey work frames the same
+shift more broadly as \emph{code as agent harness}~\cite{ning2026codeharness}:
+code becomes the substrate for reasoning, acting, environment modeling,
+execution-based verification, memory, tool use, and multi-agent coordination.
+Recursive Language Models~\cite{zhang2025recursive} show that models can
+extend context processing by recursively decomposing prompts and invoking
+subcalls over snippets. Recursive Agent Harnesses~\cite{lumer2026recursive}
+extend this recursion from model calls to full harness instances with filesystem
+access, code execution, planning, and parallel subagent work. NeMo OO Agents is
+complementary to these views but makes the harness concrete as an
+object-oriented Python runtime where the agent's own methods are the available
+tools.
+
+\paragraph{Memory architectures.}
+Letta/MemGPT~\cite{packer2023memgpt} introduces OS-inspired memory management for
+LLMs with a tiered memory hierarchy.
+Reflexion~\cite{shinn2023reflexion} uses verbal self-reflection as a form of
+episodic memory. RAG~\cite{lewis2020rag} retrieves from external knowledge
+stores. NeMo OO Agents' memory architecture differs in providing structured,
+per-agent-instance memory (event history, context blocks, summarization) rather
+than a shared retrieval store.
+
+\placeholder{Expand with additional citations and positioning.}
+
+
+% ===========================================================================
+
+% ==========================================================================
+
+\section{Harness, Ideas, and Contributions}
+\label{sec:harness-contributions}
+% ==========================================================================
+
+Most agent harnesses still make the model work through the same interface:
+an OpenAI-style transcript of system, user, assistant, and tool messages, plus
+a list of tools the assistant is allowed to call.  That interface is useful,
+but it narrows what harness design can be.  Progress becomes a matter of
+building better tool schemas, better tool routers, and better message
+protocols around the same chat-and-tool-calling loop.  Crucially, this interface
+is something we teach models during post-training; it is not already part of the
+corpus of training data.
+
+NeMo OO Agents makes a different choice: it makes the model-facing harness look
+like ordinary Python.  A NeMo OO agent knows that it is an object in a Python
+runtime.  Its class defines what kind of agent it is.  Actions are Python code
+and it can call its own methods and common libraries, and orchestrate its own
+work or the work of teams of agents.  Its type annotations define the input and
+output contracts.  Its instance fields hold the state it has learned while working.
+The harness shows this object to the model as its working environment and
+records how the model uses it.  Python is therefore not just the implementation
+language; it is the interface the model actually sees.
+
+This object boundary unlocks six ideas from the NeMo OO programming model:
+\emph{typed methods}, \emph{pass-by-reference}, \emph{code as action},
+\emph{loop engineering}, \emph{object state}, and \emph{harness APIs}. None of
+the ideas is new in isolation. The contribution is that all six live on the
+same object that the model can inspect and act through. Together they turn
+agent development from prompt assembly into interface design: developers decide
+which capabilities should be deterministic Python, which should be LLM
+generation, what state should survive a turn, and what evidence should be left
+in the trajectory.
+
+\paragraph{Typed methods.}
+Typed methods make an LLM call look like an ordinary Python method call.  The
+method signature tells the model what inputs it has, the docstring says what
+work to do, and the return annotation gives the harness a contract to validate.
+The result is a Python value, not a paragraph that downstream code must parse.
+
+\begin{lstlisting}
+class PatchAgent(Agent):
+    async def diagnose(self, issue: Issue, trace: Trace) -> FixPlan:
+        "Find the root cause of {issue} using {trace}."
+        ...
+
+plan: FixPlan = await agent.diagnose(issue, trace)
+assert plan.files_to_edit
+\end{lstlisting}
+
+
+\paragraph{Pass-by-reference.}
+Pass-by-reference means the model can work with live Python objects instead of
+forcing every value through a JSON or text serialization boundary.  In the
+Agent006 intro demo, the predecessor to NeMo OO, an agent receives raw 3-D
+assets: a \texttt{trimesh.Trimesh}, a \texttt{trimesh.PointCloud}, and a
+\texttt{Path} to a \texttt{.glb} asset.  The model sees names, types, and bounded
+previews, then writes Python against the real objects.
+
+\begin{lstlisting}
+class PlotlyVisualizer(Agent):
+    """Visualizes 3D data with Plotly."""
+
+    async def show(self, items: dict[str, Any]) -> str:
+        """Visualize all items in one Plotly figure, laid out side by side.
+        Each value may be a trimesh mesh, point cloud, Path, bytes, or dict."""
+        ...
+
+data_dir = Path("data")
+objects = {
+    "bunny": trimesh.load(data_dir / "bunny.obj"),
+    "city_scan": trimesh.load(data_dir / "city_scan.ply"),
+    "duck": data_dir / "duck.glb",  # Path: agent must load it
+}
+await PlotlyVisualizer().show(objects)
+\end{lstlisting}
+
+The first prefill turn shows the live arguments without serializing the full
+mesh, point cloud, or asset file.  Loading the Agent006 MR~498 example data
+produces this preview:
+
+\begin{lstlisting}
+Task: show()
+
+items (dict):
+{
+    'bunny': <trimesh.Trimesh(vertices.shape=(2503, 3), faces.shape=(4968, 3))>,
+    'city_scan': <trimesh.PointCloud(vertices.shape=(21000, 3))>,
+    'duck': PosixPath('data/duck.glb'),
+}
+
+Return type: str
+\end{lstlisting}
+
+\paragraph{Code as action.}
+Code as action means the model acts by writing Python, not only by selecting one
+JSON tool call at a time.  The action can use variables, loops, conditionals,
+ordinary libraries, and methods on \texttt{self}; the harness executes the cell
+and returns the results to the model.  A CodeAct cell can recursively call
+generation methods, create and await subagents, define helper functions, and 
+read/write object state.
+
+\begin{lstlisting}
+# Model-written action inside a CodeAct strategy.
+pages = await self.pdf.pages("manual.pdf")
+ocr_agent = PageOCRAgent()
+
+async def read_page(page: PDFPage) -> PageText:
+    text = await ocr_agent.ocr(page)
+    return PageText(page=page.number, text=text)
+
+page_texts = await asyncio.gather(*(read_page(page) for page in pages))
+return_result(page_texts)
+\end{lstlisting}
+
+\paragraph{Loop engineering.}
+There is no separate workflow DSL and no fork between
+``workflow'' and ``ReAct'' programming.  The mental model for all execution is
+Python.  Developers and agents freely interleave deterministic code, generation
+methods, CodeAct cells, and subagent calls inside the same control flow.
+
+\begin{lstlisting}
+async def ocr_document(self, pdf: PDF) -> DocumentText:
+    pages = await self.split_pages(pdf)        # deterministic helper
+    worker = PageOCRAgent()                    # agent loop as an object
+    texts = []
+    for batch in batched(pages, 8):
+        texts.extend(await asyncio.gather(
+            *(worker.ocr(page) for page in batch)  # generation method calls
+        ))
+    return await self.merge_pages(texts)       # another typed method
+\end{lstlisting}
+
+\paragraph{Object state.}
+The agent has explicit state it can store, inspect, and reuse
+later.  Short-lived Python variables handle the current turn; durable fields assigned to \texttt{self} survive turns, summaries, and restarts; task-specific state can
+live on ToDo objects.  The model does not have to reconstruct all progress from a
+message transcript.
+
+\begin{lstlisting}
+self.failing_tests = ["test_parser", "test_roundtrip"]
+self.current_hypothesis = "schema cache is stale"
+
+todo = self.todo.add("Fix schema cache invalidation")
+todo.files = ["parser/cache.py", "tests/test_cache.py"]
+\end{lstlisting}
+
+\paragraph{Agent-Visible Harness APIs.}
+Harness APIs cover model-visible access to the harness context and event
+stream.  We focus on three surfaces: structured context blocks in the style of
+Letta/MemGPT memory sections, per-turn dynamic context computed from live state,
+and events that let the agent inspect what happened in the session.  Dynamic
+context also covers runtime assembly such as skill/tool inventory blocks or
+summaries derived from event history.  We distinguish developer APIs from agent
+APIs.  Many harnesses let developers assemble prompts, memory, or callbacks
+before a run.  NeMo OO Agents exposes the same kind of control plane to the
+model as ordinary Python: the agent can add or refresh context blocks, define
+dynamic context, and inspect events while it is working.
+
+\begin{lstlisting}
+self.context.set("goal", "Diagnose the schema cache failure")
+self.context.set_dynamic("progress", "self.v.current_hypothesis")
+self.context.set_dynamic("skills", "self.skills.status()")
+
+for event in self.events.query(regex="schema", limit=5):
+    print(event.tag, event.summary)
+\end{lstlisting}
+
+Table~\ref{tab:harness-idea-comparison} compares NeMo OO Agents with several
+agent development kits and harnesses against these six ideas using model-visible
+rubrics: typed loop I/O, live-reference passing, code as the action medium, loop
+engineering, object state, and harness APIs. The point is not that other systems
+lack useful abstractions---many are strong for workflow graphs, multi-agent
+chat, enterprise connectors, or benchmark execution---but that they usually
+expose one interface to developers and another, more serialized message/tool
+interface to the model. NeMo OO's contribution is to make the live Python
+object, its typed methods, and the harness's own context and event APIs the
+primary surface.
+
+\begin{landscape}
+\begin{table}[p]
+\centering
+\caption{Evidence-backed comparison of agent development kits and harnesses
+against six harness-interface ideas.  Scores summarize the subagent source-code
+reviews in \texttt{harness-research/reports}.  Scores use the clarified rubrics: typed loop I/O is Strong when the model-facing
+loop itself receives a typed input contract and produces a typed output contract;
+it is Partial for typed workflow/graph boundaries over message-mediated agent
+loops, or for untyped input with typed final output.  Pass-by-reference means the agent receives a live reference to data and can
+pass that reference to tools or methods without serializing the data; code-as-action means the agent can emit an executable code block with control
+flow and inline tool/method calls, then observe only the object result or stdout;
+loop engineering records both how developers build loops (custom DSLs or agents
+as tools) and whether models can write real orchestration loops over
+agents/subagents at runtime; handoffs, one-shot delegation, and CodeAct alone do
+not count unless the model can create or call subagents, orchestrate them with
+arbitrary code, and write new loop functions such as produce/evaluate/retry
+loops.  Object state means state the agent can store and retrieve; harness APIs mean APIs for controlling model-visible context and session
+events, distinguishing structured context blocks, per-turn dynamic context such
+as retrieved skill/tool inventories, and event inspection, and separating
+developer-facing APIs from APIs the agent/model can call.}
+\label{tab:harness-idea-comparison}
+\begin{adjustbox}{max width=\linewidth}
+\scriptsize
+\begin{tabular}{p{0.15\linewidth}p{0.075\linewidth}p{0.085\linewidth}p{0.075\linewidth}p{0.075\linewidth}p{0.075\linewidth}p{0.075\linewidth}p{0.31\linewidth}}
+\toprule
+\textbf{System} & \textbf{Typed loop I/O} & \textbf{Pass-by-reference} & \textbf{Code as action} & \textbf{Loop engineering} & \textbf{Object state} & \textbf{Harness APIs} & \textbf{Interface evidence} \\
+\midrule
+LangGraph / LangChain & Partial & Limited & Partial & Partial & Partial & Partial & Graph/state/tool harness: StateGraph supports typed graph state/input/output, so the typed I/O is a typed workflow boundary over a typically message/tool-mediated model loop; graph state is real for developers and graph nodes, but the model experiences it only when the harness renders selected state into messages or when tools use hidden injected state/store arguments that are excluded from the model-visible tool schema; developer APIs control graph state, messages, and checkpoints, but model-side context control is mediated through tools/messages rather than a general context-block, dynamic-context, or event-inspection API; actions are usually tool calls/messages, with optional code-execution tools; loop engineering is partial because developers build loops with the custom StateGraph abstraction, while models do not write iterative agent/subagent orchestration loops. \\
+Microsoft Agent Framework & Partial & Limited & Strong & Partial & Partial & Partial & Unified agent/workflow harness: typed workflows can orchestrate agents, so the typed I/O is a typed workflow boundary over message/text-mediated Agent.run calls rather than necessarily the model loop; developers configure agents, instructions, workflows, memory, and middleware, but the model-visible interface is still primarily messages/tool calls rather than direct APIs for adding structured context blocks, defining per-turn dynamic context, or inspecting session events; CodeAct providers execute model-emitted code, but the code-execution boundary is primarily text/code in and text/result out; loop engineering is partial because developers get @workflow and custom WorkflowBuilder/orchestration abstractions, but the evidence does not show models writing iterative subagent produce/evaluate/retry loops. \\
+OpenAI Agents SDK & Partial & Limited & Partial & Partial & Limited & Limited & Agent/runner harness: typed final outputs and tool schemas are supported, so this is untyped/message-mediated input with typed output rather than typed input and output at the model loop; developers compose messages, agents, handoffs, guardrails, context objects, and tracing around Runner, but the model is not given a general API for manipulating structured context blocks, per-turn dynamic context, or session events; Code Interpreter can execute emitted Python blocks and return outputs/artifacts, but ordinary agent actions remain item/tool mediated, so code-as-action is partial; loop engineering is partial because developers compose agents, handoffs, guardrails, and agents-as-tools around Runner, but model handoffs are not full iterative orchestration loops. \\
+Google ADK & Strong & Limited & Strong & Partial & Partial & Partial & Agent/workflow harness: input/output schemas and typed workflow nodes support typed loop I/O; model code execution is supported through code executors where files/input artifacts go in and stdout/stderr/text results plus output artifacts come back; ADK has real session state, memory, artifacts, ToolContext, and output-key state for host code/tools, and developers can shape instructions, events, sessions, and artifacts, but the model experiences that state as prompt variables, filtered history, tool results, or artifact names rather than as direct context-block, dynamic-context, or event-stream control; loop engineering is partial because developers get ADK-specific workflow classes such as Workflow, LoopAgent, Sequential, and Parallel, while model-side transfer/delegation is not the same as a model-authored iterative subagent orchestration loop. \\
+PI v0.72.1 & Limited & Limited & Partial & Partial & Limited & Limited & Private/local SWE harness evidence: available artifacts show a CLI/Docker benchmark runner where the agent acts through shell/file/code operations; filesystem/config/log persistence exists, but available runs use prompt/CLI/tool-output state rather than a model-visible object-state API or context control API; developers can wrap or orchestrate PI externally with ordinary TypeScript/CLI code, but no model-visible APIs for structured context blocks, dynamic context, event inspection, or subagent orchestration loops were found. \\
+Hermes & Limited & Limited & Strong & Partial & Limited & Limited & Hermes Agent evidence: official code-execution docs describe \texttt{execute\_code}, where the model writes a Python script with loops/conditionals and inline RPC calls to \texttt{web\_search}, \texttt{web\_extract}, \texttt{read\_file}, \texttt{write\_file}, \texttt{search\_files}, patch, and foreground terminal; workspace/files and session logs are persistent environmental state, but the model sees them through serialized file/terminal/tool observations rather than live object fields or a direct context API for structured-block, dynamic-context, or event-stream control; loop engineering is partial because composition is mainly agents/subagents, but delegation alone is not evidence that the model can write iterative subagent orchestration loops. \\
+OpenCode & Limited & Limited & Partial & Partial & Limited & Limited & Terminal coding harness: the agent acts through bash/shell-based tool calls, file edits, and code changes with file inputs and text/metadata observations; session rows, snapshots, and worktree files provide harness/environment persistence, but the model experiences them through paths, diffs, and serialized tool results rather than direct session/context object fields or APIs for manipulating structured context blocks, dynamic context, or events; loop engineering is partial through agents/subagents and task delegation, but delegation alone is not evidence that the model can write iterative subagent orchestration loops. \\
+NeMo OO Agents & Strong & Strong & Strong & Strong & Strong & Strong & Live Python object interface: generation-method arguments and return annotations are typed loop I/O; model-visible live Python values provide pass-by-reference; Python CodeAct cells with control flow and inline method/tool calls are actions, returning object values/stdout as observations; loop engineering is ordinary Python for both developers and models: the model can create/use subagents, orchestrate them with arbitrary code, and write new loop functions over the same callable primitives a developer uses; state lives on self; structured context blocks, per-turn dynamic context such as skill/tool inventory blocks, and queryable session events are mutable harness APIs exposed to both developers and the model. \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{table}
+\end{landscape}
+
+% ---------------------------------------------------------------------------
+\subsection{Agents as Python Objects}
+\label{sec:model}
+% ---------------------------------------------------------------------------
+
+A NeMo OO agent is a Python class.  Methods with ordinary Python bodies execute
+deterministically.  Methods whose body is the ellipsis literal
+(\texttt{...}) are generation methods: the harness implements them at runtime
+using an LLM strategy.  The method docstring becomes the task instruction, the
+method arguments become structured inputs, and the return annotation becomes the
+output contract.
+
+\begin{lstlisting}
+class InventoryAgent(Agent):
+    """Agent that checks inventory and explains fulfillment decisions."""
+
+    # Deterministic Python: exact state lookup, cheap and testable.
     def get_stock(self, item: str) -> int:
         return INVENTORY.get(item, 0)
 
-    # SW3: LLM generation -- docstring is the prompt
-    async def can_fulfill(self, items: list[str]) -> Result:
-        """Check if we can fulfill {items}.
-        Use self.get_stock() for lookups."""
-        ...  # LLM implements this
+    # LLM generation: semantic judgment over typed inputs and helper methods.
+    async def can_fulfill(self, items: list[str]) -> FulfillmentDecision:
+        """Check whether we can fulfill {items}.
+        Use self.get_stock() for inventory lookups before deciding."""
+        ...
 \end{lstlisting}
 
-Three constructs carry all semantic weight:
+The same object therefore contains both software 1.0 and software 3.0 behavior.
+The developer does not separately register tools, duplicate schemas into prompt
+strings, or maintain a parallel prompt hierarchy.  Refactoring a helper method,
+renaming a field, changing a return type, or adding a test happens in the same
+place it would in ordinary Python code.
 
-\begin{enumerate}
-  \item \textbf{Ellipsis (\texttt{...})} signals LLM generation. No ellipsis
-        means regular Python. This is the \emph{only} distinction.
-  \item \textbf{Docstring} is the prompt. Parameter placeholders (\texttt{\{items\}})
-        expand to actual arguments at call time.
-  \item \textbf{Return type} is the contract. Pydantic models force structured
-        output with automatic validation and retry.
-\end{enumerate}
+This object boundary is also the model's interface.  At generation time, the
+harness renders an inspectable API for \texttt{self}: visible methods, fields,
+type signatures, docstrings, and selected context blocks.  The model can call
+methods on \texttt{self}, inspect objects with \texttt{doc(obj)}, and write code
+against the live Python objects it was given.  Python is therefore not only the
+implementation language, but also the agent interface language.
 
-% ---------------------------------------------------------------------------
-\subsection{SW1/SW3 Interleaving and Visibility}
-\label{sec:model:visibility}
-% ---------------------------------------------------------------------------
-
-The LLM executing a generation method can call any visible method on
-\texttt{self}, enabling seamless interleaving of deterministic code (SW1) and
-LLM reasoning (SW3). Visibility is controlled at two scopes with opposite
-defaults:
-
-\begin{table}[h]
-\centering
-\caption{Visibility model. Agent members are visible by default (the LLM should
-know its own capabilities); module-level names are hidden by default (most
-imports are implementation details).}
-\label{tab:visibility}
-\begin{tabular}{lccc}
-\toprule
-\textbf{Scope} & \textbf{Default} & \textbf{Opt-in} & \textbf{Opt-out} \\
-\midrule
-Module-level imports & Hidden & \texttt{with visible:} & (already hidden) \\
-Class methods & Visible & (already visible) & \texttt{@hidden} \\
-Class fields & Visible & (already visible) & \texttt{Annotated[T, hidden]} \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-The LLM discovers available methods through \texttt{doc(self)}, an
-auto-generated API reference included in the system prompt. This enables
-\emph{progressive disclosure}: the LLM can introspect unknown objects at
-runtime using \texttt{doc(obj)} to discover their interfaces.
-
-Visibility is informational, not enforced---analogous to Python's underscore
-convention. The LLM has no way to \emph{discover} hidden names, but
-\texttt{self.\_hidden\_attr} would still work if guessed. This mirrors the
-framework's philosophy: guide the LLM through API design, don't try to sandbox it.
+Visibility is part of that interface design.  Agent members are visible by
+default, because the model should know its own capabilities.  Module-level names
+are hidden by default, because imports and helper constants are usually
+implementation details.  Developers can opt members out with \texttt{@hidden} or
+hidden annotations, and can opt module-level names in when they are intended as
+agent affordances.
 
 % ---------------------------------------------------------------------------
-\subsection{Strategies: Per-Method Execution Models}
-\label{sec:model:strategies}
+\subsection{Runtime Harness}
+\label{sec:harness}
 % ---------------------------------------------------------------------------
 
-Different tasks demand different execution models. A classification task needs
-a single structured JSON response; an implementation task needs iterative code
-execution with observation. Agent006 assigns strategies \emph{per method}:
+The object model is only half of NeMo OO Agents.  The other half is the harness:
+the event loop around that Python object.  It maintains the conversation with
+the model, exposes tools, executes code, validates outputs, records traces, and
+decides what context should be visible on each turn.  A single generation method
+invocation can include multiple model calls, Python tool calls, observations,
+validation failures, retries, and summaries.  All of these are represented as
+typed events rather than opaque prompt text.
 
-\begin{table}[h]
-\centering
-\caption{Strategy selection. The default is CodeActStrategy; override with
-\texttt{@strategy()}.}
-\label{tab:strategies}
-\begin{tabular}{lll}
-\toprule
-\textbf{Strategy} & \textbf{Use when} & \textbf{LLM calls} \\
-\midrule
-\texttt{StructuredOutputStrategy} & Returns Pydantic model, no code needed & Single \\
-\texttt{CodeActStrategy} (default) & Needs code execution or iteration & Multiple \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-This per-method granularity is a key differentiator: a single agent class can
-use cheap single-shot extraction for routing and expensive iterative execution
-for implementation, with different LLMs per method via cascading resolution.
-
-% ---------------------------------------------------------------------------
-\subsection{Context Blocks: Structured Working Memory}
-\label{sec:model:context}
-% ---------------------------------------------------------------------------
-
-Context blocks pin information into the LLM's system prompt across method calls:
+The main runtime components are:
 
 \begin{itemize}
-  \item \textbf{Static blocks} (\texttt{self.context["plan"] = value}) are
-        evaluated once and cached.
-  \item \textbf{Dynamic blocks}
-        (\texttt{self.context.set\_dynamic("state", "self.format()")}) are
-        re-evaluated each LLM turn.
-  \item \textbf{Scoped blocks} temporarily override context for a single call.
+  \item \textbf{Strategies.}  Each generation method has an execution strategy.
+        A simple extraction method can use a single structured-output call,
+        while an implementation method can use a CodeAct loop with Python
+        execution and observations.  Strategy choice is per method, not per
+        agent, so one object can mix cheap routing, semantic classification,
+        and expensive iterative coding.
+  \item \textbf{Context blocks.}  Agents attach named context to the system
+        prompt.  Static blocks pin durable facts; dynamic blocks re-render a
+        Python expression each turn; scoped blocks temporarily specialize one
+        call.  Context is managed as structured state, not by manual prompt
+        concatenation.
+  \item \textbf{Events and traces.}  The harness records model messages, tool
+        calls, code cells, observations, validation errors, summaries, and final
+        returns.  These traces are used for debugging, benchmark analysis,
+        regression tests, and trace-informed optimization.
+  \item \textbf{Validation.}  Return types, especially Pydantic models, are
+        enforced at the harness boundary.  The model may reason in free form
+        inside a strategy, but the method returns a typed Python value or fails
+        with evidence.
 \end{itemize}
 
-Context is per-agent-instance---sub-agents start with empty context, forcing
-explicit data flow. This prevents accidental context pollution and makes the
-information architecture auditable.
+This design turns prompting problems into software-interface problems.  A
+failure can often be fixed by making an affordance more discoverable, moving an
+exact operation into a helper, tightening a type contract, adding a validation
+step, or changing a method's strategy.  These are ordinary engineering actions
+that can be reviewed, tested, and optimized independently.
 
 % ---------------------------------------------------------------------------
-\subsection{Orchestration and Decomposition}
-\label{sec:model:orchestration}
+\subsection{Tools, Skills, and Persistent State}
+\label{sec:harness:tools}
 % ---------------------------------------------------------------------------
 
-Workflow logic is expressed as regular Python methods (no ellipsis) that call
-generation methods:
+NeMo OO agents are not limited to functions declared in one class.  The runtime
+mounts object-oriented tool surfaces onto the agent instance.  Examples include
+shell and repository tools, session search, trace exploration, web publishing,
+model catalogs, evaluation launchers, TODO management, and mesh communication.
+These are exposed as Python objects such as \texttt{self.shell},
+\texttt{self.repo}, \texttt{self.todo}, and \texttt{self.trace\_explorer}, with
+methods and docstrings that the model can inspect at runtime.
 
-\begin{lstlisting}
-async def solve(self, problem: str) -> Solution:
-    """Pure Python orchestration -- no LLM here."""
-    spec = await self.understand(problem)     # LLM
-    plan = await self.plan(spec)              # LLM
-    for step in plan.steps:
-        result = await self.implement(step)   # LLM
-        evidence = await self.verify(result)  # LLM
-        if not evidence.passing:
-            result = await self.fix(result, evidence)
-    return result
-\end{lstlisting}
+Skills extend this mechanism.  A skill is a reusable Python library attached to
+the agent as an object.  When an agent discovers a repeatable pattern---for
+example, how to mine benchmark traces, run a provider capability matrix, or
+prepare a paper evidence table---that pattern can be promoted from an ad hoc
+prompt instruction into a versioned Python skill.  Skills make the harness
+self-evolving: successful procedures become callable software that future agents
+can inspect, test, and reuse.
 
-The orchestrator enforces the workflow deterministically. The LLM cannot skip
-verification or reorder steps. Quality gates are Python \texttt{if} statements,
-not prompt instructions the LLM might ignore.
+State is likewise explicit.  Short-lived variables live in the Python execution
+session; durable working state is stored on snapshot-backed variables such as
+\texttt{self.v}; task-specific state is stored on TODO objects.  Long-running
+agents can therefore survive context summarization and session restarts without
+relying on the model to remember every detail in its prompt.
 
+% ---------------------------------------------------------------------------
+\subsection{Long-Running Work and Coordination}
+\label{sec:harness:coordination}
+% ---------------------------------------------------------------------------
+
+The harness supports tasks that exceed a single model context window or a single
+foreground command.  TODOs provide a visible decomposition of work, dependency
+tracking, task-scoped notes, and progress updates.  Queues and background
+producers allow long-running commands---for example, benchmark jobs or test
+suites---to run asynchronously while the agent remains responsive.  Summarizers
+compress old event history when context budgets are reached, preserving the
+state needed for the next turn.
+
+NeMo OO also includes coordination primitives.  A parent agent can delegate a
+TODO to a fresh subagent with its own context, avoiding contamination between
+subtasks.  Mesh channels let multiple named agents collaborate on a shared
+project: one agent can edit a paper, another can mine traces, and another can
+track external benchmark runs.  The coordination layer is deliberately ordinary
+software infrastructure---queues, tasks, event streams, and object references---
+rather than an implicit group-chat transcript that every model must parse.
+
+% ---------------------------------------------------------------------------
+\subsection{Evaluation and Trace-Informed Improvement}
+\label{sec:harness:evaluation}
+% ---------------------------------------------------------------------------
+
+The same harness used for interactive work is used for evaluation.  Capability
+tests check whether models choose the right execution mode, not only whether
+they guess the right answer.  Benchmark runners capture complete trajectories
+for SWE-bench, Terminal-Bench, CyberGym, and domain tasks.  Trace viewers and
+analysis tools expose where the model used the harness well, where it ignored an
+affordance, where it overloaded context, and where a helper or skill would have
+removed unnecessary reasoning.
+
+This closes the optimization loop.  Developers inspect traces, identify an
+interface failure, change the Python harness, and rerun the same task.  The
+improvement may be a new helper, a clearer method contract, a smaller context
+surface, a better strategy choice, or a new skill.  In each case the artifact is
+software, not just a longer prompt.  The result is a system that can improve
+through the same mechanisms as conventional software: decomposition,
+instrumentation, regression testing, and refactoring.
 
 % ===========================================================================
-\section{Helpers Beat Prompts}
+
+% ---------------------------------------------------------------------------
+\subsection{Helpers, Capability Tests, and Case Studies}
 \label{sec:helpers}
-% ===========================================================================
+% ---------------------------------------------------------------------------
 
 A central finding of our work is that \emph{deterministic helper methods
 consistently outperform prompt instructions} for tasks with exact semantics.
 We call this the ``helpers beat prompts'' principle.
 
 % ---------------------------------------------------------------------------
-\subsection{The Right Division of Labor}
+\subsubsection{The Right Division of Labor}
 \label{sec:helpers:division}
 % ---------------------------------------------------------------------------
 
@@ -322,16 +661,16 @@ Classification, routing & LLM (StructuredOutput) \\
 \end{tabular}
 \end{table}
 
-In Agent006, helpers are regular class methods. Because they appear in
+In NeMo OO Agents, helpers are regular class methods. Because they appear in
 \texttt{doc(self)}, the LLM discovers and calls them naturally---no tool
 registration needed.
 
 % ---------------------------------------------------------------------------
-\subsection{Capability Tests: Integration Tests for Agent Runtimes}
+\subsubsection{Capability Tests: Integration Tests for Agent Runtimes}
 \label{sec:helpers:captests}
 % ---------------------------------------------------------------------------
 
-A framework like Agent006 places specific demands on the underlying LLM:
+A framework like NeMo OO Agents places specific demands on the underlying LLM:
 it must write executable Python in a REPL, call \texttt{self.*} methods as tools,
 produce structured output conforming to Pydantic types, manage state across
 turns, and know when to reason directly versus when to write code. These are
@@ -360,7 +699,7 @@ across 12 models spanning four families.
 The headline finding is that \textbf{the latest generation of frontier
 models---Claude Sonnet~4.5, GPT-5-mini, Gemini~3 Flash Preview---now pass
 all 33 tests at 100\%}, demonstrating that the integration-level capabilities
-required by an agentic runtime like Agent006 are well within reach of current
+required by an agentic runtime like NeMo OO Agents are well within reach of current
 models. This was not the case even one generation ago: GPT-5.2 drops to 0\%
 on several REPL and data tasks, and Gemini~2.5 Flash Lite fails broadly on
 code execution, state management, and large-data processing.
@@ -381,7 +720,7 @@ scenarios.
 \centering
 \caption{Capability test pass rates across 12 models (3 runs, majority vote).
 Each test exercises a specific integration-level capability required by the
-Agent006 runtime. Green = 100\%, yellow = partial, red = 0\%.}
+NeMo OO Agents runtime. Green = 100\%, yellow = partial, red = 0\%.}
 \label{tab:captests-full}
 \begin{adjustbox}{max width=\linewidth}
 \footnotesize
@@ -468,9 +807,11 @@ capability tests:
 \end{itemize}
 
 % ===========================================================================
-\section{Compositional End-to-End Optimization}
+
+% ---------------------------------------------------------------------------
+\subsection{Compositional Optimization Case Studies}
 \label{sec:optimization}
-% ===========================================================================
+% ---------------------------------------------------------------------------
 
 A key advantage of the agent-as-object model is that it enables
 \emph{compositional optimization}: because agents are decomposed into typed
@@ -478,7 +819,7 @@ methods with explicit signatures, each sub-task can be optimized independently
 and improvements compose predictably.
 
 % ---------------------------------------------------------------------------
-\subsection{Case Study: DABStep}
+\subsubsection{Case Study: DABStep}
 \label{sec:optimization:dabstep}
 % ---------------------------------------------------------------------------
 
@@ -545,7 +886,7 @@ helper but too brittle for prompt engineering. The other task's expected answer
 appears to be incorrect in the benchmark itself.
 
 % ---------------------------------------------------------------------------
-\subsection{Case Study: $\tau$-bench Retail}
+\subsubsection{Case Study: $\tau$-bench Retail}
 \label{sec:optimization:taubench}
 % ---------------------------------------------------------------------------
 % DATA SOURCE: branch opt/tau-bench-deterministic-user-sim (tip: 402d60e6)
@@ -593,7 +934,7 @@ improvement.
 \placeholder{Add detailed ablation table showing which opt fixed which failure pattern.}
 
 % ---------------------------------------------------------------------------
-\subsection{Why Decomposition Enables Optimization}
+\subsubsection{Why Decomposition Enables Optimization}
 \label{sec:optimization:why}
 % ---------------------------------------------------------------------------
 
@@ -603,7 +944,7 @@ another (e.g., making it slower or more verbose on simple cases). This is the
 \emph{competing constraints} problem we observed at the DABStep ceiling: 10 of
 11 attempts to improve the remaining failures regressed previously passing tasks.
 
-Agent006's method-level decomposition breaks this coupling:
+NeMo OO Agents' method-level decomposition breaks this coupling:
 
 \begin{enumerate}
   \item Each method has its own prompt (docstring), strategy, and optionally
@@ -618,7 +959,7 @@ This is analogous to how modular software is easier to optimize than monolithic
 software: you profile, identify the bottleneck, and fix it in isolation.
 
 % ---------------------------------------------------------------------------
-\subsection{Optimization Surfaces}
+\subsubsection{Optimization Surfaces}
 \label{sec:optimization:surfaces}
 % ---------------------------------------------------------------------------
 
@@ -626,7 +967,7 @@ For each method, developers can independently tune:
 
 \begin{table}[h]
 \centering
-\caption{Per-method optimization surfaces available in Agent006.}
+\caption{Per-method optimization surfaces available in NeMo OO Agents.}
 \label{tab:optimization-surfaces}
 \begin{tabular}{lll}
 \toprule
@@ -643,11 +984,11 @@ Return type & Pydantic model fields & Tighten or relax output constraints \\
 \end{table}
 
 % ---------------------------------------------------------------------------
-\subsection{Trace-Informed Optimization Loop}
+\subsubsection{Trace-Informed Optimization Loop}
 \label{sec:optimization:loop}
 % ---------------------------------------------------------------------------
 
-Agent006 traces all public methods by default, capturing every LLM call, code
+NeMo OO Agents traces all public methods by default, capturing every LLM call, code
 execution, and return value. This enables a systematic optimization loop:
 
 \begin{enumerate}
@@ -680,12 +1021,12 @@ optimization on DABStep or $\tau$-bench. Show that per-method optimization
 avoids the competing constraints problem.}
 
 % ---------------------------------------------------------------------------
-\subsection{Comparison with DSPy}
+\subsubsection{Comparison with DSPy}
 \label{sec:optimization:dspy}
 % ---------------------------------------------------------------------------
 
 DSPy~\cite{khattab2023dspy} pioneered the idea of programmatic LLM optimization
-through its signature-based modules and teleprompter optimizers. Agent006 shares
+through its signature-based modules and teleprompter optimizers. NeMo OO Agents shares
 DSPy's conviction that LLM pipelines should be optimized programmatically rather
 than through manual prompt engineering. However, the approaches differ in
 important ways:
@@ -696,7 +1037,7 @@ important ways:
 \label{tab:dspy-comparison}
 \begin{tabular}{lll}
 \toprule
-\textbf{Aspect} & \textbf{DSPy} & \textbf{Agent006} \\
+\textbf{Aspect} & \textbf{DSPy} & \textbf{NeMo OO Agents} \\
 \midrule
 Unit of composition & Signature/Module & Python method \\
 Optimization target & Few-shot examples & Prompt + strategy + model + helpers \\
@@ -708,7 +1049,7 @@ Optimization scope & Whole pipeline & Per-method, composable \\
 \end{tabular}
 \end{table}
 
-The key distinction is that Agent006 treats deterministic code as a first-class
+The key distinction is that NeMo OO Agents treats deterministic code as a first-class
 optimization lever: rather than only optimizing what the LLM sees (prompts,
 examples), developers can move logic \emph{out} of the LLM entirely into helpers.
 This ``helper vs.\ prompt'' decision is itself an optimization choice---one that
@@ -719,75 +1060,92 @@ available.}
 
 
 % ===========================================================================
-\section{Memory Architecture}
+
+% ---------------------------------------------------------------------------
+\subsection{State, Context, and Trace Memory}
 \label{sec:memory}
-% ===========================================================================
-
-Agent006 provides three levels of memory, each solving a different problem:
-event history (short-term), context blocks (working memory), and summarization
-(compression).
-
-% ---------------------------------------------------------------------------
-\subsection{Current Memory Mechanisms}
-\label{sec:memory:current}
 % ---------------------------------------------------------------------------
 
-\paragraph{Event history.} Every LLM call, code execution, and tool invocation
-becomes an event stored in \texttt{agent.events}. Events are tagged with stable
-string identifiers and queryable:
-\texttt{agent.events.query(type="task", limit=50)}. This is the agent's
-short-term memory---what happened so far in this execution.
+NeMo OO Agents currently provides memory through implemented harness mechanisms
+rather than through a single monolithic memory module.
 
-\paragraph{Context blocks.} Named information pinned into the system prompt
-across method calls. Static blocks hold fixed values (plans, specs); dynamic
-blocks re-evaluate a Python expression each LLM turn (live state). The LLM can
-also manage its own context from within CodeAct.
+\paragraph{Object and snapshot state.} Agent instances hold managers, handles,
+configuration, and progress markers as ordinary Python state. Snapshot-backed
+stores persist selected values across turns and sessions.
 
-\paragraph{Summarization.} Two mechanisms prevent context overflow:
-\texttt{TokenBudgetSummarizer} compresses oldest events when a token budget is
-exceeded; \texttt{MethodSummarizer} compresses each completed method's events.
-Both run asynchronously---the summary is generated in the background and swapped
-in before the next turn.
+\paragraph{Event history.} Every LLM call, code execution, tool invocation, and
+message is recorded as an event. Agents can query and summarize this history,
+and the viewer can reconstruct trajectories from spans.
 
-% CIM section extracted to paper/cim-draft.md for future inclusion.
+\paragraph{Context blocks.} Static and dynamic context blocks control what is
+rendered into the prompt. Dynamic blocks let the agent expose a live projection
+of state without stuffing the full state object into every turn.
 
-% ===========================================================================
-\section{Related Work}
-\label{sec:related}
-% ===========================================================================
+\paragraph{Session search.} Historical sessions can be indexed and searched,
+turning prior traces into a retrieval layer for debugging and resumption.
 
-\paragraph{Agent frameworks.}
-LangChain~\cite{langchain2023} and LlamaIndex~\cite{llamaindex2023} provide
-tool-use abstractions but separate prompt templates from application logic.
-AutoGen~\cite{wu2023autogen} and CrewAI~\cite{crewai2024} focus on multi-agent
-conversation patterns. DSPy~\cite{khattab2023dspy} introduces programmatic
-optimization of LLM pipelines via signatures and teleprompters. Agent006 shares
-DSPy's optimization philosophy but uses standard Python OOP as the abstraction
-layer and treats deterministic code as a first-class optimization lever.
-
-\paragraph{Code-generating agents.}
-SWE-Agent~\cite{yang2024sweagent} and OpenHands~\cite{openhands2024} build
-agents for software engineering tasks. CodeAct~\cite{wang2024codeact} proposes
-code execution as the primary action modality. Agent006's CodeActStrategy is
-inspired by this work but embeds code execution within an object-oriented
-framework where the agent's own methods are the available tools.
-
-\paragraph{Memory architectures.}
-MemGPT~\cite{packer2023memgpt} introduces OS-inspired memory management for
-LLMs with a tiered memory hierarchy.
-Reflexion~\cite{shinn2023reflexion} uses verbal self-reflection as a form of
-episodic memory. RAG~\cite{lewis2020rag} retrieves from external knowledge
-stores. Agent006's memory architecture differs in providing structured,
-per-agent-instance memory (event history, context blocks, summarization) rather
-than a shared retrieval store.
-
-\placeholder{Expand with additional citations and positioning.}
-
+\paragraph{Future work: Continuous Integration Memory.} The CIM design in
+\texttt{paper/cim-draft.md} treats memory as active verification rather than
+passive retrieval: topic shards act like a test suite and flag contradictions in
+new outputs. We leave CIM in future work until its planned contradiction,
+scaling, and context-efficiency experiments are complete.
 
 % ===========================================================================
-\section{Discussion and Future Work}
+
+% ---------------------------------------------------------------------------
+\subsection{Anecdotal Harness Behavior}
+\label{sec:anecdotal}
+% ---------------------------------------------------------------------------
+
+Aggregate pass rates are necessary but incomplete: many harness improvements
+show up first as qualitative changes in how agents diagnose, coordinate, and
+recover during long-running work. The following examples are anecdotal rather
+than controlled ablations, but they describe recurring behaviors that motivated
+our instrumentation choices.
+
+\paragraph{Self-repair and extension.} In several sessions, agents improved
+their own operating environment while continuing the parent task. Mesh and
+queue handling were debugged from live traces, patched, reloaded, and then used
+for subsequent coordination in the same report-writing workflow. Session search
+served a similar role: once prior evaluation artifacts were indexed, an agent
+could recover a historical capability-test run and route the exact JSONL output
+and session identifier to another analyst instead of re-running the experiment.
+These episodes are the practical version of the harness thesis: reusable
+behavior moves from one-off prompt instructions into inspectable Python helpers
+that can be tested and invoked again.
+
+\paragraph{Infrastructure diagnosis.} Trace evidence repeatedly prevented
+benchmark failures from being misread as model-quality failures. Examples
+include provider or gateway errors after a passing smoke gate, Docker Hub rate
+limits invalidating container setup, missing \texttt{PYTHONPATH} entries for the
+agent CLI, and Docker network-pool exhaustion during Terminal Bench runs. In
+each case, the useful signal was not merely that a task failed, but where the
+failure occurred: before model reasoning, during harness setup, inside tool
+execution, or in the scorer path. This separation lets us quarantine invalid
+runs instead of tuning prompts against infrastructure noise.
+
+\paragraph{Human/agent coordination.} Mesh channels made the report-writing
+process itself inspectable. Multiple agents joined \texttt{\#report-writing},
+announced branch ownership, shared trace-analysis slices, and acknowledged when
+a section was stable or under edit. The branch discipline used for this draft is
+a small but representative example: one contributor edited the introduction
+while others continued on non-introduction sections, with each agent fetching,
+fast-forwarding, and validating before building on the shared branch.
+
+\paragraph{Harness adapters.} Adapter work for Hermes and PI exposed whether a
+benchmark harness was genuinely executing trajectories or only returning
+metadata. Installation checks, model-routing smoke tests, and trace availability
+were treated as first-class evidence before interpreting pass rates. This is why
+we report interim Hermes status separately and defer PI and Terminal-Bench
+trajectory claims until artifact grouping/import produces rows with usable
+traces.
+
+% ===========================================================================
+
+% ---------------------------------------------------------------------------
+\subsection{Limitations and Future Work}
 \label{sec:discussion}
-% ===========================================================================
+% ---------------------------------------------------------------------------
 
 \paragraph{Limitations.} Visibility is informational, not enforced---a
 determined LLM could guess hidden attribute names. Context blocks and event
@@ -796,33 +1154,221 @@ serialization. The ``helpers beat prompts'' finding applies most clearly to
 rule-based domains; creative or open-ended tasks may not benefit from the same
 decomposition.
 
-\paragraph{SFT from agent traces.} Agent006's tracing infrastructure captures
+\paragraph{SFT from agent traces.} NeMo OO Agents' tracing infrastructure captures
 complete trajectories suitable for supervised fine-tuning. We have a pipeline
 for generating SFT data from SWE-bench trajectories and plan to evaluate whether
 fine-tuned smaller models can replicate strong agent behavior.
 
 \paragraph{Broader impact.} By making agent behavior auditable (traces),
-decomposable (methods), and type-safe (Pydantic contracts), Agent006 aims to
+decomposable (methods), and type-safe (Pydantic contracts), NeMo OO Agents aims to
 make AI agents more predictable and debuggable---properties we believe are
 prerequisites for trustworthy deployment.
 
 
 % ===========================================================================
-\section{Conclusion}
+
+\section{Experimental Results}
+\label{sec:evaluation}
+% ===========================================================================
+
+\subsection{Terminal Bench}
+\label{sec:evaluation:terminal-bench}
+
+Table~\ref{tab:tb-results} summarizes the current Terminal Bench results after
+container setup fixes were folded in.
+
+\begin{table}[h]
+\centering
+\caption{Terminal Bench pass rates. TB1 converged numbers fold in reruns after
+the cp312 agent-setup fix; TB2 is a clean 89-task baseline-agent run.}
+\label{tab:tb-results}
+\begin{tabular}{llccc}
+\toprule
+\textbf{Benchmark} & \textbf{Agent} & \textbf{Sonnet} & \textbf{Opus 4.6} & \textbf{Ultra} \\
+\midrule
+TB1 converged & baseline / CodeAct & 45.4\% & \textbf{62.2\%} & 44.6\% \\
+TB1 converged & specialized & 51.5\% & 60.9\% & 38.5\%* \\
+TB1 converged & ReAct & 39.8\% & 27.5\% & 38.9\%* \\
+TB2 & baseline / CodeAct & 40.4\% & \textbf{64.4\%} & 34.8\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{SWE-bench Verified}
+\label{sec:evaluation:swebench}
+
+Table~\ref{tab:swebench-results} lists the current SWE-bench Verified results
+used by this draft. The strongest completed run is GPT-5.5 BenchAgent with the
+tree-sitter-enabled RepoTools path.
+
+\begin{table}[h]
+\centering
+\caption{SWE-bench Verified results.}
+\label{tab:swebench-results}
+\begin{tabular}{llccl}
+\toprule
+\textbf{Model} & \textbf{Agent / Variant} & \textbf{Passes} & \textbf{Pass rate} & \textbf{Notes} \\
+\midrule
+GPT-5.5 & BenchAgent + tree-sitter & 393/500 & \textbf{78.6\%} & \\
+GPT-5.5 & BenchAgent & 387/500 & 77.4\% & \\
+Opus 4.6 & BenchAgent & 380/500 & 76.0\% & \\
+Opus 4.6 & swebench/todo & 376/499 & 75.4\% & \\
+Sonnet & swebench/todo & 330/496 & 66.5\% & \\
+Ultra & swebench/todo & 301/500 & 60.2\% & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Matched tree-sitter comparison.}
+The GPT-5.5 rows are also useful as a matched-task comparison across the same
+500 SWE-bench task IDs. The non-tree-sitter rebased run passed 373/500 tasks
+(74.6\%), the early tree-sitter fixed run passed 387/500 (77.4\%), and the final
+\texttt{repl\_r2} tree-sitter run passed 393/500 (78.6\%). Relative to the
+non-tree-sitter baseline, the early tree-sitter run gained 33 tasks and lost 19
+for a net +14 passes; the final \texttt{repl\_r2} run gained 36 and lost 16 for
+a net +20 passes. Relative to the early tree-sitter run, \texttt{repl\_r2}
+gained 27 tasks and lost 21 for a net +6 passes. We treat these as matched
+pass-rate deltas, not causal attribution to tree-sitter alone: run configuration,
+import state, and trace coverage also differ.
+
+\begin{table}[h]
+\centering
+\caption{Matched-task GPT-5.5 SWE-bench comparison. All rows cover the same 500
+task IDs; the two comparison runs are mostly metadata-only, so trajectory claims
+remain restricted to the final \texttt{repl\_r2} corpus.}
+\label{tab:swebench-ts-comparison}
+\begin{tabular}{lrrrr}
+\toprule
+\textbf{Experiment} & \textbf{Passes} & \textbf{Pass rate} & \textbf{span=1} & \textbf{span>3} \\
+\midrule
+Non-TS rebased & 373/500 & 74.6\% & 498 & 2 \\
+TS fixed & 387/500 & 77.4\% & 498 & 2 \\
+TS \texttt{repl\_r2} & 393/500 & \textbf{78.6\%} & 246 & 42 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Trace coverage and harness-fit slice.}
+The strongest GPT-5.5 + tree-sitter run is also the first trace-analysis
+corpus for the harness-fit study. Its aggregate score is 393/500 (78.6\%), but
+trajectory coverage is mixed. Of the 500 rows, 246 are metadata-only
+(``span=1''), 212 are thin attached traces (``span=3''), and 42 are richer
+agent traces (``span>3''); 38 of those have at least 50 spans. We therefore use
+the 500-row table for benchmark pass rates, but restrict trajectory claims to
+rows with attached traces, and qualitative harness-fit claims to the richer
+subset.
+
+\begin{table}[h]
+\centering
+\caption{Trace coverage for the primary SWE-bench GPT-5.5 + tree-sitter run.
+Metadata-only rows are useful for aggregate pass-rate accounting but are not
+used as evidence about model/tool/harness behavior.}
+\label{tab:swebench-trace-coverage}
+\begin{tabular}{lrrrl}
+\toprule
+\textbf{Slice} & \textbf{Rows} & \textbf{Passed} & \textbf{Pass rate} & \textbf{Use in analysis} \\
+\midrule
+All rows & 500 & 393 & 78.6\% & Benchmark result \\
+Metadata-only (span=1) & 246 & 199 & 80.9\% & No trajectory claims \\
+Attached traces (span>1) & 254 & 194 & 76.4\% & Trajectory evidence \\
+Thin traces (span=3) & 212 & 165 & 77.8\% & Coverage/grouping only \\
+Rich traces (span>3) & 42 & 29 & 69.0\% & Harness-fit analysis \\
+Fullest traces (span$\ge$50) & 38 & 25 & 65.8\% & Representative examples \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+This split is a trace-coverage statement, not a causal claim: the lower pass
+rate in the rich subset likely reflects selection bias toward longer, harder,
+or more instrumented tasks. Aggregate full-trace pass/fail medians are dominated
+by the thin ``span=3'' rows. In the richer subset, failures have higher median
+span count than passes (95 vs. 73), suggesting unresolved repair loops or
+interface friction rather than simple short-run misses.
+
+A first exception-level taxonomy over the 42 rich traces reinforces this
+interpretation. These counts come from trace-explorer error summaries, not a
+complete semantic root-cause audit: rows with no framework/tool exception still
+need patch/scorer review.
+
+\begin{table}[h]
+\centering
+\caption{Exception-level categories in the 42 rich SWE-bench traces. Categories
+can overlap; the table separates interface/tool friction from infrastructure
+noise.}
+\label{tab:swebench-rich-taxonomy}
+\begin{tabular}{lrrrl}
+\toprule
+\textbf{Category} & \textbf{All} & \textbf{Pass} & \textbf{Fail} & \textbf{Interpretation} \\
+\midrule
+Sandbox/control-flow contract & 8 & 5 & 3 & Agent hit CodeAct boundary \\
+Generated code/shell syntax & 6 & 4 & 2 & Tool-use syntax/recovery issue \\
+No framework/tool exception & 32 & 22 & 10 & Needs semantic diff/scorer review \\
+Patch anchoring / exact match & 3 & 2 & 1 & Repo-edit interface issue \\
+Runtime exception in repair loop & 4 & 3 & 1 & Executable feedback surfaced errors \\
+Trace/log artifact incomplete & 0 & 0 & 0 & Excluded from rich-trace claims \\
+Infra/provider-tainted run & 0 & 0 & 0 & Excluded from this slice \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The representative sessions below have viewer links of the form
+\texttt{http://rdsc.nvidia.com:5001/trace/<session-id>} and are also identified
+by experiment \texttt{swebench\_bench\_gpt55\_ts\_fixed\_repl\_r2} plus session
+ID for reproducibility.
+
+\begin{table}[h]
+\centering
+\caption{Representative rich traces from the primary SWE-bench run. These are
+qualitative examples, not a complete failure taxonomy over all 42 rich traces.}
+\label{tab:swebench-representative-traces}
+\begin{tabular}{llll}
+\toprule
+\textbf{Task} & \textbf{Pass?} & \textbf{Session} & \textbf{Harness-fit lesson} \\
+\midrule
+\texttt{sympy\_\_sympy-13091} & yes & \texttt{20260625\_020442\_518865bf} & Validation loop recovered from formatting errors \\
+\texttt{sympy\_\_sympy-17318} & yes & \texttt{20260626\_002135\_9e51da51} & Pytest/traceback iteration converged \\
+\texttt{sympy\_\_sympy-22456} & yes & \texttt{20260624\_193628\_07014111} & Rich passing trace with no trace-explorer errors \\
+\texttt{sympy\_\_sympy-13878} & no & \texttt{20260625\_203205\_99578c11} & Sandbox/control-flow mismatch: forbidden \texttt{raise SystemExit} \\
+\texttt{sympy\_\_sympy-14248} & no & \texttt{20260625\_134834\_c2372813} & Patch anchoring and generated-syntax fragility \\
+\texttt{sympy\_\_sympy-16597} & no & \texttt{20260625\_023557\_d4d71b2d} & Generated syntax/recovery loop did not converge \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The current safe claim is that in the best available SWE-bench trace corpus,
+GPT-5.5 + tree-sitter reaches 393/500 overall, while 254 rows have attached
+traces suitable for trajectory-level analysis. The rich examples show that
+success depends not only on reasoning, but on fluent use of the Python, shell,
+repository, and validation interfaces: passing runs recover through tool-backed
+validation loops, while sampled non-infrastructure failures show sandbox-control
+mismatch, generated-code syntax fragility, and patch anchoring errors. Counts
+beyond these sampled examples require a full classification pass over the 42
+rich traces; PI and Terminal-Bench remain pending artifact grouping/import and
+are not yet trace-analysis evidence.
+
+\subsection{Hermes Harness Status}
+\label{sec:evaluation:hermes}
+
+Hermes is evaluated as an \emph{agent harness adapter}, not as a model alias.
+Full SWE-bench runs are currently in progress: GPT-5.5 is at 14/17 passed
+(82.4\%) and Opus 4.6 is at 16/19 passed (84.2\%). These interim rates
+are promising but should not be reported as final benchmark numbers until the
+500-task runs finish.
+
+% ===========================================================================
+
+\section*{Conclusion}
 \label{sec:conclusion}
 % ===========================================================================
 
-We presented Agent006, a framework where AI agents are Python objects. Three
-insights emerged from this design. First, the programming model matters: by
-inheriting from Python's OOP, agents become testable, composable, and
-optimizable using standard software engineering tools. Second, helpers beat
-prompts: deterministic code outperforms LLM reasoning for rule-based tasks,
-as demonstrated by an 80\% accuracy on DABStep (vs.\ 16\% SOTA) and 95\%
-Pass\textsuperscript{1} on $\tau$-bench retail. Because agents are decomposed
-into typed methods, each can be optimized independently, enabling compositional
-end-to-end improvement. We believe that framing agent development as software
-engineering---not prompt engineering---is the path to reliable AI agents.
-
+We presented NeMo OO Agents as an object-oriented harness for reliable AI
+agents. The central claim is not only that agents can be represented as Python
+objects, but that the surrounding harness---state, events, context assembly,
+queues, skills, trace storage, and evaluation grouping---is what makes those
+objects debuggable and improvable. Helpers beat prompts because deterministic
+subproblems belong in typed Python methods. Together these
+properties turn agent development from one-off prompt engineering into an
+iterative software engineering loop.
 
 % ===========================================================================
 % References
@@ -865,6 +1411,50 @@ Jo\~{a}o Moura.
 \newblock CrewAI: Framework for orchestrating role-playing AI agents.
 \newblock \url{https://github.com/joaomdmoura/crewAI}, 2024.
 
+\bibitem{anthropic2024effectiveagents}
+Anthropic.
+\newblock Building Effective Agents.
+\newblock \url{https://www.anthropic.com/engineering/building-effective-agents}, 2024.
+
+\bibitem{anthropic2025tools}
+Anthropic.
+\newblock Writing Tools for Agents.
+\newblock \url{https://www.anthropic.com/engineering/writing-tools-for-agents}, 2025.
+
+\bibitem{anthropic2025contextengineering}
+Anthropic.
+\newblock Effective Context Engineering for AI Agents.
+\newblock \url{https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents}, 2025.
+
+\bibitem{anthropic2025longrunningharnesses}
+Anthropic.
+\newblock Effective Harnesses for Long-Running Agents.
+\newblock \url{https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents}, 2025.
+
+\bibitem{anthropic2024mcp}
+Anthropic.
+\newblock Model Context Protocol.
+\newblock \url{https://www.anthropic.com/news/model-context-protocol}, 2024.
+
+\bibitem{anthropic2025codeexecutionmcp}
+Anthropic.
+\newblock Code Execution with MCP.
+\newblock \url{https://www.anthropic.com/engineering/code-execution-with-mcp}, 2025.
+
+\bibitem{anthropic2025advancedtooluse}
+Anthropic.
+\newblock Advanced Tool Use.
+\newblock \url{https://www.anthropic.com/engineering/advanced-tool-use}, 2025.
+
+\bibitem{anthropic2024computeruse}
+Anthropic.
+\newblock Developing Computer Use.
+\newblock \url{https://www.anthropic.com/news/developing-computer-use}, 2024.
+
+\bibitem{anthropic2025multiagent}
+Anthropic.
+\newblock Multi-Agent Research System.
+\newblock \url{https://www.anthropic.com/engineering/multi-agent-research-system}, 2025.
 \bibitem{yang2024sweagent}
 John Yang, Carlos E.~Jimenez, et al.
 \newblock SWE-agent: Agent-computer interfaces enable automated software engineering.
@@ -879,6 +1469,29 @@ Xingyao Wang, Boxuan Li, et al.
 Xingyao Wang, Yangyi Chen, et al.
 \newblock Executable code actions elicit better LLM agents.
 \newblock \emph{arXiv preprint arXiv:2402.01030}, 2024.
+
+
+\bibitem{zhang2025recursive}
+Alex L. Zhang, Tim Kraska, and Omar Khattab.
+\newblock Recursive Language Models.
+\newblock \emph{arXiv preprint arXiv:2512.24601}, 2025.
+
+\bibitem{lumer2026recursive}
+Elias Lumer, Sahil Sen, Kevin Paul, and Vamse Kumar Subbiah.
+\newblock Recursive Agent Harnesses.
+\newblock \emph{arXiv preprint arXiv:2606.13643}, 2026.
+
+\bibitem{ning2026codeharness}
+Xuying Ning, Katherine Tieu, Dongqi Fu, Tianxin Wei, Zihao Li, Yuanchen Bei,
+Jiaru Zou, Mengting Ai, Zhining Liu, Ting-Wei Li, Lingjie Chen, Yanjun Zhao,
+Ke Yang, Bingxuan Li, Cheng Qian, Gaotang Li, Xiao Lin, Zhichen Zeng,
+Ruizhong Qiu, Sirui Chen, Yifan Sun, Xiyuan Yang, Ruida Wang, Rui Pan,
+Chenyuan Yang, Dylan Zhang, Liri Fang, Zikun Cui, Yang Cao, Pan Chen,
+Dorothy Sun, Ren Chen, Mahesh Srinivasan, Nipun Mathur, Yinglong Xia,
+Hong Li, Hong Yan, Pan Lu, Lingming Zhang, Tong Zhang, Hanghang Tong, and
+Jingrui He.
+\newblock Code as Agent Harness.
+\newblock \emph{arXiv preprint arXiv:2605.18747}, 2026.
 
 \bibitem{packer2023memgpt}
 Charles Packer, Vivian Fang, et al.

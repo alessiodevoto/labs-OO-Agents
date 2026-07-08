@@ -61,23 +61,36 @@ class ContextApi(Skill):
         self._context: ContextManager = agent.context_manager
 
     def __setitem__(self, key: str, value: Any) -> None:
-        """Set a dynamic context block (placed in volatile suffix).
+        """Set a context block — same value types as declarative ``context={}`` dicts.
 
-        Equivalent to ``self.context.set_dynamic(key, value)``.
+        Accepts:
+        - ``str``: Literal text, placed in volatile suffix.
+        - ``Context(value=...|expr=..., prefix=bool)``: Full control over content and placement.
+        - ``DynamicContext("expr")``: Expression block (deprecated, use Context(expr=...)).
+        - ``None``: Suppress the block from prompt rendering.
         """
         self._context[key] = value
 
     def set_dynamic(self, key: str, expr: str | None = None, *, value: Any = _MISSING) -> None:
         """Set a dynamic context block (placed in the volatile suffix).
 
-        Accepts either an expression (positional, re-evaluated each turn)
-        or a plain value (keyword-only ``value=``).
+        .. deprecated::
+            Use ``self.context["key"] = Context(expr="...")`` or
+            ``self.context["key"] = "value"`` instead.
 
         Args:
             key: Block key.
             expr: Python expression to evaluate each turn.
             value: Plain value to store in the dynamic partition (keyword-only).
         """
+        import warnings
+
+        warnings.warn(
+            "set_dynamic() is deprecated. Use self.context[key] = Context(expr=...) "
+            "or self.context[key] = 'value' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         if value is not _MISSING:
             self._context.set_dynamic(key, value=value)
         else:
@@ -86,13 +99,9 @@ class ContextApi(Skill):
     def set_static(self, key: str, value: Any = _MISSING, *, expr: str | None = None) -> None:
         """Set a static context block (placed in the cacheable prefix).
 
-        The static/dynamic *partition* and the value *kind* are independent.
-        Pass ``value`` for a plain block that doesn't change between turns. Pass
-        ``expr`` to get a block re-evaluated every turn that *still* lives in the
-        cacheable prefix — the shape framework blocks like ``<self>`` use. (The
-        plain ``self.context[key] = ...`` and ``set_dynamic`` paths always land
-        in the volatile suffix, so ``expr=`` here is the only way to combine
-        re-evaluation with the static section.)
+        .. deprecated::
+            Use ``self.context["key"] = Context("value", prefix=True)`` or
+            ``self.context["key"] = Context(expr="...", prefix=True)`` instead.
 
         Args:
             key: Block key.
@@ -100,6 +109,14 @@ class ContextApi(Skill):
             expr: Python expression to evaluate each turn (keyword-only,
                 mutually exclusive with ``value``).
         """
+        import warnings
+
+        warnings.warn(
+            "set_static() is deprecated. Use self.context[key] = Context(value, prefix=True) "
+            "or Context(expr=..., prefix=True) instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         if expr is not None and value is not _MISSING:
             raise TypeError("Cannot specify both value and expr=")
         if expr is not None:
@@ -130,6 +147,94 @@ class ContextApi(Skill):
     def keys(self) -> Set[str]:
         """Return user (non-protected) block keys."""
         return self._context.keys() - self._context.protected_keys
+
+    def disable(self, *keys: str) -> None:
+        """Suppress named blocks from future prompts without deleting them.
+
+        .. deprecated::
+            Use ``self.context["key"] = None`` instead.
+        """
+        import warnings
+
+        warnings.warn(
+            "disable() is deprecated. Use self.context[key] = None instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self._context.disable(*keys)
+
+    def enable(self, *keys: str) -> None:
+        """Re-enable a previously suppressed block.
+
+        .. deprecated::
+            Use ``self.context["key"] = Context(...)`` or ``self.context["key"] = "value"`` instead.
+        """
+        import warnings
+
+        warnings.warn(
+            "enable() is deprecated. Assign a value to re-enable: self.context[key] = Context(...)",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self._context.enable(*keys)
+
+    def disabled(self) -> "set[str]":
+        """Return the set of block keys currently suppressed from prompts."""
+        return self._context.disabled()
+
+    def is_enabled(self, key: str) -> bool:
+        """Return True if a block key is currently eligible for rendering."""
+        return self._context.is_enabled(key)
+
+    def set(
+        self, key: str, value: str | None = None, *, expr: str | None = None, prefix: bool = False
+    ) -> None:
+        """Set a context block — convenience method with keyword arguments.
+
+        Equivalent to ``self.context[key] = Context(value, expr=expr, prefix=prefix)``
+        but friendlier for LLMs and developers who prefer explicit keyword args.
+
+        Args:
+            key: Block key.
+            value: Literal text content (mutually exclusive with expr).
+            expr: Python expression re-evaluated each LLM turn.
+            prefix: Place in cacheable prefix if True, volatile suffix if False.
+
+        Examples:
+            self.context.set("role", "You are an expert")
+            self.context.set("status", expr="f'{self.done}/{self.total}'")
+            self.context.set("shell", expr="doc(self.shell)", prefix=True)
+            self.context.set("old_block", None)  # suppress
+        """
+        if value is not None and expr is not None:
+            raise TypeError("set() takes value or expr, not both")
+        if value is None and expr is None:
+            self._context[key] = None
+            return
+        from nemo_oo_agents.context_blocks import Context
+
+        if expr is not None:
+            self._context[key] = Context(expr=expr, prefix=prefix)
+        else:
+            if prefix:
+                self._context[key] = Context(value, prefix=True)
+            else:
+                self._context[key] = value
+
+    def all_keys(self) -> "set[str]":
+        """Return all block keys including protected framework and well-known strategy keys.
+
+        Useful for discovering what keys can be suppressed via ``self.context["key"] = None``.
+
+        Well-known keys:
+            - ``system_prompt`` — agent class docstring
+            - ``self`` — doc(type(self)) introspection
+            - ``state`` — current instance field values
+            - ``strategy_prompt`` — strategy instructions
+            - ``execution_context`` — available imports/types (CodeAct only)
+        """
+        known_strategy_keys = {"strategy_prompt", "execution_context"}
+        return set(self._context.keys()) | known_strategy_keys
 
     def get(self, key: str, default: Any = None) -> Any:
         """Get a block value, returning default if not found."""

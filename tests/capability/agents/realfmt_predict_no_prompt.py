@@ -17,7 +17,7 @@ from typing import Annotated, Any
 
 from pydantic import BaseModel, Field
 
-from nemo_oo_agents import Agent, hidden
+from nemo_oo_agents import Agent
 from nemo_oo_agents.decorators import strategy
 from nemo_oo_agents.strategies import PredictStrategy
 from tests.capability.agents.truncation_formats import _patch_eval_pipeline_loader
@@ -35,15 +35,20 @@ class Answer(BaseModel):
 class RealFmtAgent(Agent):
     """Answer questions about the data."""
 
-    @hidden
-    def _system_prompt(self) -> str:
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         # Intentionally omits the truncation-conventions section that the
-        # framework's default _system_prompt now includes, so the ablation
-        # measures the marker's intrinsic legibility.
-        return (
-            f"You are {self.__class__.__name__}, a Python agent working in an "
-            f"interactive session.\n\n## Context blocks\n"
-            f"{self.render_config.block_formatter.format_description()}\n"
+        # base Agent docstring includes, so the ablation measures the marker's
+        # intrinsic legibility.
+        from nemo_oo_agents import Context
+
+        self.context_manager["system_prompt"] = Context(
+            expr=(
+                'f"You are {type(self).__name__}, a Python agent working in an "\n'
+                '"interactive session.\\n\\n## Context blocks\\n"\n'
+                'f"{self.render_config.block_formatter.format_description()}\\n"'
+            ),
+            prefix=True,
         )
 
     @strategy(PredictStrategy())

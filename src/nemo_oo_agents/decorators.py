@@ -8,7 +8,7 @@ Agent configuration is done via class-level parameters: class MyAgent(Agent, llm
 
 import inspect
 from collections.abc import Callable
-from typing import TYPE_CHECKING, ParamSpec, TypeVar
+from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar
 
 from nemo_oo_agents.context_blocks import ScopedContext
 from nemo_oo_agents.ellipsis_detection import has_ellipsis_body
@@ -24,7 +24,7 @@ R = TypeVar("R")
 
 def strategy(
     strategy_instance: "GenerationStrategyABC | None" = None,
-    context: ScopedContext | None = None,
+    context: "ScopedContext | dict[str, Any] | None" = None,
     *,
     llm: "UnifiedLLM | None" = None,
     truncation: "TruncationConfig | None" = None,
@@ -37,7 +37,9 @@ def strategy(
 
     Args:
         strategy_instance: Strategy to use (e.g., ReflexionStrategy())
-        context: ScopedContext instance with context and/or events overrides.
+        context: Context block overrides. Accepts either:
+            - A plain dict ``{key: str | Context | DynamicContext | None}`` for context-only overrides.
+            - A ``ScopedContext`` instance when you also need event filtering.
             Applied in _prepare_context() between strategy overrides and scoped blocks.
         llm: Optional LLM override for this method
         truncation: Optional TruncationConfig override for this method. Fields set
@@ -45,13 +47,15 @@ def strategy(
             inherit from the agent-level config.
 
     Examples:
-        from nemo_oo_agents import EventQuery
+        from nemo_oo_agents import Context
         from nemo_oo_agents.context_blocks import ScopedContext
 
-        @strategy(CodeActStrategy(), ScopedContext(context={"focus": "security"}))
+        # Simple context dict (recommended):
+        @strategy(CodeActStrategy(), context={"focus": "security", "self": None})
         async def analyze(self): ...
 
-        @strategy(ScopedContext(events=EventQuery.current_call()))
+        # With event filtering (use ScopedContext):
+        @strategy(ScopedContext(context={"focus": "security"}, events=EventQuery.current_call()))
         async def solve_with_reflection(self, problem: str): ...
 
     Returns:
@@ -59,7 +63,7 @@ def strategy(
 
     Raises:
         ValueError: If multiple @strategy decorators are stacked
-        TypeError: If context is not a ScopedContext instance
+        TypeError: If context is not a dict or ScopedContext instance
     """
 
     def decorator(func: Callable[P, R]) -> Callable[P, R]:
@@ -67,17 +71,20 @@ def strategy(
         if hasattr(func, "_strategy_override"):
             raise ValueError(f"Cannot stack multiple @strategy decorators on {func.__name__}")
 
-        # Extract context and events from ScopedContext
+        # Extract context and events from ScopedContext or plain dict
         final_context = None
         final_events = None
         if context is not None:
-            if not isinstance(context, ScopedContext):
+            if isinstance(context, dict):
+                final_context = context
+            elif isinstance(context, ScopedContext):
+                final_context = context.context
+                final_events = context.events
+            else:
                 raise TypeError(
-                    f"@strategy context parameter must be ScopedContext, got {type(context).__name__}. "
-                    f"Use ScopedContext(context={{...}}) or ScopedContext(events={{...}})"
+                    f"@strategy context parameter must be a dict or ScopedContext, got {type(context).__name__}. "
+                    f"Use context={{...}} or ScopedContext(context={{...}}, events={{...}})"
                 )
-            final_context = context.context
-            final_events = context.events
 
         # Attach metadata for metaclass to read (when used at class definition time)
         setattr(func, "_strategy_override", strategy_instance)  # noqa: B010

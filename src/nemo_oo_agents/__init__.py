@@ -25,7 +25,7 @@ from nemo_oo_agents._logging import enable_logging  # noqa: E402
 from nemo_oo_agents._visible import visible  # noqa: E402
 from nemo_oo_agents.agent import Agent  # noqa: E402
 from nemo_oo_agents.agentdoc import hidden  # noqa: E402
-from nemo_oo_agents.context_blocks import ContextWindowStats, DynamicContext  # noqa: E402
+from nemo_oo_agents.context_blocks import Context, ContextWindowStats, DynamicContext  # noqa: E402
 from nemo_oo_agents.decorators import strategy  # noqa: E402
 
 # Export errors
@@ -92,7 +92,8 @@ __all__ = [
     "llm_config_chain",  # Lazy re-export (see __getattr__)
     # Types
     "ContextWindowStats",  # Re-exported from context_blocks
-    "DynamicContext",  # Re-exported from context_blocks
+    "Context",  # Re-exported from context_blocks
+    "DynamicContext",  # Re-exported from context_blocks (deprecated, use Context)
     "EventQuery",  # Event filtering configuration
     "ContextApi",  # LLM-facing context API wrapper (Skill)
     "ContextManager",  # Context block state backend

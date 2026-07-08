@@ -23,7 +23,13 @@ from collections.abc import Callable, Coroutine
 from typing import TYPE_CHECKING, Any, NamedTuple
 
 from nemo_oo_agents.agentdoc import pformat as _pformat_value
-from nemo_oo_agents.context_blocks import BlockMetadata, DynamicContext, ResolvedBlock, Role
+from nemo_oo_agents.context_blocks import (
+    BlockMetadata,
+    Context,
+    DynamicContext,
+    ResolvedBlock,
+    Role,
+)
 
 if TYPE_CHECKING:
     from nemo_oo_agents.config.truncation_config import FormatConfig
@@ -46,6 +52,7 @@ async def _apply_overrides(
     resolve_fn: ResolveFunc,
     static_expr: Callable[[str], str],
     static_keys: set[str] | None = None,
+    disabled_keys: set[str] | None = None,
 ) -> list[ResolvedBlock]:
     """Apply a dict of overrides (replace/append/remove) to blocks.
 
@@ -58,9 +65,12 @@ async def _apply_overrides(
         resolve_fn: Async function to resolve DynamicContext values.
         static_expr: Function(key) -> metadata expr string for static values.
         static_keys: Keys that should be placed in the static partition when new.
+        disabled_keys: Block keys to suppress even if an override would add them.
     """
     if not overrides:
         return blocks
+
+    disabled_keys = disabled_keys or set()
 
     # Build index: key -> position in blocks list (first occurrence)
     index: dict[str, int] = {}
@@ -73,10 +83,26 @@ async def _apply_overrides(
     appends: list[ResolvedBlock] = []
 
     for key, value in overrides.items():
+        if key in disabled_keys:
+            if key in index:
+                replacements[index[key]] = None
+            continue
+
         if value is None:
             if key in index:
                 replacements[index[key]] = None
             continue
+
+        # Normalize Context to DynamicContext/str for the pipeline
+        context_prefix = None
+        if isinstance(value, Context):
+            context_prefix = value.prefix
+            if value.is_dynamic:
+                assert value.expr is not None  # guaranteed by is_dynamic
+                value = DynamicContext(value.expr)
+            else:
+                assert value.value is not None  # guaranteed by not is_dynamic
+                value = value.value
 
         content = await resolve_fn(key, value)
         if content is None:
@@ -87,7 +113,9 @@ async def _apply_overrides(
         existing_static = None
         if key in index:
             existing_static = blocks[index[key]].metadata.static
-        if existing_static is not None:
+        if context_prefix is not None:
+            is_block_static = context_prefix
+        elif existing_static is not None:
             is_block_static = existing_static
         elif static_keys and key in static_keys:
             is_block_static = True
@@ -220,14 +248,16 @@ async def build_context(
         blocks, context_manager, resolve_fn, context_block_format=context_block_format
     )
 
+    disabled_keys = context_manager.disabled()
+
     # --- Strategy block overrides ---
-    blocks = await _phase_strategy_overrides(blocks, strategy, resolve_fn)
+    blocks = await _phase_strategy_overrides(blocks, strategy, resolve_fn, disabled_keys)
 
     # --- @strategy(context=...) decorator overrides ---
-    blocks = await _phase_decorator_context(blocks, decorator_context, resolve_fn)
+    blocks = await _phase_decorator_context(blocks, decorator_context, resolve_fn, disabled_keys)
 
     # --- Scoped context blocks ---
-    blocks = await _phase_scoped_blocks(blocks, scoped_context, resolve_fn)
+    blocks = await _phase_scoped_blocks(blocks, scoped_context, resolve_fn, disabled_keys)
 
     # --- Strategy block reordering (between content phases and events) ---
     blocks = _reorder_blocks(blocks, strategy)
@@ -267,6 +297,9 @@ async def _phase_persistent_blocks(
     protected_keys = context_manager.protected_keys
 
     for key, value in context_manager._raw_items():
+        if context_manager.is_disabled(key):
+            continue
+
         is_user = key not in protected_keys
         is_static = context_manager.is_static(key)
         if isinstance(value, DynamicContext):
@@ -307,6 +340,7 @@ async def _phase_strategy_overrides(
     blocks: list[ResolvedBlock],
     strategy: "GenerationStrategy | None",
     resolve_fn: ResolveFunc,
+    disabled_keys: set[str] | None = None,
 ) -> list[ResolvedBlock]:
     """Apply strategy.get_block_overrides()."""
     if not strategy or not hasattr(strategy, "get_block_overrides"):
@@ -314,7 +348,7 @@ async def _phase_strategy_overrides(
 
     static_keys = None
     if hasattr(strategy, "get_static_block_keys"):
-        static_keys = strategy.get_static_block_keys()
+        static_keys = strategy.get_static_block_keys()  # type: ignore[attr-defined]
 
     return await _apply_overrides(
         blocks,
@@ -322,6 +356,7 @@ async def _phase_strategy_overrides(
         resolve_fn,
         static_expr=lambda key: f"strategy.{key}",
         static_keys=static_keys,
+        disabled_keys=disabled_keys,
     )
 
 
@@ -329,6 +364,7 @@ async def _phase_decorator_context(
     blocks: list[ResolvedBlock],
     decorator_context: dict[str, Any] | None,
     resolve_fn: ResolveFunc,
+    disabled_keys: set[str] | None = None,
 ) -> list[ResolvedBlock]:
     """Apply @strategy(context=...) decorator overrides.
 
@@ -344,6 +380,7 @@ async def _phase_decorator_context(
         decorator_context,
         resolve_fn,
         static_expr=lambda key: f'@strategy.context["{key}"]',
+        disabled_keys=disabled_keys,
     )
 
 
@@ -351,6 +388,7 @@ async def _phase_scoped_blocks(
     blocks: list[ResolvedBlock],
     scoped_context: dict[str, Any] | None,
     resolve_fn: ResolveFunc,
+    disabled_keys: set[str] | None = None,
 ) -> list[ResolvedBlock]:
     """Apply scoped block overrides.
 
@@ -365,6 +403,7 @@ async def _phase_scoped_blocks(
         scoped_context,
         resolve_fn,
         static_expr=lambda key: f'self.context["{key}"]',
+        disabled_keys=disabled_keys,
     )
 
 

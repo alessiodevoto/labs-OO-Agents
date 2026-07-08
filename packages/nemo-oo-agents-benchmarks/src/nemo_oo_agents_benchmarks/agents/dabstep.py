@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING, Any
 import pandas as pd
 from pydantic import BaseModel, Field
 
-from nemo_oo_agents import Agent, CodeActStrategy, strategy
+from nemo_oo_agents import Agent, CodeActStrategy, Context, strategy
 from nemo_oo_agents.config import CodeActConfig
 from nemo_oo_agents.unifiedllm import CompletionClient as _CompletionClient
 from nemo_oo_agents.unifiedllm import FakeLLMClient
@@ -303,6 +303,34 @@ class VerifyResult(BaseModel):
 # ============================================================================
 
 
+_DABSTEP_EXTRA_PROMPT = """
+
+## DABStep Data
+- **`data_summary` block**: Summaries of all DataFrames, JSON files, text files
+- **`relevant_rules` block**: Business rules found by RulesLawyer
+
+## Available Helper Functions (module-level, call directly)
+```python
+fee_matches(fee, card_scheme, account_type, capture_delay, is_credit, aci, mcc, intracountry, vol, fraud_pct)
+applies_to_all(value)
+volume_matches(fee_vol, actual_vol)
+fraud_level_matches(fee_fraud, actual_fraud_pct)
+capture_delay_matches(fee_delay, merchant_delay)  # OPT62: range matching
+calc_fee(fee, amount)
+find_lowest_fee(matching_fees, amount)
+round_eur(value)           # OPT59: ONLY for 14-decimal questions
+format_numeric_answer(value, guidelines)
+```
+
+## CRITICAL: Use fee_matches() — do NOT write your own fee matching!
+
+## CRITICAL: ACI vs Card Scheme (OPT61)
+- ACI values: single letters A, B, C, D, E, F, G (payments.csv `aci` column)
+- card_scheme values: NexPay, GlobalCard, TransactPlus, etc. (fees.json)
+- For "ACI comparison" tasks: iterate ALL 7 ACIs; pick the one with LOWEST total fee.
+"""
+
+
 def _base_system_prompt(class_name: str) -> str:
     return f"""You are an expert data scientist and Python programmer who analyzes data to answer business questions.
 
@@ -372,8 +400,11 @@ Questions may reference MCC by description. Look up the code in merchant_categor
 class RulesLawyer(Agent, llm=FakeLLMClient()):
     """Expert at finding relevant business rules from documentation."""
 
-    def _system_prompt(self) -> str:
-        return _base_system_prompt(self.__class__.__name__)
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.context_manager["system_prompt"] = Context(
+            _base_system_prompt(type(self).__name__), prefix=True
+        )
 
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=100, max_retries=3)))
     async def find_rules(
@@ -440,8 +471,11 @@ class RulesLawyer(Agent, llm=FakeLLMClient()):
 class SolutionVerifier(Agent, llm=FakeLLMClient()):
     """Validates computed answers with enhanced fee matching checks."""
 
-    def _system_prompt(self) -> str:
-        return _base_system_prompt(self.__class__.__name__)
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.context_manager["system_prompt"] = Context(
+            _base_system_prompt(type(self).__name__), prefix=True
+        )
 
     @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=100, max_retries=2)))
     async def verify(
@@ -523,39 +557,11 @@ class DABStepAgent(
 
     MAX_RETRIES: int = 3
 
-    def _system_prompt(self) -> str:
-        return (
-            _base_system_prompt(self.__class__.__name__)
-            + """
-
-## DABStep Data
-- **`data_summary` block**: Summaries of all DataFrames, JSON files, text files
-- **`relevant_rules` block**: Business rules found by RulesLawyer
-
-## Available Helper Functions (module-level, call directly)
-```python
-fee_matches(fee, card_scheme, account_type, capture_delay, is_credit, aci, mcc, intracountry, vol, fraud_pct)
-applies_to_all(value)
-volume_matches(fee_vol, actual_vol)
-fraud_level_matches(fee_fraud, actual_fraud_pct)
-capture_delay_matches(fee_delay, merchant_delay)  # OPT62: range matching
-calc_fee(fee, amount)
-find_lowest_fee(matching_fees, amount)
-round_eur(value)           # OPT59: ONLY for 14-decimal questions
-format_numeric_answer(value, guidelines)
-```
-
-## CRITICAL: Use fee_matches() — do NOT write your own fee matching!
-
-## CRITICAL: ACI vs Card Scheme (OPT61)
-- ACI values: single letters A, B, C, D, E, F, G (payments.csv `aci` column)
-- card_scheme values: NexPay, GlobalCard, TransactPlus, etc. (fees.json)
-- For "ACI comparison" tasks: iterate ALL 7 ACIs; pick the one with LOWEST total fee.
-"""
-        )
-
     def __init__(self, llm: UnifiedLLM | None = None, **kwargs: Any) -> None:
         super().__init__(llm=llm, **kwargs)
+        self.context_manager["system_prompt"] = Context(
+            _base_system_prompt(type(self).__name__) + _DABSTEP_EXTRA_PROMPT, prefix=True
+        )
         self.data_dir: str = ""
         self.text_files: dict[str, str] = {}
         self.json_files: dict[str, Any] = {}

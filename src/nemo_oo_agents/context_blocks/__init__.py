@@ -41,6 +41,7 @@ from nemo_oo_agents.context_blocks.formatter import (
 )
 from nemo_oo_agents.context_blocks.models import (
     BlockMetadata,
+    Context,
     ContextWindowStats,
     DynamicContext,
     RenderedMessage,
@@ -58,6 +59,7 @@ from nemo_oo_agents.context_blocks.scoped import ScopedContext
 
 __all__ = [
     # Core types
+    "Context",
     "DynamicContext",
     "ResolvedBlock",
     "Role",
