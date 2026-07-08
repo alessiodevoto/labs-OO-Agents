@@ -77,14 +77,12 @@ class MCPToolSpec:
         description: Tool description
         input_schema: Raw JSON schema dictionary
         required: Set of required parameter names
-        server: Name of the server providing this tool
     """
 
     name: str
     description: str
     input_schema: dict[str, Any]
     required: set[str] = field(default_factory=set)
-    server: str = ""
 
 
 def _json_schema_type_to_python_type(json_type: str) -> type:
@@ -229,8 +227,16 @@ def _create_method_from_schema(
         if constraints:
             param_constraints[param_name] = constraints
 
-        # Set default if explicitly provided in schema
-        if has_default:
+        # Optionality is driven by the schema's ``required`` list, NOT by the
+        # mere presence of a ``default``: a param listed in ``required`` is
+        # mandatory even if it carries a default, and a param absent from
+        # ``required`` is optional even without one.
+        if param_name in required:
+            # Required -> mandatory positional argument (no default in the
+            # generated signature), regardless of any schema default.
+            annotations[param_name] = param_type
+        elif has_default:
+            # Optional with an explicit default value.
             defaults[param_name] = param_default
             # If default is None, adjust type annotation to include None
             if param_default is None:
@@ -239,8 +245,10 @@ def _create_method_from_schema(
             else:
                 annotations[param_name] = param_type
         else:
-            # No default - parameter is required
-            annotations[param_name] = param_type
+            # Optional but no schema default -> synthesize None so the caller
+            # may omit it; ``_call_tool`` strips None before sending.
+            defaults[param_name] = None
+            annotations[param_name] = param_type | type(None)
 
     # Build param descriptions for docstring
     param_docs = []
@@ -588,15 +596,13 @@ class MCPTool:
         self,
         client: Any,
         server_name: str,
-        tool_specs: list[MCPToolSpec],
         refresh_ctx: dict[str, Any] | None = None,
     ) -> None:
-        """Initialize with client, server name, and tool specs.
+        """Initialize with client and server name.
 
         Args:
             client: MCP client for this tool instance
             server_name: Name of the server this tool instance targets
-            tool_specs: List of tool specifications from the server
             refresh_ctx: Optional context for auto-refreshing OAuth on a 401
                 during a tool call (server_url + oauth params + transport bits).
                 When present, ``_call_tool`` silently refreshes the access token
@@ -604,7 +610,6 @@ class MCPTool:
         """
         self._client = client
         self._server_name = server_name
-        self._tool_specs = tool_specs
         self._refresh_ctx = refresh_ctx or {}
 
     async def _call_tool(
@@ -753,7 +758,7 @@ class MCPManager:
         headers: dict[str, str] | None = None,
         transport: Literal["stdio", "sse", "streamable-http"] | None = None,
         oauth_client_id: str | None = None,
-        oauth_redirect_uri: str = "http://127.0.0.1:0/callback",
+        oauth_redirect_uri: str | None = None,
         oauth_scope: str | None = None,
         oauth_open_browser: bool | None = None,
         oauth_manual: bool | None = None,
@@ -776,7 +781,8 @@ class MCPManager:
             headers: Optional headers for HTTP requests (for HTTP transports)
             transport: Transport type - "stdio", "sse", or "streamable-http"
             oauth_client_id: OAuth client ID (if OAuth is required)
-            oauth_redirect_uri: OAuth redirect URI (default: http://127.0.0.1:0/callback)
+            oauth_redirect_uri: OAuth redirect URI. Defaults to the server's
+                config value, then http://127.0.0.1:0/callback.
             oauth_scope: OAuth scopes (optional)
             oauth_open_browser: Whether to automatically open browser for OAuth. Defaults to config, then True.
             oauth_manual: Use out-of-band OAuth (link + pasted code). Defaults to config, then False.
@@ -803,10 +809,12 @@ class MCPManager:
         configured_servers.update(servers or {})
         config_server = _expand_env(configured_servers.get(server_name, {}).copy())
 
-        # Merge provided args with config (provided args take precedence)
-        headers = (headers or {}).copy()
-        if config_server.get("headers"):
-            headers.update(config_server.get("headers", {}))
+        # Merge provided args with config (provided args take precedence): start
+        # from the config headers, then let caller-supplied headers override them
+        # (including Authorization).
+        merged_headers = dict(config_server.get("headers") or {})
+        merged_headers.update(headers or {})
+        headers = merged_headers
         url = url or config_server.get("url")
         raw_transport = transport or config_server.get("transport") or "stdio"
         if raw_transport not in ("stdio", "sse", "streamable-http"):
@@ -916,7 +924,6 @@ class MCPManager:
                     description=tool.description or "",
                     input_schema=input_schema,
                     required=required,
-                    server=server_name,
                 )
             )
 
@@ -936,5 +943,5 @@ class MCPManager:
         }
         dynamic_class = _make_dynamic_class(server_name, tool_specs, MCPTool)
         instance = object.__new__(dynamic_class)
-        instance.__init__(client, server_name, tool_specs, refresh_ctx=refresh_ctx)
+        instance.__init__(client, server_name, refresh_ctx=refresh_ctx)
         return instance

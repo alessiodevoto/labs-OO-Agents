@@ -92,7 +92,6 @@ async def test_create_generates_dynamic_tool_class_with_methods():
                 "required": ["filepath", "line"],
             },
             required={"filepath", "line"},
-            server="lang-server",
         ),
         MCPToolSpec(
             "find-references",
@@ -114,7 +113,6 @@ async def test_create_generates_dynamic_tool_class_with_methods():
                 "required": ["filepath", "line"],
             },
             required={"filepath", "line"},
-            server="lang-server",
         ),
     ]
 
@@ -122,7 +120,7 @@ async def test_create_generates_dynamic_tool_class_with_methods():
 
     # Create dynamic class and instance
     dynamic_class = _make_dynamic_class("lang-server", tool_specs, MCPTool)
-    instance = dynamic_class(mock_client, "lang-server", tool_specs)
+    instance = dynamic_class(mock_client, "lang-server")
 
     assert instance is not None
     assert isinstance(instance, MCPTool)
@@ -170,20 +168,13 @@ async def test_create_with_custom_child_class_uses_child_class():
     When a child class is defined, it can be instantiated directly
     without dynamic class generation.
     """
-    tool_specs = [
-        MCPToolSpec("ping", "Ping", {"type": "object", "properties": {}}, server="srv"),
-        MCPToolSpec(
-            "definition", "Get definition", {"type": "object", "properties": {}}, server="srv"
-        ),
-    ]
-
     mock_client, _ = _create_mock_client_with_session()
 
     class LanguageServerTool(MCPTool):
         async def definition(self, filepath: str, line: int) -> Any:
             return await self._call_tool("definition", {"filepath": filepath, "line": line})
 
-    instance = LanguageServerTool(mock_client, "language-server", tool_specs)
+    instance = LanguageServerTool(mock_client, "language-server")
 
     assert isinstance(instance, LanguageServerTool)
     assert instance._client is mock_client
@@ -219,12 +210,11 @@ async def test_generated_method_calls_through_to_mcp_session():
                 "required": ["filepath", "line"],
             },
             required={"filepath", "line"},
-            server="test_server",
         ),
     ]
 
     dynamic_class = _make_dynamic_class("test_server", tool_specs, MCPTool)
-    instance = dynamic_class(mock_client, "test_server", tool_specs)
+    instance = dynamic_class(mock_client, "test_server")
 
     assert instance is not None
     assert "definition" in dir(instance), f"definition not in {dir(instance)}"
@@ -258,14 +248,13 @@ async def test_parameter_with_default_none_gets_union_type():
                 "required": ["query"],
             },
             required={"query"},
-            server="test-server",
         )
     ]
 
     mock_client, mock_session = _create_mock_client_with_session("search result")
 
     dynamic_class = _make_dynamic_class("test-server", tool_specs, MCPTool)
-    instance = dynamic_class(mock_client, "test-server", tool_specs)
+    instance = dynamic_class(mock_client, "test-server")
 
     assert instance is not None
 
@@ -322,14 +311,13 @@ async def test_parameter_without_default_is_required():
                 "required": ["item_id"],
             },
             required={"item_id"},
-            server="test-server",
         )
     ]
 
     mock_client, mock_session = _create_mock_client_with_session("item result")
 
     dynamic_class = _make_dynamic_class("test-server", tool_specs, MCPTool)
-    instance = dynamic_class(mock_client, "test-server", tool_specs)
+    instance = dynamic_class(mock_client, "test-server")
 
     assert instance is not None
 
@@ -365,14 +353,13 @@ async def test_parameter_with_non_none_default():
                 },
             },
             required=set(),
-            server="test-server",
         )
     ]
 
     mock_client, mock_session = _create_mock_client_with_session("items result")
 
     dynamic_class = _make_dynamic_class("test-server", tool_specs, MCPTool)
-    instance = dynamic_class(mock_client, "test-server", tool_specs)
+    instance = dynamic_class(mock_client, "test-server")
 
     assert instance is not None
 
@@ -401,7 +388,13 @@ async def test_parameter_with_non_none_default():
 
 @pytest.mark.asyncio
 async def test_optional_parameter_without_default_in_schema():
-    """Optional parameters without default in schema should not have a default value."""
+    """A param absent from ``required`` with no schema default becomes optional.
+
+    Optionality is decided by the schema's ``required`` list, so a parameter
+    that is neither required nor default-bearing must still be optional: it
+    gets a synthesized ``None`` default and a ``T | None`` annotation, and it
+    is omitted from the call when left unset (``_call_tool`` strips None).
+    """
     tool_specs = [
         MCPToolSpec(
             "filter",
@@ -416,24 +409,35 @@ async def test_optional_parameter_without_default_in_schema():
                 },
             },
             required=set(),  # name is not required, but no default in schema
-            server="test-server",
         )
     ]
 
-    mock_client, _ = _create_mock_client_with_session("filter result")
+    mock_client, mock_session = _create_mock_client_with_session("filter result")
 
     dynamic_class = _make_dynamic_class("test-server", tool_specs, MCPTool)
-    instance = dynamic_class(mock_client, "test-server", tool_specs)
+    instance = dynamic_class(mock_client, "test-server")
 
     assert instance is not None
 
     import inspect
+    import types
 
     sig = inspect.signature(instance.filter)
     name_param = sig.parameters["name"]
-    # Since has_default=False, parameter should not have a default
-    # (even though it's not in required set)
-    assert name_param.default is inspect.Parameter.empty
+    # Not required and no schema default -> optional with synthesized None
+    assert name_param.default is None
+    annotation = name_param.annotation
+    assert isinstance(annotation, types.UnionType), f"Expected union type, got {annotation}"
+    assert str in annotation.__args__ and type(None) in annotation.__args__
+
+    # Left unset -> omitted from the call.
+    await instance.filter()
+    mock_session.call_tool.assert_awaited_once_with("filter", {})
+
+    # Set to a value -> sent.
+    mock_session.call_tool.reset_mock()
+    await instance.filter(name="widget")
+    mock_session.call_tool.assert_awaited_once_with("filter", {"name": "widget"})
 
 
 @pytest.mark.asyncio
@@ -458,14 +462,13 @@ async def test_required_params_always_sent():
                 "required": ["name", "count"],
             },
             required={"name", "count"},
-            server="test-server",
         )
     ]
 
     mock_client, mock_session = _create_mock_client_with_session("created")
 
     dynamic_class = _make_dynamic_class("test-server", tool_specs, MCPTool)
-    instance = dynamic_class(mock_client, "test-server", tool_specs)
+    instance = dynamic_class(mock_client, "test-server")
 
     result = await instance.create_item(name="test", count=0)
     assert result == "created"
@@ -505,14 +508,13 @@ async def test_mixed_required_and_optional_params():
                 "required": ["query"],
             },
             required={"query"},
-            server="test-server",
         )
     ]
 
     mock_client, mock_session = _create_mock_client_with_session("results")
 
     dynamic_class = _make_dynamic_class("test-server", tool_specs, MCPTool)
-    instance = dynamic_class(mock_client, "test-server", tool_specs)
+    instance = dynamic_class(mock_client, "test-server")
 
     # Only query — all optional params omitted
     await instance.search(query="test")
@@ -524,3 +526,48 @@ async def test_mixed_required_and_optional_params():
     mock_session.call_tool.assert_awaited_once_with(
         "search", {"query": "test", "page_size": 10, "max_snippet_size": 3000}
     )
+
+
+@pytest.mark.asyncio
+async def test_required_param_with_default_is_mandatory():
+    """A param listed in ``required`` stays mandatory even if it declares a default.
+
+    Optionality is driven by the ``required`` list, not by the presence of a
+    ``default``: a required param carrying a schema default must have no default
+    in the generated signature (the caller is forced to supply it).
+    """
+    tool_specs = [
+        MCPToolSpec(
+            "run",
+            "Run with a required-but-defaulted param",
+            {
+                "type": "object",
+                "properties": {
+                    "mode": {
+                        "type": "string",
+                        "description": "Execution mode",
+                        "default": "fast",  # has a default...
+                    },
+                },
+                "required": ["mode"],  # ...but is required
+            },
+            required={"mode"},
+        )
+    ]
+
+    mock_client, mock_session = _create_mock_client_with_session("ran")
+
+    dynamic_class = _make_dynamic_class("test-server", tool_specs, MCPTool)
+    instance = dynamic_class(mock_client, "test-server")
+
+    import inspect
+
+    sig = inspect.signature(instance.run)
+    mode_param = sig.parameters["mode"]
+    # Required -> no default in the signature despite the schema default.
+    assert mode_param.default is inspect.Parameter.empty
+    assert mode_param.annotation is str
+
+    # Required params are always sent, even when equal to the schema default.
+    await instance.run(mode="fast")
+    mock_session.call_tool.assert_awaited_once_with("run", {"mode": "fast"})

@@ -923,7 +923,6 @@ async def handle_mcp_oauth(
     auth_endpoint = None
     token_endpoint = None
     registration_endpoint = None
-    discovered_client_id = client_id
     grant_types: list[str] = []
 
     async with httpx.AsyncClient(follow_redirects=True) as client:
@@ -953,7 +952,7 @@ async def handle_mcp_oauth(
         if cached and not cached.is_expired():
             logger.info("Using cached MCP OAuth token")
             return cached
-        refresh_client_id = discovered_client_id or cached.client_id if cached else None
+        refresh_client_id = client_id or cached.client_id if cached else None
         if cached and cached.refresh_token and token_endpoint and refresh_client_id:
             refreshed = await _refresh_access_token(
                 token_endpoint, refresh_client_id, cached.refresh_token, cached.client_secret
@@ -963,7 +962,7 @@ async def handle_mcp_oauth(
                 _save_cached_token(server_url, refreshed)
                 return refreshed
 
-    final_client_id = discovered_client_id or client_id
+    final_client_id = client_id
     final_client_secret = client_secret
 
     if not final_client_id and not registration_endpoint:

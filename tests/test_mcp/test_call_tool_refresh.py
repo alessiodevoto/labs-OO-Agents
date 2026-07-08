@@ -46,7 +46,7 @@ class _FakeClient:
 
 def _make_tool(client, refresh_ctx=None):
     t = object.__new__(MCPTool)
-    t.__init__(client, "test-server", [], refresh_ctx=refresh_ctx)
+    t.__init__(client, "test-server", refresh_ctx=refresh_ctx)
     return t
 
 
