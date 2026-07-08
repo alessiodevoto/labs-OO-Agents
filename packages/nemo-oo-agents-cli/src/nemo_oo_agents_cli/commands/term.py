@@ -91,10 +91,10 @@ def command(
     (``self.web.plot(fig)``).
 
     Examples:
-        nemo oo term
-        nemo oo term --port 8080
-        nemo oo term --model gpt-4o
-        nemo oo term --agent ./my_agent.py:MyAgent
+        nemo-oo term
+        nemo-oo term --port 8080
+        nemo-oo term --model gpt-4o
+        nemo-oo term --agent ./my_agent.py:MyAgent
     """
     try:
         import uvicorn  # noqa: F401
@@ -235,18 +235,18 @@ def _build_tui_argv(
     python: bool,
     continue_session: str | None,
 ) -> list[str]:
-    """Build the argv list for spawning ``nemo oo tui`` in the PTY."""
+    """Build the argv list for spawning ``nemo-oo tui`` in the PTY."""
     import shutil
 
-    # Find the nemo executable in the current environment
-    nemo = shutil.which("nemo")
-    if nemo is None:
+    # Find the nemo-oo executable in the current environment
+    nemo_oo = shutil.which("nemo-oo")
+    if nemo_oo is None:
         # Fallback: run as a module using the same Python interpreter
-        nemo_argv = [sys.executable, "-m", "nemo_oo_agents_cli"]
+        nemo_oo_argv = [sys.executable, "-m", "nemo_oo_agents_cli"]
     else:
-        nemo_argv = [nemo]
+        nemo_oo_argv = [nemo_oo]
 
-    argv = nemo_argv + ["oo", "tui"]
+    argv = nemo_oo_argv + ["tui"]
 
     if model:
         argv += ["--model", model]

@@ -70,7 +70,7 @@ def _setup_tracing(model: str, agent_type: str) -> None:
        display them without a separate ``import-harbor`` step.
     3. If unreachable → fall back to JSONL files in the Harbor artifact
        directory (``/logs/artifacts/traces/``), importable later via
-       ``nemo oo import-harbor``.
+       ``nemo-oo import-harbor``.
 
     Note: Apptainer containers share the host network namespace, so
     ``localhost:5001`` inside the container resolves to the developer's host.

@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Tests for the ``nemo oo config`` subcommand."""
+"""Tests for the ``nemo-oo config`` subcommand."""
 
 from __future__ import annotations
 
@@ -42,7 +42,7 @@ def _stub_bundled(monkeypatch, *paths: Path) -> None:
 
 
 class TestShowCommand:
-    """`nemo oo config show` prints the resolved chain."""
+    """`nemo-oo config show` prints the resolved chain."""
 
     def test_show_prints_all_section_headers(self, _isolated_env):
         runner = CliRunner()
@@ -146,7 +146,7 @@ class TestShowCommand:
 
 
 class TestPathCommand:
-    """`nemo oo config path` prints the user-level YAML path."""
+    """`nemo-oo config path` prints the user-level YAML path."""
 
     def test_path_prints_user_dir_target(self, _isolated_env):
         runner = CliRunner()
@@ -157,7 +157,7 @@ class TestPathCommand:
 
 
 class TestEjectCommand:
-    """`nemo oo config eject` copies the bundled YAML to the user-level path."""
+    """`nemo-oo config eject` copies the bundled YAML to the user-level path."""
 
     def test_eject_writes_file(self, _isolated_env, tmp_path, monkeypatch):
         bundled = tmp_path / "bundled.yaml"
@@ -277,7 +277,7 @@ class TestEjectCommand:
 
 
 class TestShowSettingsSecrets:
-    """`nemo oo config show` reports settings.yaml + secrets.yaml layers."""
+    """`nemo-oo config show` reports settings.yaml + secrets.yaml layers."""
 
     @pytest.fixture(autouse=True)
     def _clear_layer_env(self, monkeypatch):

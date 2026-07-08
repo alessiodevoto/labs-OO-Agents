@@ -448,10 +448,10 @@ class MyAgent(Agent, llm=llm):
 
 ### Auto-Tracing (Default)
 
-Tracing is **automatic** when the tracing package is installed. Every `Agent.__init__()` probes `localhost:5001` and, if the `nemo start-dev` viewer is running, sends spans via OTLP with no code changes required.
+Tracing is **automatic** when the tracing package is installed. Every `Agent.__init__()` probes `localhost:5001` and, if the `nemo-oo start-dev` viewer is running, sends spans via OTLP with no code changes required.
 
 ```bash
-nemo start-dev              # Start viewer, then run your agent -- traces appear automatically
+nemo-oo start-dev              # Start viewer, then run your agent -- traces appear automatically
 ```
 
 ### Explicit Setup (JSONL or Custom Endpoints)
@@ -490,7 +490,7 @@ Traces are saved as `.006trace.jsonl` files. Each line contains one OTLP span wr
 ### Development Server
 
 ```bash
-nemo start-dev    # Launches viewer at http://localhost:5001
+nemo-oo start-dev    # Launches viewer at http://localhost:5001
 ```
 
 ## Self-Extending Agents

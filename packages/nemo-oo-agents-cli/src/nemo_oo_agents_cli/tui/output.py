@@ -297,7 +297,7 @@ class HistoryReplay:
     style to distinguish it from the live conversation.
 
     When rich content is interleaved with history (session resume inside
-    ``nemo oo term``), one session's history may be split into several
+    ``nemo-oo term``), one session's history may be split into several
     ``HistoryReplay`` chunks with ``_RichReplayPayload`` objects between them.
     ``show_header`` / ``show_footer`` control which chunk renders the enclosing
     rule bars so they appear exactly once around the whole block.

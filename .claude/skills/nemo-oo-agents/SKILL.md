@@ -781,7 +781,7 @@ Tracing is **automatic**. Every `Agent.__init__()` call probes `localhost:5001`;
 **Development workflow:**
 ```bash
 # Terminal 1: start the trace viewer
-nemo start-dev   # Launches viewer at http://localhost:5001
+nemo-oo start-dev   # Launches viewer at http://localhost:5001
 
 # Terminal 2: run your agent -- traces appear automatically
 uv run python main.py
@@ -868,7 +868,7 @@ assert fake.call_count == 2
 ### Debugging Tips
 
 1. **Inspect the prompt first**: Use `print_prompt` to see what the LLM actually receives -- most bugs are visible in the rendered prompt
-2. **Run `nemo start-dev`** before you run your agent and traces appear automatically -- no code changes needed
+2. **Run `nemo-oo start-dev`** before you run your agent and traces appear automatically -- no code changes needed
 3. **Check the docstring**: It IS part of the prompt the LLM gets. Unclear docstrings produce unreliable results.
 4. **Check the class docstring**: It's part of the system prompt. Keep it concise -- verbose class docstrings waste tokens on every call.
 5. **Reduce scope**: Test one method in isolation before composing

@@ -92,7 +92,7 @@ file for you.
 
 Same filename and format — just move it to the new dir:
 `~/.config/nat/oo/llm_config.yaml` → `~/.config/nemo_oo/llm_config.yaml`
-(or `<project>/.nemo_oo/llm_config.yaml`). `nemo oo config eject` regenerates
+(or `<project>/.nemo_oo/llm_config.yaml`). `nemo-oo config eject` regenerates
 a fresh copy in the new location.
 
 ## 5. Environment variables → `NEMO_OO_` prefix
@@ -109,6 +109,6 @@ a fresh copy in the new location.
 ## Verify
 
 ```bash
-nemo oo config show   # shows which settings.yaml / secrets.yaml / llm_config.yaml
+nemo-oo config show   # shows which settings.yaml / secrets.yaml / llm_config.yaml
                       # layers are active (secret values redacted)
 ```

@@ -3,11 +3,11 @@
 """Manage trace and evaluation files.
 
 Usage:
-    nemo oo traces delete                          # Delete, with confirmation
-    nemo oo traces delete -n                       # Dry run
-    nemo oo traces delete --older-than 7           # Only files >7 days old
-    nemo oo traces list                            # List trace directories
-    nemo oo traces stats                           # Show trace file statistics
+    nemo-oo traces delete                          # Delete, with confirmation
+    nemo-oo traces delete -n                       # Dry run
+    nemo-oo traces delete --older-than 7           # Only files >7 days old
+    nemo-oo traces list                            # List trace directories
+    nemo-oo traces stats                           # Show trace file statistics
 """
 
 import re
@@ -167,11 +167,11 @@ def delete(
 
     \b
     Examples:
-        nemo oo traces delete                          # Delete, with confirmation
-        nemo oo traces delete -n                       # Dry run (show what would go)
-        nemo oo traces delete --older-than 7           # Only files >7 days old
-        nemo oo traces delete --all -y                 # Delete everything, no prompt
-        nemo oo traces delete --evals                  # Include eval files
+        nemo-oo traces delete                          # Delete, with confirmation
+        nemo-oo traces delete -n                       # Dry run (show what would go)
+        nemo-oo traces delete --older-than 7           # Only files >7 days old
+        nemo-oo traces delete --all -y                 # Delete everything, no prompt
+        nemo-oo traces delete --evals                  # Include eval files
     """
     root = Path(directory).resolve()
     click.echo(f"Scanning: {root}")
@@ -259,8 +259,8 @@ def list_dirs(root: str | None):
 
     \b
     Examples:
-        nemo oo traces list
-        nemo oo traces list --root /path/to/project
+        nemo-oo traces list
+        nemo-oo traces list --root /path/to/project
     """
     project_root = Path(root) if root else find_project_root()
     dirs = _discover_trace_dirs(project_root)
@@ -299,8 +299,8 @@ def stats(directory: str):
 
     \b
     Examples:
-        nemo oo traces stats
-        nemo oo traces stats ./experiments
+        nemo-oo traces stats
+        nemo-oo traces stats ./experiments
     """
     root = Path(directory).resolve()
     trace_files = _find_trace_files(root)

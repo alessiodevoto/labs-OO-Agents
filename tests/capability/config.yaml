@@ -65,7 +65,7 @@ target_files:
 # NVIDIA-internal aliases (claude-haiku-azure, nemotron3-nano-30b, gpt-5.2, etc.)
 # ship in the nemo-oo-agents-nvidia package; install it (or the [nvidia]
 # extra) and the aliases resolve automatically. Run
-# `nemo oo config show` to inspect which YAML files are loading.
+# `nemo-oo config show` to inspect which YAML files are loading.
 #
 # Any model name supported by litellm also works as-is.
 # =============================================================================

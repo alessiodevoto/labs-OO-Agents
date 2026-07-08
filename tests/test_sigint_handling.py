@@ -10,7 +10,7 @@ def test_sigint_cleanup():
     """Test that ^C exits cleanly without traceback spam."""
     # Start the web terminal
     proc = subprocess.Popen(
-        [sys.executable, "-m", "nemo_oo_agents_cli", "oo", "term", "--port", "8001"],
+        [sys.executable, "-m", "nemo_oo_agents_cli", "term", "--port", "8001"],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,

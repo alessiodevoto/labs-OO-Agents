@@ -178,7 +178,7 @@ layer below."
 Precedence (low → high, last wins): bundled defaults → user → project →
 env-var path(s). For `secrets.yaml`, an env var already set in the process
 always wins over a file value. `null` deletes a key inherited from a lower
-layer. Run `nemo oo config show` to see which layers are loading (secret
+layer. Run `nemo-oo config show` to see which layers are loading (secret
 values redacted).
 
 `secrets.yaml`:
@@ -213,9 +213,9 @@ All framework-owned env vars use the `NEMO_OO_` prefix:
 | `NEMO_OO_LLM_CONFIG` | Comma-separated YAML path(s) — highest-priority `llm_config.yaml` layer |
 | `NEMO_OO_SETTINGS` | Comma-separated YAML path(s) — highest-priority `settings.yaml` layer |
 | `NEMO_OO_SECRETS` | Comma-separated YAML path(s) — highest-priority `secrets.yaml` layer |
-| `NEMO_OO_TRACE_VIEWER_PORT` | Port for the trace viewer (`nemo oo start-dev`; default 5001) |
+| `NEMO_OO_TRACE_VIEWER_PORT` | Port for the trace viewer (`nemo-oo start-dev`; default 5001) |
 | `NEMO_OO_TRACE_DB` | SQLite trace-store path for the viewer (default `~/.config/nemo_oo/traces.db`) |
-| `NEMO_OO_RICH_URL` | Rich-content POST endpoint, set by `nemo oo term` for the web frontend (internal) |
+| `NEMO_OO_RICH_URL` | Rich-content POST endpoint, set by `nemo-oo term` for the web frontend (internal) |
 
 Any var named under a `secrets.yaml` `env:` map (e.g. `NVIDIA_INTERNAL_API_KEY`)
 is pushed into the process env non-clobbering — an already-exported value always wins.

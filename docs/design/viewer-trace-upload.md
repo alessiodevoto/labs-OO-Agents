@@ -15,7 +15,7 @@ We initially explored a UI-only approach with file/directory pickers in the brow
 ### CLI command
 
 ```
-nemo oo import-traces <file_or_directory> [--endpoint URL] [--batch-id ID]
+nemo-oo import-traces <file_or_directory> [--endpoint URL] [--batch-id ID]
 ```
 
 - **file_or_directory**: a single `.jsonl` file or a directory (recursively finds all `.jsonl` files)

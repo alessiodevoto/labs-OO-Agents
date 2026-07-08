@@ -3,17 +3,17 @@
 """NeMo OO Agents CLI — extensible command-line toolkit.
 
 Usage:
-    nemo oo eval <config.yaml>         # Run an eval-pipeline job
-    nemo oo start-dev                  # Start the viewer
-    nemo oo traces cleanup             # Cleanup traces
-    nemo oo completion install         # Set up shell completions
+    nemo-oo eval <config.yaml>         # Run an eval-pipeline job
+    nemo-oo start-dev                  # Start the viewer
+    nemo-oo traces delete              # Delete traces
+    nemo-oo completion install         # Set up shell completions
 
 Adding new commands:
     Drop a .py file in nemo_oo_agents_cli/commands/ — see commands/_template.py
 
 Shell completion:
-    eval "$(_NEMO_COMPLETE=bash_source nemo)"    # bash
-    eval "$(_NEMO_COMPLETE=zsh_source nemo)"     # zsh
+    eval "$(_NEMO_OO_COMPLETE=bash_source nemo-oo)"    # bash
+    eval "$(_NEMO_OO_COMPLETE=zsh_source nemo-oo)"     # zsh
 """
 
 import click
@@ -24,22 +24,17 @@ from .completion import completion
 CONTEXT_SETTINGS = {"help_option_names": ["-h", "--help"]}
 
 
-@click.group(context_settings=CONTEXT_SETTINGS)
-@click.version_option(package_name="nemo-oo-agents")
-def nemo():
-    """NeMo — NVIDIA's agent framework CLI."""
-
-
 # Thin launcher subcommands that don't touch API keys in *this* process:
 # `term` runs a web/PTY server and re-spawns the CLI as a child (which loads
 # secrets itself via bootstrap); `completion` just emits a shell script.
 # Skipping the secrets preload for them avoids importing the heavy
-# ``nemo_oo_agents`` core (~1.5s) on startup — keeping `nemo oo term` fast and
+# ``nemo_oo_agents`` core (~1.5s) on startup — keeping `nemo-oo term` fast and
 # its SIGINT shutdown prompt.
 _SKIP_SECRETS_PRELOAD = {"term", "completion"}
 
 
-@nemo.group()
+@click.group(context_settings=CONTEXT_SETTINGS)
+@click.version_option(package_name="nemo-oo-agents")
 @click.pass_context
 def oo(ctx):
     """OO Agents — agent toolkit.
@@ -73,10 +68,7 @@ for _name, _cmd in discover_commands():
 # -- Built-in infrastructure commands (not in commands/ because they're meta) -
 oo.add_command(completion)
 
-# Keep cli as alias for backward compat
-cli = nemo
-
 
 def main():
-    """Entry point for console_scripts: nemo oo <subcommand>."""
-    nemo()
+    """Entry point for console_scripts: nemo-oo <subcommand>."""
+    oo()

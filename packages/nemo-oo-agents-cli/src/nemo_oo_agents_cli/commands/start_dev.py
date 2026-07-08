@@ -3,8 +3,8 @@
 """Start the development viewer.
 
 Usage:
-    nemo oo start-dev                  # Start viewer on :5001
-    nemo oo start-dev --port 5002      # Custom port
+    nemo-oo start-dev                  # Start viewer on :5001
+    nemo-oo start-dev --port 5002      # Custom port
 """
 
 import logging

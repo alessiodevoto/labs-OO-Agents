@@ -32,7 +32,7 @@ class RichOutput(Metadata):  # type: ignore[misc]
 class WebPublisher(Skill):
     """Inline rich output — interactive charts, images, HTML, and formatted data rendered in the web panel.
 
-    Available when the agent runs inside ``nemo oo term``.  Call methods on
+    Available when the agent runs inside ``nemo-oo term``.  Call methods on
     ``self.web`` to render content inline at the current position in the
     terminal scroll buffer.  All methods are fire-and-forget; if the browser
     is not connected the call is silently skipped.  Content is persisted in
