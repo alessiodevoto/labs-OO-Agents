@@ -2,15 +2,11 @@
 
 This module provides:
 - AgentWrapper: Adapts agents to the pipeline's run() interface
-- load_agent_class: Loads agent class from module/class names
-- create_agent_factory: Creates factory functions for agent instantiation
+- agent_from_spec: Reconstructs an agent from an AgentSpec in a subprocess
 """
 
-import importlib
 import os
 from typing import Any
-
-from .config import TestConfig
 
 
 class AgentWrapper:
@@ -25,49 +21,6 @@ class AgentWrapper:
         """Run agent method with args/kwargs unpacking."""
         args, kwargs = input
         return await self.method(*args, **kwargs)
-
-
-def load_agent_class(test: TestConfig) -> type:
-    """Load agent class from test config."""
-    module = importlib.import_module(test.agent_module)
-    return getattr(module, test.agent_class)
-
-
-def client_from_spec(spec):
-    """Create LLM client from ModelSpec."""
-    from nemo_oo_agents.unifiedllm import CompletionClient, ResponsesClient, RetryConfig
-
-    # Build config dict
-    config = {
-        "model": spec.model_name,
-        "api_base": spec.endpoint,
-        "api_key": os.getenv(spec.api_key_env or "", ""),
-        "max_tokens": spec.max_tokens or 4096,
-    }
-
-    # Add reasoning support for Claude and other models
-    if spec.reasoning_effort:
-        config["reasoning_effort"] = spec.reasoning_effort
-        # Tell litellm to allow reasoning_effort through for OpenAI-compatible endpoints
-        config["allowed_openai_params"] = ["reasoning_effort"]
-
-    # Add nvext for Nemotron-style thinking tokens
-    if spec.max_thinking_tokens:
-        config["extra_body"] = {"nvext": {"max_thinking_tokens": spec.max_thinking_tokens}}
-
-    # Build retry config if specified
-    retry_config = None
-    if spec.max_retries is not None or spec.retry_on_empty_content:
-        retry_config = RetryConfig(
-            max_retries=spec.max_retries if spec.max_retries is not None else 3,
-            retry_on_empty_content=spec.retry_on_empty_content,
-        )
-
-    # Dispatch based on client_type from registry config
-    client_type = getattr(spec, "client_type", None) or "completion"
-    if client_type == "responses":
-        return ResponsesClient(retry_config=retry_config, **config)
-    return CompletionClient(retry_config=retry_config, **config)
 
 
 def agent_from_spec(spec) -> AgentWrapper:
@@ -119,22 +72,3 @@ def agent_from_spec(spec) -> AgentWrapper:
 
     agent_instance = cls(llm=client)
     return AgentWrapper(agent_instance, spec.method)
-
-
-def create_agent_factory(agent_class: type, method_name: str, model=None):
-    """Create agent factory from agent class.
-
-    Returns a callable that creates wrapped agent instances.
-    """
-    from .model_factory import client as model_client
-
-    def factory():
-        if model is None:
-            agent_instance = agent_class()
-        elif hasattr(model, "model_name"):
-            agent_instance = agent_class(llm=client_from_spec(model))
-        else:
-            agent_instance = agent_class(llm=model_client(model))
-        return AgentWrapper(agent_instance, method_name)
-
-    return factory

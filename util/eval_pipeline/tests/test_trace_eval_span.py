@@ -6,8 +6,8 @@ from pathlib import Path
 import pytest
 
 from eval_pipeline.eval_types import ScoreDetail
-from eval_pipeline.otlp_io import _otlp_attrs_to_dict
 from eval_pipeline.trace_eval_span import write_eval_span_to_trace
+from tests.otlp_helpers import _otlp_attrs_to_dict
 
 
 def _read_first_span_from_otlp_file(trace_file: Path) -> tuple[str, dict]:

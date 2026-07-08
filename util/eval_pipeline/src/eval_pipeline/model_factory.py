@@ -1,13 +1,10 @@
 """Model factory loading from models.yaml.
 
 Usage:
-    from eval_pipeline.model_factory import client, client_for
+    from eval_pipeline.model_factory import client
 
     # Get a configured client by model ID
     llm = client("azure/anthropic/claude-haiku-4-5")
-
-    # Or by default role
-    llm = client_for("agent")
 """
 
 from __future__ import annotations
@@ -108,24 +105,6 @@ def get(model_id: str) -> ModelConfig:
     )
 
 
-def get_default(role: str) -> str:
-    """Get the default model ID for a role.
-
-    Args:
-        role: One of 'playground', 'evaluation', 'agent', 'judge'
-
-    Returns:
-        Model ID string
-    """
-    data = _load_models_yaml()
-    defaults = data.get("defaults", {})
-
-    if role not in defaults:
-        raise KeyError(f"No default for role '{role}'. Available: {list(defaults.keys())}")
-
-    return defaults[role]
-
-
 def list_models() -> list[str]:
     """List all available model IDs."""
     data = _load_models_yaml()
@@ -224,17 +203,3 @@ def client(model_id: str, **kwargs) -> UnifiedLLM:
         )
 
     return CompletionClient(model=litellm_model, **config)
-
-
-def client_for(role: str, **kwargs) -> UnifiedLLM:
-    """Create a client for the default model of a role.
-
-    Args:
-        role: One of 'playground', 'evaluation', 'agent', 'judge'
-        **kwargs: Override config values
-
-    Returns:
-        Configured UnifiedLLM client
-    """
-    model_id = get_default(role)
-    return client(model_id, **kwargs)
