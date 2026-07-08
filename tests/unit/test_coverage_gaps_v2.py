@@ -10,7 +10,7 @@ import concurrent.futures
 import subprocess
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -2316,6 +2316,85 @@ class TestMethodWrapperNonGenerationDirect:
         obj = _NoRuntime()
         result = await wrapper(obj, 7)
         assert result == 21  # Line 271: original_func called directly
+
+    async def test_agent_runtime_path_flushes_litellm_journal_callbacks(self):
+        """Agent runtime path drains LiteLLM journal callbacks before returning."""
+        from nemo_oo_agents.runtime.method_wrapper import create_agent_method_wrapper
+
+        async def my_regular(self) -> str:
+            return "ok"
+
+        wrapper = create_agent_method_wrapper(
+            my_regular,
+            needs_generation=False,
+            needs_tracing=False,
+            strategy=None,
+        )
+
+        class _Runtime:
+            _agent_call_id = None
+
+        class _EventManager:
+            _middleware = {}
+
+            def __init__(self) -> None:
+                self.events = []
+
+            def add(self, event: object) -> None:
+                self.events.append(event)
+
+        class _Agent:
+            runtime = _Runtime()
+
+            def __init__(self) -> None:
+                self.event_manager = _EventManager()
+
+        agent = _Agent()
+        sleep = AsyncMock()
+        to_thread = AsyncMock()
+        with (
+            patch("nemo_oo_agents.runtime.method_wrapper.asyncio.sleep", sleep),
+            patch("nemo_oo_agents.runtime.method_wrapper.asyncio.to_thread", to_thread),
+            patch("nemo_oo_agents.tracing._litellm_journal.flush_pending") as flush_pending,
+        ):
+            result = await wrapper(agent)
+
+        assert result == "ok"
+        assert sleep.await_count == 3
+        sleep.assert_awaited_with(0)
+        to_thread.assert_awaited_once_with(flush_pending)
+        flush_pending.assert_not_called()
+
+    async def test_agent_runtime_middleware_path_flushes_litellm_journal_callbacks(self):
+        """Agent middleware runtime path drains LiteLLM journal callbacks before returning."""
+        from nemo_oo_agents.agent import Agent
+        from nemo_oo_agents.runtime.method_wrapper import create_agent_method_wrapper
+
+        async def my_regular(self) -> str:
+            return "ok"
+
+        wrapper = create_agent_method_wrapper(
+            my_regular,
+            needs_generation=False,
+            needs_tracing=False,
+            strategy=None,
+        )
+
+        agent = Agent(llm=FakeLLMClient())
+
+        async def passthrough(ctx: object, nxt: object) -> object:
+            return await nxt(ctx)
+
+        agent.event_manager.intercept("agent_call", passthrough)
+        flush_journal = AsyncMock()
+        with patch(
+            "nemo_oo_agents.runtime.method_wrapper._flush_litellm_journal",
+            flush_journal,
+        ):
+            result = await wrapper(agent)
+
+        assert result == "ok"
+        flush_journal.assert_awaited_once_with()
 
 
 # =============================================================================
