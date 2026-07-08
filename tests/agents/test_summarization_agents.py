@@ -216,11 +216,11 @@ class TestTokenBudgetSummarizer:
 
         test_agent.runtime._last_prompt_tokens_actual = 600
         test_agent.runtime._last_context_stats = ContextWindowStats(
-            context_blocks_tokens=0,
             context_blocks_count=0,
-            events_tokens=1500,
             events_count=20,
-            total_tokens=1500,
+            context_blocks_chars=0,
+            events_chars=1500,
+            prompt_tokens=1500,
         )
         summarizer = TokenBudgetSummarizer(test_agent, config=TokenBudgetConfig(max_tokens=1000))
         event = AfterTurn(
@@ -240,11 +240,11 @@ class TestTokenBudgetSummarizer:
 
         test_agent.runtime._last_prompt_tokens_actual = None
         test_agent.runtime._last_context_stats = ContextWindowStats(
-            context_blocks_tokens=0,
             context_blocks_count=0,
-            events_tokens=1500,
             events_count=20,
-            total_tokens=1500,
+            context_blocks_chars=0,
+            events_chars=1500,
+            prompt_tokens=1500,
         )
         summarizer = TokenBudgetSummarizer(test_agent, config=TokenBudgetConfig(max_tokens=1000))
         event = AfterTurn(
@@ -973,11 +973,11 @@ class TestSummarizationAsyncIntegration:
             test_agent.event_manager.add(Message(content="x" * 100))
 
         test_agent.runtime._last_context_stats = ContextWindowStats(
-            context_blocks_tokens=0,
             context_blocks_count=0,
-            events_tokens=200_000,
             events_count=20,
-            total_tokens=200_000,
+            context_blocks_chars=0,
+            events_chars=200_000,
+            prompt_tokens=200_000,
         )
         test_agent.runtime._last_prompt_tokens_actual = 200_000
 
@@ -1027,11 +1027,11 @@ class TestSummarizationAsyncIntegration:
 
         # Simulate the runtime having shipped an over-budget prompt.
         test_agent.runtime._last_context_stats = ContextWindowStats(
-            context_blocks_tokens=0,
             context_blocks_count=0,
-            events_tokens=200_000,
             events_count=20,
-            total_tokens=200_000,
+            context_blocks_chars=0,
+            events_chars=200_000,
+            prompt_tokens=200_000,
         )
         test_agent.runtime._last_prompt_tokens_actual = 200_000
 
@@ -1072,11 +1072,11 @@ class TestSummarizationAsyncIntegration:
         # Simulate the next _build_messages() having re-rendered with the
         # post-collapse event list — total_tokens drops below budget.
         test_agent.runtime._last_context_stats = ContextWindowStats(
-            context_blocks_tokens=0,
             context_blocks_count=0,
-            events_tokens=50,
             events_count=6,
-            total_tokens=50,
+            context_blocks_chars=0,
+            events_chars=50,
+            prompt_tokens=50,
         )
 
         # Turn 2 AfterTurn — fresh stats say under budget, no reschedule.

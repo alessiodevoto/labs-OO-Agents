@@ -11,7 +11,7 @@ import pytest
 
 from nemo_oo_agents import Agent
 from nemo_oo_agents.context_blocks.events import ResultStatus, ToolCallEvent, ToolResult
-from nemo_oo_agents.events import Message, PythonOutput
+from nemo_oo_agents.events import Message
 from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse
 
 
@@ -46,8 +46,21 @@ class TestTokenCalibration:
 
     @pytest.mark.asyncio
     async def test_context_stats_populated_after_llm_call(self):
-        """After a successful LLM call, _last_context_stats is populated."""
-        llm = _mk_calibrating_llm(200_000)
+        """After a successful LLM call, _last_context_stats carries the
+        provider-reported prompt tokens (the single source of truth) and the
+        structural event count from the render pass."""
+        llm = FakeLLMClient(
+            scripted_responses=[
+                LLMResponse(
+                    raw_response=None,
+                    content="ok",
+                    tool_calls=[],
+                    finish_reason="stop",
+                    assistant_message={"role": "assistant", "content": "ok"},
+                    usage={"prompt_tokens": 500, "completion_tokens": 7},
+                )
+            ]
+        )
 
         class A(Agent, llm=llm):
             async def respond(self, prompt: str) -> str:
@@ -74,20 +87,29 @@ class TestTokenCalibration:
         runtime = agent.runtime
         assert not hasattr(runtime, "_token_calibration_ratio")
 
-        # Trigger an LLM call
-        try:
-            await agent.respond("hello")
-        except Exception:
-            pass
+        await agent.respond("hello")
 
-        # _last_context_stats should be populated from the render pass
+        # Populated from provider usage, not a local estimate.
         assert runtime._last_context_stats is not None
-        assert runtime._last_context_stats.total_tokens > 0
+        assert runtime._last_context_stats.total_tokens == 500
+        assert runtime._last_context_stats.events_count >= 10
 
     @pytest.mark.asyncio
-    async def test_cap_always_uses_70_percent(self):
-        """Safety net uses a real-token 70% cap with no per-actor ratio."""
-        llm = _mk_calibrating_llm(200_000)
+    async def test_headline_is_raw_provider_total_no_ratio(self):
+        """The headline token count is the provider's prompt_tokens verbatim —
+        no per-actor calibration ratio or 70%-style scaling is applied to it."""
+        llm = FakeLLMClient(
+            scripted_responses=[
+                LLMResponse(
+                    raw_response=None,
+                    content="ok",
+                    tool_calls=[],
+                    finish_reason="stop",
+                    assistant_message={"role": "assistant", "content": "ok"},
+                    usage={"prompt_tokens": 150_000, "completion_tokens": 9},
+                )
+            ]
+        )
 
         class A(Agent, llm=llm):
             async def respond(self, prompt: str) -> str:
@@ -96,43 +118,61 @@ class TestTokenCalibration:
 
         agent = A()
         runtime = agent.runtime
-
         assert not hasattr(runtime, "_token_calibration_ratio")
 
-        # Add enough events to make the cap meaningful
-        for i in range(200):
-            tc_id = f"call_{i}"
-            agent.event_manager.add(
-                ToolCallEvent(
-                    tool_call_id=tc_id,
-                    name="execute_python",
-                    arguments={"code": f"step_{i} " * 50},
-                    result=ToolResult(
-                        tool_call_id=tc_id,
-                        content=f"result_{i} " * 50,
-                        result_status=ResultStatus.COMPLETE,
-                    ),
-                )
-            )
-            agent.event_manager.add(
-                PythonOutput(
-                    tool_call_id=tc_id,
-                    execution_count=i,
-                    stdout=f"out_{i} " * 50,
-                    stderr="",
-                    execution_status=ResultStatus.COMPLETE,
-                )
-            )
+        agent.event_manager.add(Message(content="some event"))
 
-        try:
-            await agent.respond("test calibration")
-        except Exception:
-            pass
+        await agent.respond("test calibration")
 
         stats = runtime._last_context_stats
         assert stats is not None
-        # The cap is 70% of 200K = 140K. Events should be clamped to that.
-        assert stats.total_tokens <= int(200_000 * 0.70) + 1000  # small tolerance
+        # Raw provider value, unscaled.
+        assert stats.total_tokens == 150_000
+        assert runtime._last_prompt_tokens_actual == 150_000
+        assert not hasattr(runtime, "_token_calibration_ratio")
+
+    @pytest.mark.asyncio
+    async def test_provider_response_recalibrates_tokens_per_char(self):
+        """A provider response updates _tokens_per_char to exactly
+        prompt_tokens / total_chars, replacing the cold-start default."""
+        import pytest as _pytest
+
+        llm = FakeLLMClient(
+            scripted_responses=[
+                LLMResponse(
+                    raw_response=None,
+                    content="ok",
+                    tool_calls=[],
+                    finish_reason="stop",
+                    assistant_message={"role": "assistant", "content": "ok"},
+                    usage={"prompt_tokens": 5_000, "completion_tokens": 4},
+                )
+            ]
+        )
+
+        class A(Agent, llm=llm):
+            async def respond(self, prompt: str) -> str:
+                """Respond to {prompt}."""
+                ...
+
+        agent = A()
+        agent.event_manager.add(Message(content="x" * 400))
+        runtime = agent.runtime
+
+        # Before any response: the cold-start default.
+        from nemo_oo_agents.runtime.actor import _DEFAULT_TOKENS_PER_CHAR
+
+        assert runtime._tokens_per_char == _DEFAULT_TOKENS_PER_CHAR
+
+        await agent.respond("hi")
+
+        stats = runtime._last_context_stats
+        total_chars = stats.context_blocks_chars + stats.events_chars
+        assert total_chars > 0
+        # Ratio is exactly prompt_tokens / total_chars from this response...
+        assert runtime._tokens_per_char == _pytest.approx(5_000 / total_chars)
+        # ...and it actually moved off the default (small prompt → large ratio).
+        assert runtime._tokens_per_char != _DEFAULT_TOKENS_PER_CHAR
 
 
 class TestTokenCalibrationEdgeCases:
@@ -201,7 +241,10 @@ class TestActualTokenStats:
         assert agent.runtime._last_prompt_tokens_actual == 12_345
 
     @pytest.mark.asyncio
-    async def test_missing_usage_leaves_render_context_estimate(self):
+    async def test_missing_usage_leaves_total_tokens_none(self):
+        """No provider usage → no token count at all. There is no local
+        estimate to fall back to: total_tokens stays None, but structural
+        fields from the render pass are still populated."""
         llm = FakeLLMClient(
             scripted_responses=[
                 LLMResponse(
@@ -228,6 +271,8 @@ class TestActualTokenStats:
         assert result == "ok"
         stats = agent.runtime._last_context_stats
         assert stats is not None
-        assert stats.total_tokens > 0
-        assert stats.total_tokens != 12_345
+        assert stats.total_tokens is None
+        assert stats.context_blocks_tokens is None
+        # Structural facts are still recorded.
+        assert stats.events_count >= 1
         assert agent.runtime._last_prompt_tokens_actual is None

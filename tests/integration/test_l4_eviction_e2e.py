@@ -287,15 +287,23 @@ class TestPostRenderEventCollapse:
 
 
 class TestDefaultBudgetSplit:
-    """When max_context_tokens is unset, context budget = context_window // 2."""
+    """When max_context_tokens is unset, context budget = usable window // 2,
+    where usable = context_window − output-token reserve (the call's
+    max_tokens, else TruncationConfig.response_reserve_tokens)."""
 
     @pytest.mark.asyncio
     async def test_half_window_cap_evicts_large_context(self):
-        """Large context blocks are evicted when they exceed half the window."""
+        """Large context blocks are evicted when they exceed half the usable window.
+
+        Window 8192 − 2048 reserved for output = 6144 usable → 3072 budget.
+        Eviction sizes blocks with the chars→tokens ratio (cold-start ~1/4),
+        so the block must exceed 3072 tokens ≈ 12,288 chars to be evicted.
+        """
         agent = _mk_agent(context_window=8192)
 
-        # Add a huge context block (~5k tokens > 4096 half-window)
-        agent.context["huge"] = "z " * 5000
+        # ~40,000 chars ≈ 10,000 tokens at the cold-start ratio — well over
+        # the 3072-token budget.
+        agent.context["huge"] = "z " * 20000
 
         method = type(agent).respond
         token = _current_llm_var.set(agent._llm)
@@ -311,8 +319,62 @@ class TestDefaultBudgetSplit:
 
         stats = agent.runtime._last_context_stats
         assert stats is not None
-        # Either eviction fired or the context fits in half window
-        assert stats.context_blocks_dropped > 0 or stats.context_blocks_tokens <= 4096
+        # Eviction fired: the over-budget context block was dropped.
+        assert stats.context_blocks_dropped > 0
+
+    @pytest.mark.asyncio
+    async def test_eviction_consults_the_calibrated_ratio(self):
+        """Eviction sizing reads the live _tokens_per_char: a block that would
+        be evicted at the cold-start ratio survives once the ratio is lower."""
+        # No explicit max_tokens → default 4096 output reserve applies:
+        # usable = 8192 − 4096 = 4096 → budget = 2048 tokens.
+        agent = _mk_agent(context_window=8192)
+
+        # 24,000 chars. At the cold-start ratio 0.25 → 6,000 tokens > 2048
+        # (would evict). At a calibrated ratio of 0.08 → 1,920 tokens < 2048.
+        agent.context["mid"] = "z " * 12000
+        agent.runtime._tokens_per_char = 0.08
+
+        method = type(agent).respond
+        token = _current_llm_var.set(agent._llm)
+        try:
+            await agent.runtime._build_messages(method, call_args=(agent, "hi"), call_kwargs={})
+        finally:
+            _current_llm_var.reset(token)
+
+        stats = agent.runtime._last_context_stats
+        assert stats is not None
+        # Lower ratio → block fits → no eviction. Proves the ratio is consulted.
+        assert stats.context_blocks_dropped == 0
+
+    @pytest.mark.asyncio
+    async def test_output_reserve_shrinks_default_budget(self):
+        """The call's max_tokens is reserved out of the window before the
+        half split: a block that fits half the RAW window is still evicted
+        when the completion budget leaves less usable room."""
+        agent = _mk_agent(context_window=8192)
+
+        # 12,000 chars ≈ 3,000 tokens at the cold-start ratio. Under the old
+        # raw half-window budget (4096) it would fit; with max_tokens=4096 the
+        # usable window is 4096 → budget 2048 → evicted.
+        agent.context["mid"] = "z " * 6000
+
+        method = type(agent).respond
+        token = _current_llm_var.set(agent._llm)
+        try:
+            await agent.runtime._build_messages(
+                method,
+                call_args=(agent, "hi"),
+                call_kwargs={},
+                max_output_tokens=4096,
+            )
+        finally:
+            _current_llm_var.reset(token)
+
+        stats = agent.runtime._last_context_stats
+        assert stats is not None
+        assert stats.reserved_output_tokens == 4096
+        assert stats.context_blocks_dropped > 0
 
 
 # ── Nightly integration tests (real LLM) ────────────────────────────────

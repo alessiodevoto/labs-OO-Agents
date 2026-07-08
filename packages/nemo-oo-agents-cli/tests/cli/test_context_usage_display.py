@@ -25,54 +25,66 @@ def _make_session_for_label(context_stats):
     return session
 
 
-def _stats(*, total, max_context, max_event, model_context_window=None):
-    """ContextWindowStats-shaped namespace — enough for the label helper."""
-    return SimpleNamespace(
-        total_tokens=total,
-        max_context_tokens=max_context,
-        max_event_tokens=max_event,
+def _stats(*, total, model_context_window=None, reserved_output_tokens=None):
+    """Real ContextWindowStats for the label helper.
+
+    ``total`` is the provider-reported prompt-token count (None before the
+    first response). The percentage is against the usable window (model
+    window minus the output-token reserve).
+    """
+    from nemo_oo_agents.context_blocks.models import ContextWindowStats
+
+    return ContextWindowStats(
+        context_blocks_count=0,
+        events_count=0,
+        prompt_tokens=total,
         model_context_window=model_context_window,
+        reserved_output_tokens=reserved_output_tokens,
     )
 
 
-def test_context_usage_label_none_when_no_stats():
+def test_context_usage_label_placeholder_when_no_stats():
+    # No generation context yet → placeholder, not blank.
     session = _make_session_for_label(None)
-    assert session._context_usage_label() == ""
+    assert session._context_usage_label() == "ctx —"
 
 
-def test_context_usage_label_none_when_no_max():
-    # Stats exist but both limits are None → no percent to show
-    session = _make_session_for_label(_stats(total=1234, max_context=None, max_event=None))
-    assert session._context_usage_label() == ""
+def test_context_usage_label_placeholder_before_first_response():
+    # Stats exist (render ran) but the provider has not reported usage yet.
+    session = _make_session_for_label(_stats(total=None, model_context_window=200_000))
+    assert session._context_usage_label() == "ctx —"
+
+
+def test_context_usage_label_placeholder_when_no_window():
+    # Provider tokens known but the model window is unknown → can't compute %.
+    session = _make_session_for_label(_stats(total=1234, model_context_window=None))
+    assert session._context_usage_label() == "ctx —"
 
 
 def test_context_usage_label_shows_integer_percent():
-    # 16 000 used / (64 000 + 16 000) = 20.0%
-    session = _make_session_for_label(_stats(total=16_000, max_context=64_000, max_event=16_000))
+    # 16 000 / 80 000 = 20.0%
+    session = _make_session_for_label(_stats(total=16_000, model_context_window=80_000))
     assert session._context_usage_label() == "ctx 20%"
 
 
 def test_context_usage_label_rounds():
     # 13 000 / 80 000 = 16.25% → "ctx 16%"
-    session = _make_session_for_label(_stats(total=13_000, max_context=64_000, max_event=16_000))
+    session = _make_session_for_label(_stats(total=13_000, model_context_window=80_000))
     assert session._context_usage_label() == "ctx 16%"
 
 
-def test_context_usage_label_falls_back_to_model_context_window():
-    # No per-category limits, but model_context_window is set
+def test_context_usage_label_accounts_for_output_reserve():
+    # 30 000 / (100 000 − 40 000 usable) = 50%, not 30% of the raw window.
+    session = _make_session_for_label(
+        _stats(total=30_000, model_context_window=100_000, reserved_output_tokens=40_000)
+    )
+    assert session._context_usage_label() == "ctx 50%"
+
+
+def test_context_usage_label_uses_model_context_window():
     # 20 000 / 200 000 = 10%
-    session = _make_session_for_label(
-        _stats(total=20_000, max_context=None, max_event=None, model_context_window=200_000)
-    )
+    session = _make_session_for_label(_stats(total=20_000, model_context_window=200_000))
     assert session._context_usage_label() == "ctx 10%"
-
-
-def test_context_usage_label_none_when_no_max_and_no_model_window():
-    # No per-category limits and no model_context_window → empty
-    session = _make_session_for_label(
-        _stats(total=1234, max_context=None, max_event=None, model_context_window=None)
-    )
-    assert session._context_usage_label() == ""
 
 
 # ── TUI agent registers the context_usage dynamic block -----------------------

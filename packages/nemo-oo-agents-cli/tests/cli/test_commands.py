@@ -220,13 +220,13 @@ async def test_context_command_no_stats(handler, mock_agent):
 async def test_context_command_with_stats(handler, mock_agent):
     """Test /context with stats available — shows formatted output."""
     mock_agent.context_stats = ContextWindowStats(
-        context_blocks_tokens=8_000,
         context_blocks_count=5,
-        events_tokens=4_000,
         events_count=20,
-        total_tokens=12_000,
+        context_blocks_chars=8_000,
+        events_chars=4_000,
+        prompt_tokens=12_000,
         max_context_tokens=32_000,
-        max_event_tokens=20_000,
+        model_context_window=200_000,
     )
     result = await handler.handle("/context")
 

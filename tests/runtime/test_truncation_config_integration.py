@@ -288,30 +288,36 @@ class TestTokenBudgetIntegration:
         assert result == "summary"
 
     @pytest.mark.asyncio
-    async def test_token_limits_with_llm_that_cannot_count_raises_runtime_error(self):
-        """Agent with token limits and an LLM lacking count_tokens() should raise RuntimeError.
-
-        Using getattr(..., None) silently passes count_tokens=None to render_context(), which
-        then raises a cryptic internal ValueError. Instead, _build_messages should fail early
-        with a clear error pointing to the LLM's missing capability.
+    async def test_token_limits_with_llm_that_cannot_count_still_works(self):
+        """Agent with token limits and an LLM lacking count_tokens() must NOT
+        raise. The runtime sizes eviction with a provider-calibrated
+        chars→tokens ratio rather than the LLM tokenizer, so no count_tokens
+        method is required (the old RuntimeError contract was removed).
         """
+        import json
+
+        from nemo_oo_agents.unifiedllm import LLMResponse, ToolCall
 
         class NoCountLLM:
-            """Minimal fake LLM without count_tokens."""
+            """Minimal fake LLM without count_tokens — returns a return_result."""
 
             model = "no-count-model"
 
             async def acall(self, messages, tools=None, output_model=None, **kwargs):
-                from nemo_oo_agents.unifiedllm import LLMResponse
-
                 return LLMResponse(
                     raw_response=None,
                     content="",
-                    tool_calls=[],
-                    finish_reason="stop",
+                    tool_calls=[
+                        ToolCall(
+                            id="call_1",
+                            name="return_result",
+                            arguments=json.dumps({"result": "done"}),
+                        )
+                    ],
+                    finish_reason="tool_calls",
                     assistant_message={"role": "assistant", "content": ""},
                     reasoning=None,
-                    usage=None,
+                    usage={"prompt_tokens": 11, "completion_tokens": 3},
                 )
 
         class TestAgent(
@@ -322,11 +328,8 @@ class TestTokenBudgetIntegration:
             async def answer(self, question: str) -> str: ...
 
         agent = TestAgent()
-        # The RuntimeError may be wrapped in GenerationError by the retry loop
-        from nemo_oo_agents.errors import GenerationError
-
-        with pytest.raises((RuntimeError, GenerationError), match="count_tokens"):
-            await agent.answer("hello")
+        result = await agent.answer("hello")
+        assert result == "done"
 
 
 class TestMethodLevelTruncationConfig:

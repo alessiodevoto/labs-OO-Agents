@@ -534,13 +534,12 @@ class TestL4EventArchival:
         from nemo_oo_agents.context_blocks.models import ContextWindowStats
 
         agent.runtime._last_context_stats = ContextWindowStats(
-            context_blocks_tokens=500,
             context_blocks_count=1,
-            events_tokens=5000,
             events_count=20,
-            total_tokens=5500,
+            context_blocks_chars=500,
+            events_chars=5000,
+            prompt_tokens=5500,
             max_context_tokens=None,
-            max_event_tokens=None,
             model_context_window=4096,
             context_blocks_dropped=0,
             events_dropped=0,
@@ -776,13 +775,12 @@ class TestCrossLayerPipeline:
         from nemo_oo_agents.context_blocks.models import ContextWindowStats
 
         agent.runtime._last_context_stats = ContextWindowStats(
-            context_blocks_tokens=100,
             context_blocks_count=1,
-            events_tokens=3000,
             events_count=15,
-            total_tokens=3100,
+            context_blocks_chars=100,
+            events_chars=3000,
+            prompt_tokens=3100,
             max_context_tokens=100,
-            max_event_tokens=None,
             model_context_window=4096,
             context_blocks_dropped=1,
             events_dropped=0,

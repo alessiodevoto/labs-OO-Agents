@@ -815,7 +815,8 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
             # Use first summarizer for status (typically only one)
             summarizer = summarizers[0]
             stats = self.context_stats
-            current_tokens = stats.total_tokens if stats else 0
+            current_tokens = stats.total_tokens if stats else None
+            current_tokens = current_tokens or 0
             max_tokens = getattr(summarizer, "max_tokens", 0)
             preserve_recent = getattr(summarizer, "preserve_recent", 0)
 

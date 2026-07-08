@@ -150,18 +150,13 @@ class TestTokenCounterRegression:
     """Regression tests for the two bugs root-caused in issue #133."""
 
     @pytest.mark.asyncio
-    async def test_stats_context_blocks_tokens_is_tokens_not_chars(self):
-        """Bug #1: when no truncation limits are set, ``render_context`` used
-        to fall back to ``len``, so ``ContextWindowStats.{context_blocks,
-        events,total}_tokens`` were character counts, not token counts. For
-        English prose this over-reports by ~4×, breaking any consumer of the
-        stats (TUI "ctx N%", observability, etc.).
-
-        After the fix, ``_build_messages`` always passes a real counter (the
-        LLM's ``count_tokens`` or ``char_approximate_token_counter`` as
-        fallback). We assert against ``context_blocks_tokens`` because it's
-        the field the structured-payload safety net does **not** overwrite
-        on clamp — so it still reflects what the renderer actually counted.
+    async def test_render_records_chars_not_a_token_estimate(self):
+        """Issue #133 (revised): ``render_context`` must not produce a local
+        token estimate at all. It records raw *character* sizes
+        (``context_blocks_chars`` / ``events_chars``) and leaves every token
+        figure ``None`` until the provider reports usage. This makes the
+        chars-mistaken-for-tokens class of bug structurally impossible — the
+        two are now distinct fields with distinct units.
         """
         llm = _mk_llm(200_000)
 
@@ -171,8 +166,8 @@ class TestTokenCounterRegression:
                 ...
 
         agent = A()
-        # A big-enough system-role block so its chars vs tokens are
-        # unambiguous. (System-role blocks land in ``context_blocks_tokens``.)
+        # A big-enough system-role block. (System-role blocks land in
+        # ``context_blocks_chars``.)
         long_block = "the quick brown fox jumps over the lazy dog. " * 400
         agent.context_manager["prose"] = long_block
 
@@ -187,21 +182,22 @@ class TestTokenCounterRegression:
 
         stats = agent.runtime._last_context_stats
         assert stats is not None
-        # Ceiling: tokens must be well below the raw character count. At
-        # ~4 chars/token, 18,400 chars should land ~4,600 tokens. Allow
-        # 2× slack for block wrappers and other system blocks in the mix.
-        assert stats.context_blocks_tokens < len(long_block) // 2, (
-            f"context_blocks_tokens={stats.context_blocks_tokens:,} is close to "
-            f"raw block chars ({len(long_block):,}) — renderer is still "
-            "treating ``len`` as tokens"
-        )
+        # No local token estimate exists before the provider reports usage.
+        assert stats.prompt_tokens is None
+        assert stats.total_tokens is None
+        assert stats.context_blocks_tokens is None
+        # Raw characters ARE recorded, and they are genuinely characters
+        # (>= the block we put in), never silently divided to look like tokens.
+        assert stats.context_blocks_chars >= len(long_block)
 
     @pytest.mark.asyncio
     async def test_default_unconfigured_budget_split_caps_context_to_half_window(self):
         """When both token limits are unset, runtime applies default split:
 
-        - context_limit = context_window // 2
-        - event budget is context-aware (subtract measured context tokens)
+        - context_limit = usable window // 2, where usable = context_window
+          minus the output-token reserve (response_reserve_tokens when the
+          call sets no max_tokens)
+        - over-budget context blocks are EVICTED before the prompt is sent
         """
         llm = _mk_llm(200_000)
 
@@ -228,10 +224,13 @@ class TestTokenCounterRegression:
 
         stats = agent.runtime._last_context_stats
         assert stats is not None
-        # Requirement 1: default context budget = half window.
-        assert stats.max_context_tokens == agent._llm.context_window // 2
-        # Context blocks must not exceed the configured context cap.
-        assert stats.context_blocks_tokens <= stats.max_context_tokens
+        # Requirement 1: default context budget = half the usable window
+        # (window minus the default 4096-token output reserve).
+        reserve = agent._truncation.response_reserve_tokens
+        assert stats.max_context_tokens == (agent._llm.context_window - reserve) // 2
+        # Requirement 2: the over-budget context block was evicted to enforce
+        # the cap (eviction counts tokens internally via the LLM counter).
+        assert stats.context_blocks_dropped >= 1
 
 
 class TestMaxOutputTokensBudget:

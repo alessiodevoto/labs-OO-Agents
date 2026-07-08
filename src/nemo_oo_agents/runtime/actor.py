@@ -221,6 +221,10 @@ def _resolve_provider_formatter(llm_client: Any, default_formatter: Any) -> Any:
 # drops to this fraction of the token budget cap. Lower = more headroom before re-triggering.
 _ARCHIVE_TARGET_UTILIZATION = 0.60
 
+# Cold-start chars→tokens ratio (~4 chars per token) used before any provider
+# response has calibrated _tokens_per_char from real usage.
+_DEFAULT_TOKENS_PER_CHAR = 0.25
+
 
 def _collapse_oldest(
     event_manager: Any,
@@ -616,6 +620,11 @@ class ActorRuntime:
         self._last_prompt_tokens_actual: int | None = None
         self._event_format_cache: dict[tuple[tuple[str, Any], ...], Any] = {}
         self._event_format_cache_max_entries = 32
+        # Chars→tokens ratio, calibrated from the last provider response
+        # (prompt_tokens / total_chars). Every token estimate in the system is
+        # chars × this ratio, anchored to the real provider count. Defaults to
+        # the ~4-chars-per-token heuristic before the first response.
+        self._tokens_per_char: float = _DEFAULT_TOKENS_PER_CHAR
 
     def _event_format_for_event(self, event: Any) -> Any:
         """Return the FormatConfig to use when serializing an event.
@@ -677,16 +686,28 @@ class ActorRuntime:
         n_active = len(active_tags)
         if n_active == 0:
             return
-        # Shed against the REAL current prompt size vs a REAL 70% budget.
-        # After successful calls, stats.total_tokens is provider usage; before
-        # usage exists it is only render_context's fallback estimate. On a
-        # COLD-START context error (the first call IS the
-        # overflow, so no prior response has calibrated the counter), prefer the
-        # authoritative token count the error itself reports — it's ground truth
-        # and beats an uncalibrated estimate.
-        cap = int(ctx_window * 0.70)
+        # Shed against the REAL current prompt size vs a REAL 70% budget of the
+        # USABLE window (model window minus the output-token reserve — the
+        # provider rejected prompt + completion budget, so headroom must
+        # account for the completion too).
+        # After successful calls, stats.total_tokens is provider usage. On a
+        # COLD-START context error (the first call IS the overflow, so no prior
+        # response has reported usage), stats.total_tokens is None — prefer the
+        # authoritative token count the error itself reports; if the error text
+        # omits a parseable count, fall back to chars × the calibrated ratio
+        # (the same chars→tokens estimate used everywhere else) to size the shed.
+        usable_window = max(1, ctx_window - (stats.reserved_output_tokens or 0))
+        cap = int(usable_window * 0.70)
         target_tok = int(cap * _ARCHIVE_TARGET_UTILIZATION)
+        # Char-based estimates used only when no provider token count exists.
+        events_tok = stats.events_tokens
+        if events_tok is None:
+            events_tok = round(stats.events_chars * self._tokens_per_char)
         total_tok = stats.total_tokens
+        if total_tok is None:
+            total_tok = round(
+                (stats.context_blocks_chars + stats.events_chars) * self._tokens_per_char
+            )
         if exc is not None:
             reported = _parse_prompt_tokens(exc)
             if reported and reported > total_tok:
@@ -696,7 +717,7 @@ class ActorRuntime:
                 # true window even if our estimate is still under target and the
                 # error text omits a parseable token count. Shed at least one
                 # average event instead of no-op'ing and retrying the same prompt.
-                avg_event_guess = math.ceil(max(1, stats.events_tokens) / max(1, n_active))
+                avg_event_guess = math.ceil(max(1, events_tok) / max(1, n_active))
                 total_tok = target_tok + max(1, avg_event_guess)
         tokens_to_shed = max(0, total_tok - target_tok)
         if tokens_to_shed == 0:
@@ -704,8 +725,14 @@ class ActorRuntime:
         # Only event tokens are archiveable. total_tok may include fixed
         # tool-schema tokens, and archiving events cannot remove those; using
         # total_tok - context_blocks here would overestimate per-event size and
-        # under-archive for tool-heavy agents.
-        avg_event_tok = max(0, stats.events_tokens) / max(1, n_active)
+        # under-archive for tool-heavy agents. If attribution says events are
+        # zero-token but active events exist (e.g. structured ToolCallEvents
+        # rendered with content=""), fall back to a prompt-wide average so one
+        # context error does not collapse the entire active history.
+        if events_tok > 0:
+            avg_event_tok = events_tok / max(1, n_active)
+        else:
+            avg_event_tok = total_tok / max(1, n_active)
         n_to_archive = min(
             int(math.ceil(tokens_to_shed / max(1, avg_event_tok))),
             n_active,
@@ -1131,11 +1158,21 @@ class ActorRuntime:
         if _prompt_tokens > 0:
             self._last_prompt_tokens_actual = _prompt_tokens
             if self._last_context_stats is not None:
-                # Prefer the provider's exact prompt token count over local estimates
-                # for ctx% display, summarization triggers, and archive sizing.
-                self._last_context_stats = self._last_context_stats.model_copy(
-                    update={"total_tokens": _prompt_tokens}
+                # The provider's exact prompt-token count is the single source of
+                # truth for ctx% display, summarization triggers, and archive
+                # sizing. render_context leaves prompt_tokens=None (no local
+                # estimate); we write the authoritative value back here.
+                stats = self._last_context_stats
+                self._last_context_stats = stats.model_copy(
+                    update={"prompt_tokens": _prompt_tokens}
                 )
+                # Recalibrate the chars→tokens ratio from this real response:
+                # tokens_per_char = prompt_tokens / total_chars. The next
+                # render's eviction sizing uses it instead of a fixed heuristic
+                # or the litellm tokenizer.
+                total_chars = stats.context_blocks_chars + stats.events_chars
+                if total_chars > 0:
+                    self._tokens_per_char = _prompt_tokens / total_chars
         _completion_tokens = int(
             _usage_dict.get("completion_tokens") or _usage_dict.get("output_tokens") or 0
         )
@@ -2873,6 +2910,17 @@ class ActorRuntime:
         longer performs full-payload pre-call token estimation; context stats
         stay as render_context fallback until provider usage is written after a
         successful call.
+
+        ``max_output_tokens`` is the completion budget of the upcoming call
+        (``kwargs["max_tokens"]`` at the generate() call site, or the reduced
+        value during context-window recovery). It is reserved out of the model
+        window for budgeting and utilization: the provider rejects any request
+        where prompt + completion budget exceeds the window, so the usable
+        input window is ``context_window - reserve``. When the call does not
+        set ``max_tokens`` explicitly, providers shrink the completion budget
+        to fit and no hard reserve applies — we then fall back to the
+        configured ``TruncationConfig.response_reserve_tokens`` as a planning
+        reserve (0 disables).
         """
         hm = get_harness_metrics()
         with hm.timer("time_prepare_context"):
@@ -2883,37 +2931,36 @@ class ActorRuntime:
         effective_context_limit = tc.max_context_tokens
         ctx_window = getattr(llm_client, "context_window", None)
 
-        # Default (unconfigured) context budget: up to half the model window.
+        # Output-token reserve (see docstring). Per-call max_tokens is the
+        # binding constraint when set; otherwise the configured planning
+        # reserve.
+        reserved_output = max_output_tokens
+        if not reserved_output:
+            reserved_output = tc.response_reserve_tokens or None
+
+        # Default (unconfigured) context budget: up to half the USABLE window
+        # (model window minus the output reserve).
         if (
             effective_context_limit is None
             and ctx_window is not None
             and tc.response_reserve_tokens > 0
         ):
-            effective_context_limit = max(0, ctx_window // 2)
+            usable_window = max(0, ctx_window - (reserved_output or 0))
+            effective_context_limit = usable_window // 2
 
-        need_token_counter = effective_context_limit is not None
-        client_counter = getattr(llm_client, "count_tokens", None)
-        if need_token_counter and not callable(client_counter):
-            raise RuntimeError(
-                "max_context_tokens requires a token counter, but the LLM "
-                f"({type(llm_client).__name__!r}) has no count_tokens method. "
-                "Register an explicit counter: pass count_tokens=char_approximate_token_counter "
-                "to your LLM, or use 'from nemo_oo_agents import char_approximate_token_counter' "
-                "and attach it to your LLM instance."
-            )
-        # Always pass a real counter to ``render_context``. Falling back to
-        # ``None`` here makes the renderer use ``len`` (characters), which
-        # populates ``ContextWindowStats.total_tokens`` with a character
-        # count masquerading as a token count — the bug root-caused in
-        # issue #133 (the TUI's "ctx N%" display showed ~4× inflated
-        # numbers for any agent that didn't set truncation limits).
-        from nemo_oo_agents.token_counter import char_approximate_token_counter
+        # Token sizing for eviction uses the provider-calibrated chars→tokens
+        # ratio (prompt_tokens / total_chars from the last response), not the
+        # LLM's tokenizer. Every token number in the system is therefore
+        # chars × the same ratio, anchored to real provider usage. No LLM
+        # ``count_tokens`` method is required.
+        ratio = self._tokens_per_char
 
-        count_tokens: Callable[[str], int] = (
-            cast(Callable[[str], int], client_counter)
-            if callable(client_counter)
-            else char_approximate_token_counter
-        )
+        def count_tokens(text: str) -> int:
+            # chars × ratio. No per-block floor: the budget is compared against
+            # the SUM, so flooring each tiny block to ≥1 token would over-count
+            # (and spuriously evict) agents with many small context blocks.
+            return round(len(text) * ratio)
+
         with hm.timer("time_render_context"):
             provider_formatter = _resolve_provider_formatter(
                 llm_client, self.agent.render_config.provider_formatter
@@ -2927,6 +2974,7 @@ class ActorRuntime:
                 event_format=tc.event_format,
                 event_format_resolver=self._event_format_for_event,
                 model_context_window=getattr(llm_client, "context_window", None),
+                reserved_output_tokens=reserved_output,
             )
 
         # Publish the rendered message list to the tracing sideband so

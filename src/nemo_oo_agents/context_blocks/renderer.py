@@ -144,6 +144,7 @@ def render_context(
     event_format: "FormatConfig | None" = None,
     event_format_resolver: Callable[[Any], "FormatConfig | None"] | None = None,
     model_context_window: int | None = None,
+    reserved_output_tokens: int | None = None,
 ) -> RenderResult:
     """Render resolved blocks into provider-specific output with utilization stats.
 
@@ -197,20 +198,21 @@ def render_context(
             if isinstance(hm, HarnessMetrics):
                 hm.context_limits_blocks_evicted += context_blocks_dropped
 
-    # Stats — computed on truncated content, before formatter sees it.
-    context_blocks_tokens = sum(count_fn(b.content) for b in system_blocks)
-    events_tokens = sum(count_fn(b.content) for b in message_blocks)
+    # Stats — structural only. Token figures are NOT estimated here; the
+    # runtime writes the provider-reported prompt_tokens back after the call.
+    # We record raw character sizes (post-eviction) so the provider total can
+    # later be attributed across context blocks vs. events by character share.
     stats = ContextWindowStats(
-        context_blocks_tokens=context_blocks_tokens,
         context_blocks_count=len(system_blocks),
-        events_tokens=events_tokens,
         events_count=len(message_blocks),
-        total_tokens=context_blocks_tokens + events_tokens,
+        prompt_tokens=None,
+        context_blocks_chars=sum(len(b.content) for b in system_blocks),
+        events_chars=sum(len(b.content) for b in message_blocks),
         max_context_tokens=context_limit,
-        max_event_tokens=None,
         model_context_window=model_context_window,
         context_blocks_dropped=context_blocks_dropped,
         events_dropped=0,
+        reserved_output_tokens=reserved_output_tokens,
     )
 
     # Neutral message list → provider wire format.
