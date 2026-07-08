@@ -97,7 +97,7 @@ def command(port: int, host: str, db_path_opt: str | None):
     except ImportError:
         click.secho(
             "Error: viewer dependencies are not installed.\n"
-            "Install them with:  uv sync --extra viewer",
+            'Install them with:  uv add "nemo-oo-agents[viewer]"',
             fg="red",
             err=True,
         )

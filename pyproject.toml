@@ -31,7 +31,6 @@ trace-explorer = "nemo_oo_agents.trace_explorer:main"
 
 [project.entry-points."nemo_oo_agents.skills"]
 "nemo.shell" = "nemo_oo_agents.tools.shell_tools:ShellTools"
-"nemo.repo" = "nemo_oo_agents.tools.repo_tools:RepoTools"
 "nemo.todo" = "nemo_oo_agents.tools.todo:TodoManager"
 "nemo.context" = "nemo_oo_agents.runtime.context:ContextApi"
 "nemo.events" = "nemo_oo_agents.runtime.events:EventsApi"

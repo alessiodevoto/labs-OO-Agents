@@ -3,7 +3,7 @@
 """NeMo OO Agents CLI — extensible command-line toolkit.
 
 Usage:
-    nemo-oo eval <config.yaml>         # Run an eval-pipeline job
+    nemo-oo eval --config config.yaml  # Run an eval-pipeline job
     nemo-oo start-dev                  # Start the viewer
     nemo-oo traces delete              # Delete traces
     nemo-oo completion install         # Set up shell completions
