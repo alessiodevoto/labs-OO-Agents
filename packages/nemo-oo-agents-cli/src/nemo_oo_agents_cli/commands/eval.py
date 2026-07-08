@@ -51,7 +51,17 @@ def command(ctx: click.Context, args: tuple[str, ...]):
     old_argv = sys.argv
     sys.argv = ["eval_pipeline", *args]
     try:
-        from eval_pipeline.cli import main_async
+        try:
+            from eval_pipeline.cli import main_async
+        except ImportError:
+            click.echo(
+                "The eval command requires the 'eval_pipeline' package, which is "
+                "not installed.\nIt ships with the nemo-oo-agents monorepo workspace "
+                "but is not a dependency of the standalone CLI wheel.\n"
+                "Install it from a monorepo checkout with:  uv sync",
+                err=True,
+            )
+            sys.exit(1)
 
         asyncio.run(main_async())
     finally:
