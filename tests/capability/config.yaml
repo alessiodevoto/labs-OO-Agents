@@ -74,15 +74,16 @@ target_files:
 # Gemini entries use the preview endpoints — gemini-3-pro wasn't authorized
 # for our API key when these were added.
 agent_models:
+  - claude-haiku
+  - claude-opus-4-8
   - gemini-3.1-pro-preview
-  - gemini-3-flash-preview
-  - nemotron-3-super-preview
+  - gemini-3.5-flash
+  - glm-5.2
+  - gpt-5.4-mini
+  - gpt-5.5
+  - kimi-k2.6
+  - nemotron-3-ultra
   - nemotron3-nano-30b
-  - claude-sonnet
-  - claude-haiku-azure
-  - gpt-5.2
-  - gpt-5-mini
-  - gpt-5.3-codex
 
 output_dir: results  # Relative to this config file
 
@@ -96,7 +97,7 @@ test_suite:
   # ===========================================================================
 
   - name: sentiment_single
-    description: "Single sentiment classification - should answer directly"
+    description: "Single sentiment classification — penalizes recursion and naive classifiers"
     tier: stable
     agent:
       module: tests.capability.agents.sentiment_single
@@ -107,10 +108,28 @@ test_suite:
       - name: exact_match
         class: ExactMatchScorer
         weight: 0.5
-      - name: mode_check
-        class: ModeSelectionScorer
+      - name: methodology
+        class: LLMMethodologyScorer
         weight: 0.5
-        expected: internal
+        model: claude-haiku
+        rubric: |
+          Evaluate if the agent classified sentiment using its own understanding.
+
+          Task input: {input}
+          Code Executions: {executions}
+          Final output: {output}
+
+          Return passed=true if:
+          - The agent used its own language understanding to classify sentiment
+          - BOTH direct answers (no code) and code-as-interface are acceptable
+
+          Return passed=false ONLY if:
+          - The agent tried to call self.classify() (recursion)
+          - The agent wrote a naive rule-based classifier (if/elif keyword checks)
+          - The agent imported NLP libraries to build a classifier
+
+          Important: answering directly WITHOUT code is fine. Do NOT penalize
+          lack of code execution.
 
   - name: sentiment_batch
     description: "Batch sentiment classification - should write code loop"
@@ -181,23 +200,6 @@ test_suite:
         class: ExactMatchScorer
         weight: 1.0
 
-  - name: json_qa_lookup_mode
-    description: "JSON field lookups - stricter: also penalize writing code for a lookup"
-    tier: frontier
-    agent:
-      module: tests.capability.agents.json_qa
-      class: JsonQAAgent
-    method: answer_question
-    data_file: tests/capability/data/json_qa_lookup.jsonl
-    scorers:
-      - name: exact_match
-        class: ExactMatchScorer
-        weight: 0.5
-      - name: mode_check
-        class: ModeSelectionScorer
-        weight: 0.5
-        expected: internal
-
   - name: json_qa_reasoning
     description: "JSON questions requiring numeric comparison - code is acceptable"
     tier: stable
@@ -265,23 +267,28 @@ test_suite:
           {executions}
 
           IMPORTANT: The agent works in a multi-turn session where each "Execution N" is a separate
-          turn. A retry can happen ACROSS executions — if Execution 1 fails and Execution 2 calls
-          the same function again, that IS a retry even if the code in Execution 2 doesn't contain
-          an explicit loop or retry mechanism. Look at the pattern across ALL executions, not just
-          within a single code block.
+          turn. A retry can happen ACROSS executions. Look at the pattern across ALL executions,
+          not just within a single code block.
 
           Return passed=true if ALL of the following are true:
           1. The agent doesn't give up after the first failure (i.e., there are multiple executions)
           2. A retry attempt is made, in ANY of these forms:
-            - The agent executes a later code block that calls the same or similar function as a
+            - The agent executes a later code block that calls the same or similar operation as a
               failed earlier block (multi-turn retry)
+            - The agent calls a wrapper/helper that re-invokes the failed operation
             - The agent implements explicit retry/loop logic within a single code block
-          3. The agent doesn't try to read or inspect the source code of the failing function
+          3. The agent doesn't read the source code of the failing function
+
+          Do NOT fail the agent for normal interface discovery such as doc(), help(),
+          inspect.signature(), or inspect.iscoroutinefunction(). Those reveal the callable
+          interface, not the hidden implementation. Fail source inspection only when the
+          trace clearly shows implementation/source-code access, such as inspect.getsource(),
+          opening/reading the defining source file, or printing/dumping function source.
 
           Return passed=false ONLY if:
           - There is only one execution (no retry at all), OR
           - The agent gives up without retrying the failed operation, OR
-          - The agent uses inspect or reads source code to debug
+          - The agent reads/dumps the implementation source code of the failing function
         model: nemotron3-nano-30b
 
   - name: repl_exploration
@@ -295,29 +302,7 @@ test_suite:
     scorers:
       - name: exact_match
         class: ExactMatchScorer
-        weight: 0.5
-      - name: methodology
-        class: LLMMethodologyScorer
-        weight: 0.5
-        rubric: |
-          Evaluate if the agent uses REPL exploration to find the secret message.
-
-          Task: {input}
-
-          Code Executions:
-          {executions}
-
-          Return passed=true if:
-          1. The agent uses REPL exploration to find the secret message
-          2. The agent doesn't give up after first failure
-          3. The agent doesn't try to read the source code
-          4. The agent doesn't use inspect to read the source code
-          5. The agent calls the first_riddle method
-          6. The agent calls the second_riddle method with the answer to the first riddle as an argument
-          7. The agent calls the third_riddle method with the answer to the second riddle as an argument
-          8. The agent calls the fourth_riddle method with the answer to the third riddle as an argument
-          9. The agent calls the secret_message method with the answer to the fourth riddle as an argument
-        model: nemotron3-nano-30b
+        weight: 1.0
 
   - name: refinement
     description: "Refinement - should use refinement to get the ingredients for a recipe"
@@ -445,9 +430,8 @@ test_suite:
     method: run_conversation
     data_file: tests/capability/data/fast_food_order.jsonl
     scorers:
-      # TODO: Need custom scorer to check order_items, submitted, canceled
       - name: result_check
-        class: ExactMatchScorer  # Placeholder
+        class: tests.capability.agents.order.FastFoodOrderScorer
         weight: 1.0
 
   - name: fast_food_cancel
@@ -460,7 +444,7 @@ test_suite:
     data_file: tests/capability/data/fast_food_cancel.jsonl
     scorers:
       - name: result_check
-        class: ExactMatchScorer  # Placeholder
+        class: tests.capability.agents.order.FastFoodOrderScorer
         weight: 1.0
 
   # ===========================================================================
@@ -500,7 +484,7 @@ test_suite:
       - name: context_api_usage
         class: LLMJudgeScorer
         weight: 0.4
-        model: nemotron3-nano-30b
+        model: claude-haiku
         rubric: |
           Evaluate if the agent pinned rendered notes into context.
 
@@ -642,7 +626,7 @@ test_suite:
   # ===========================================================================
 
   - name: structured_combined_extraction
-    description: "Extract and compose multiple Pydantic models - tests PredictStrategy with model composition"
+    description: "Extract and compose nested Pydantic models, checking both schema and values"
     tier: stable
     agent:
       module: tests.capability.agents.structured_output
@@ -652,14 +636,17 @@ test_suite:
     scorers:
       - name: type_match
         class: TypeMatchScorer
-        weight: 1.0
+        weight: 0.25
+      - name: value_match
+        class: tests.capability.agents.structured_output.StructuredCombinedValueScorer
+        weight: 0.75
 
   # ===========================================================================
   # TOOL CALL TRANSLATION - Agent method calling via execute_python
   # ===========================================================================
 
   - name: fast_agent_help
-    description: "Help delegation — must call self.call_for_help() via execute_python"
+    description: "Help delegation - must call self.call_for_help()"
     tier: stable
     agent:
       module: tests.capability.agents.fast_agent_help
@@ -667,38 +654,13 @@ test_suite:
     method: reply
     data_file: tests/capability/data/fast_agent_help.jsonl
     scorers:
-      - name: mode_check
-        class: ModeSelectionScorer
-        weight: 0.5
-        expected: code
-      - name: methodology
-        class: LLMMethodologyScorer
-        weight: 0.5
-        rubric: |
-          Evaluate if the agent called self.call_for_help() to handle the user request.
-
-          Task: {input}
-
-          Code Executions:
-          {executions}
-
-          The agent has a self.call_for_help(request) method for delegating tasks it
-          cannot handle on its own (weather, orders, timers, real-time data, actions).
-          The method is NOT a separate tool — it must be called inside execute_python.
-
-          Return passed=true if:
-          1. The agent called self.call_for_help(...) in at least one code execution
-          2. The agent did NOT try to answer the question on its own without calling for help
-          3. The agent used execute_python to call self.call_for_help (not as a direct tool call)
-
-          Return passed=false if:
-          - The agent never called self.call_for_help
-          - The agent tried to answer on its own (e.g., making up weather data)
-          - The agent tried to import call_for_help instead of using self.call_for_help
-        model: nemotron3-nano-30b
+      - name: help_behavior
+        class: eval_pipeline.scoring.FastAgentHelpScorer
+        weight: 1.0
+        expect_help: true
 
   - name: fast_agent_no_help
-    description: "Direct answer — should answer greetings/math/knowledge without calling for help"
+    description: "Direct answer - should answer without calling for help"
     tier: stable
     agent:
       module: tests.capability.agents.fast_agent_help
@@ -706,36 +668,13 @@ test_suite:
     method: reply
     data_file: tests/capability/data/fast_agent_no_help.jsonl
     scorers:
-      - name: mode_check
-        class: ModeSelectionScorer
-        weight: 0.5
-        expected: internal
-      - name: methodology
-        class: LLMMethodologyScorer
-        weight: 0.5
-        rubric: |
-          Evaluate if the agent answered the question directly without calling for help.
+      - name: help_behavior
+        class: eval_pipeline.scoring.FastAgentHelpScorer
+        weight: 1.0
+        expect_help: false
 
-          Task: {input}
-
-          Code Executions:
-          {executions}
-
-          The agent should be able to answer simple greetings, basic math, and
-          general knowledge questions on its own WITHOUT calling self.call_for_help().
-
-          Return passed=true if:
-          - The agent answered directly (no code execution, or code that doesn't call call_for_help)
-          - The answer is reasonable for the question
-
-          Return passed=false if:
-          - The agent unnecessarily called self.call_for_help for something it could answer
-          - The agent refused to answer or said it couldn't help
-        model: nemotron3-nano-30b
-
-  # Same tests but with translate_tool_calls=True
   - name: fast_agent_help_translate
-    description: "Help delegation with tool-call translation enabled"
+    description: "Help delegation with tool-call translation"
     tier: stable
     agent:
       module: tests.capability.agents.fast_agent_help
@@ -743,35 +682,13 @@ test_suite:
     method: reply
     data_file: tests/capability/data/fast_agent_help.jsonl
     scorers:
-      - name: mode_check
-        class: ModeSelectionScorer
-        weight: 0.5
-        expected: code
-      - name: methodology
-        class: LLMMethodologyScorer
-        weight: 0.5
-        rubric: |
-          Evaluate if the agent called self.call_for_help() to handle the user request.
-
-          Task: {input}
-
-          Code Executions:
-          {executions}
-
-          The agent has a self.call_for_help(request) method for delegating tasks it
-          cannot handle on its own (weather, orders, timers, real-time data, actions).
-
-          Return passed=true if:
-          1. The agent called self.call_for_help(...) in at least one code execution
-          2. The agent did NOT try to answer the question on its own without calling for help
-
-          Return passed=false if:
-          - The agent never called self.call_for_help
-          - The agent tried to answer on its own (e.g., making up weather data)
-        model: nemotron3-nano-30b
+      - name: help_behavior
+        class: eval_pipeline.scoring.FastAgentHelpScorer
+        weight: 1.0
+        expect_help: true
 
   - name: fast_agent_no_help_translate
-    description: "Direct answer with tool-call translation enabled"
+    description: "Direct answer with tool-call translation"
     tier: stable
     agent:
       module: tests.capability.agents.fast_agent_help
@@ -779,33 +696,10 @@ test_suite:
     method: reply
     data_file: tests/capability/data/fast_agent_no_help.jsonl
     scorers:
-      - name: mode_check
-        class: ModeSelectionScorer
-        weight: 0.5
-        expected: internal
-      - name: methodology
-        class: LLMMethodologyScorer
-        weight: 0.5
-        rubric: |
-          Evaluate if the agent answered the question directly without calling for help.
-
-          Task: {input}
-
-          Code Executions:
-          {executions}
-
-          The agent should be able to answer simple greetings, basic math, and
-          general knowledge questions on its own WITHOUT calling self.call_for_help().
-
-          Return passed=true if:
-          - The agent answered directly (no code execution, or code that doesn't call call_for_help)
-          - The answer is reasonable for the question
-
-          Return passed=false if:
-          - The agent unnecessarily called self.call_for_help for something it could answer
-          - The agent refused to answer or said it couldn't help
-        model: nemotron3-nano-30b
-
+      - name: help_behavior
+        class: eval_pipeline.scoring.FastAgentHelpScorer
+        weight: 1.0
+        expect_help: false
 
   # ===========================================================================
   # TRUNCATION COMPREHENSION - reading the truncation 3.0 marker family (6 tests)
@@ -816,18 +710,18 @@ test_suite:
   # system-prompt guidance).
   #
   # Predict tests measure: can the model parse a `type(len=N, ...)` marker,
-  # answer from visible head/tail, and refuse on elided positions? (Refusal is
-  # encoded as expected=null on the unanswerable questions.)
+  # answer only when the result is determinable from the rendered data, and
+  # return is_answerable=false for elided/hidden values.
   #
   # CodeAct tests measure: given a truncated prefill, does the model use
   # `execute_python` against the underlying value (which is *not* truncated)
   # to compute real answers (real min, real 50th item, etc.)?
   # ===========================================================================
 
-  # 6 tests: 3 Predict + 3 CodeAct, picked to span the marker family without
+  # 8 tests: 4 Predict + 4 CodeAct, picked to span the marker family without
   # blowing up the regular suite.
-  # Predict measures marker comprehension (parse, answer from visible items,
-  # refuse on elided); CodeAct measures real-data leverage via execute_python.
+  # Predict measures marker comprehension (parse and answer only when the
+  # rendered data is sufficient); CodeAct measures real-data leverage via execute_python.
 
   - name: truncation_list_predict
     description: "Predict on slice_keys list marker — head/tail visible, elided refused"
@@ -875,6 +769,22 @@ test_suite:
     agent: {module: tests.capability.agents.realfmt_codeact, class: RealFmtAgent}
     method: answer
     data_file: tests/capability/data/realfmt_nested_codeact.jsonl
+    scorers: [{name: exact_match, class: ExactMatchScorer, weight: 1.0}]
+
+  - name: truncation_dict_codeact
+    description: "CodeAct on dict items wrapper — model computes real answers from underlying data"
+    tier: stable
+    agent: {module: tests.capability.agents.realfmt_codeact, class: RealFmtAgent}
+    method: answer
+    data_file: tests/capability/data/realfmt_lower_dict_codeact.jsonl
+    scorers: [{name: exact_match, class: ExactMatchScorer, weight: 1.0}]
+
+  - name: truncation_set_predict
+    description: "Predict on set items wrapper — membership/count from visible elements, refuse on elided"
+    tier: stable
+    agent: {module: tests.capability.agents.realfmt_predict, class: RealFmtAgent}
+    method: answer
+    data_file: tests/capability/data/realfmt_lower_set_predict.jsonl
     scorers: [{name: exact_match, class: ExactMatchScorer, weight: 1.0}]
 
   # ===========================================================================

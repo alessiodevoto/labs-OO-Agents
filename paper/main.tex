@@ -341,7 +341,7 @@ Code as action means the model acts by writing Python, not only by selecting one
 JSON tool call at a time.  The action can use variables, loops, conditionals,
 ordinary libraries, and methods on \texttt{self}; the harness executes the cell
 and returns the results to the model.  A CodeAct cell can recursively call
-generation methods, create and await subagents, define helper functions, and 
+generation methods, create and await subagents, define helper functions, and
 read/write object state.
 
 \begin{lstlisting}
@@ -670,141 +670,136 @@ registration needed.
 \label{sec:helpers:captests}
 % ---------------------------------------------------------------------------
 
-A framework like NeMo OO Agents places specific demands on the underlying LLM:
-it must write executable Python in a REPL, call \texttt{self.*} methods as tools,
-produce structured output conforming to Pydantic types, manage state across
-turns, and know when to reason directly versus when to write code. These are
-not generic ``reasoning'' abilities---they are integration-level capabilities
-that determine whether a model can function inside an agentic runtime.
+An object-oriented agent runtime places concrete demands on the model using it.
+The model must call typed methods, pass and inspect live Python objects, preserve
+object state across turns, decide when to answer directly versus when to execute
+code, and obey the harness-level return protocol. These are not generic
+``reasoning'' abilities. They are interface-comprehension abilities: if the model
+cannot use the runtime's objects and control loop, the agent fails even when the
+underlying task is simple.
 
-We introduce \emph{capability tests}: a suite of 33 focused integration tests
-that exercise these abilities in isolation. Each test targets a single
-capability (e.g., ``can the model call a helper method and use its return
-value?'', ``can it iterate in a REPL to refine output?'', ``can it extract
-structured data from a large context?'') and is scored on two independent
-dimensions:
-\begin{enumerate}
-  \item \textbf{Output correctness}: did the agent produce the right answer?
-  \item \textbf{Method correctness}: did it use the right approach?
-\end{enumerate}
+We therefore evaluate the runtime with \emph{capability tests}: focused
+integration tests that isolate one interface behavior at a time. The suite used
+here contains 88 test instances across 36 families, run five times for each of
+10 models, for 4,400 model-test-run records. The tests cover typed method calls,
+structured returns, stateful order manipulation, routing to helper agents,
+context and truncation handling, REPL/code execution, batching, refinement,
+error recovery, and task decomposition. Most tests are short one-to-five-turn
+interactions; the harder cases stress bookkeeping over batches, recovery after
+errors, multi-step REPL exploration, and decomposition into reusable helpers.
 
-This dual scoring catches a critical failure mode: an LLM that writes
-\texttt{if "happy" in text: return "positive"}---naive keyword matching---may
-produce correct output on simple inputs but uses entirely the wrong method.
-Standard benchmarks miss this; capability tests do not.
+Some tests use only output scorers. Others additionally use a methodology judge
+when the capability is specifically about \emph{how} the agent used the
+interface---for example, sentiment tasks fail if the agent recurses into
+\texttt{self.classify()} or hard-codes keyword rules. After trace review, we
+removed an overly brittle methodology judge from \texttt{repl\_exploration} and
+narrowed \texttt{error\_recovery} so normal interface discovery
+(\texttt{doc()}, \texttt{help()}, or \texttt{inspect.signature()}) is not treated
+as source-code inspection; only actual implementation/source dumps such as
+\texttt{inspect.getsource()} fail that criterion.
 
-\paragraph{Results across 12 models.}
-Table~\ref{tab:captests-full} reports pass rates (3 runs each, majority vote)
-across 12 models spanning four families.
-The headline finding is that \textbf{the latest generation of frontier
-models---Claude Sonnet~4.5, GPT-5-mini, Gemini~3 Flash Preview---now pass
-all 33 tests at 100\%}, demonstrating that the integration-level capabilities
-required by an agentic runtime like NeMo OO Agents are well within reach of current
-models. This was not the case even one generation ago: GPT-5.2 drops to 0\%
-on several REPL and data tasks, and Gemini~2.5 Flash Lite fails broadly on
-code execution, state management, and large-data processing.
+\paragraph{Headline result: models understand the interface.}
+Table~\ref{tab:captests-model-summary} shows that current models are generally
+fluent in this object-oriented agent interface. After the reviewed scoring
+updates, the suite passes 4,309 of 4,400 records (97.93\%). Every model exceeds
+91\%, and six of ten models exceed 98\%. GPT-5.5 is perfect on this suite, while
+Gemini 3.5 Flash and GLM-5.2 miss only one record each.
 
-Among smaller and open-weight models, Nemotron-3-Nano-30B-A3B achieves
-surprisingly strong results (only two failures), while GPT-OSS-120B struggles
-with tool usage despite passing reasoning tasks. Qwen3-Next-80B-A3B-Instruct
-shows solid overall coverage with a few gaps in fast-agent and food-ordering
-scenarios.
-
-% TODO: Nano 100% and Sonnet 0% on json_qa_lookup is suspicious.
-% Paul's explanation: trivial JSON string visible in context, Claude models
-% do import json; ... while others answer directly. Needs deeper investigation
-% to confirm this is a real mode-selection difference vs. a test artifact.
-
-\begin{landscape}
-\begin{table}[p]
+\begin{table}[t]
 \centering
-\caption{Capability test pass rates across 12 models (3 runs, majority vote).
-Each test exercises a specific integration-level capability required by the
-NeMo OO Agents runtime. Green = 100\%, yellow = partial, red = 0\%.}
-\label{tab:captests-full}
-\begin{adjustbox}{max width=\linewidth}
-\footnotesize
-\begin{tabular}{l*{12}{c}}
+\caption{Capability-test pass rates after trace review and rubric updates. Each
+model is evaluated on 440 records: 88 test instances with five runs each.}
+\label{tab:captests-model-summary}
+\small
+\begin{tabular}{lrrr}
 \toprule
-\textbf{Test} &
-\rotatebox{70}{\textbf{Sonnet 4.5}} &
-\rotatebox{70}{\textbf{Haiku 4.5}} &
-\rotatebox{70}{\textbf{GPT-5-mini}} &
-\rotatebox{70}{\textbf{GPT-5.2}} &
-\rotatebox{70}{\textbf{GPT-5.4}} &
-\rotatebox{70}{\textbf{Gemini 2.5 FL}} &
-\rotatebox{70}{\textbf{Gemini 3 FP}} &
-\rotatebox{70}{\textbf{Nemo Nano 30B}} &
-\rotatebox{70}{\textbf{Nemo Super v3}} &
-\rotatebox{70}{\textbf{GPT-OSS-120B}} &
-\rotatebox{70}{\textbf{Qwen3-80B}} &
-\rotatebox{70}{\textbf{GPT-5-nano}} \\
+\textbf{Model} & \textbf{Passed} & \textbf{Failed} & \textbf{Pass rate} \\
 \midrule
-calculate\_batch              & 100 & 100 & 100 & 100 & 100 &   0 & 100 & 100 & 100 &   0 & 100 & 100 \\
-calculate\_complex            & 100 & 100 & 100 & 100 &  50 & 100 & 100 & 100 & 100 & 100 & 100 & 100 \\
-calculate\_simple             & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 \\
-context\_notes                & 100 & 100 & 100 & 100 & 100 &   0 & 100 & 100 & 100 & 100 &   0 &   0 \\
-employee\_lookup              & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 \\
-error\_recovery               & 100 & 100 & 100 & 100 & 100 &   0 & 100 &   0 & 100 & 100 & 100 &   0 \\
-fast\_agent\_help              & 100 & 100 & 100 & 100 & 100 &  67 &  67 &  67 & 100 &  67 & 100 &  67 \\
-fast\_agent\_help\_translate    & 100 & 100 & 100 & 100 & 100 &  67 &  67 &  67 & 100 & 100 & 100 &  67 \\
-fast\_agent\_no\_help           & 100 &  67 & 100 &  67 &  67 &  67 & 100 & 100 & 100 &  33 &  33 & 100 \\
-fast\_agent\_no\_help\_translate & 100 &  67 & 100 &  67 & 100 &  33 & 100 & 100 & 100 &  67 &  67 & 100 \\
-fast\_food\_cancel             & 100 & 100 & 100 & 100 & 100 &  50 & 100 & 100 & 100 &  50 & 100 &   0 \\
-fast\_food\_order              & 100 & 100 &   0 &  67 &  83 &  17 & 100 &  83 & 100 &  17 &  67 &  33 \\
-json\_extract                 & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 &   0 & 100 & 100 \\
-json\_qa\_lookup               &   0 &   0 &   0 &   0 & 100 &  50 &   0 & 100 &   0 &   0 &   0 &   0 \\
-json\_qa\_reasoning            & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 &   0 & 100 & 100 \\
-large\_data\_count             & 100 & 100 & 100 & 100 & 100 &   0 & 100 & 100 & 100 & 100 & 100 & 100 \\
-large\_data\_extract           & 100 & 100 & 100 & 100 & 100 &   0 & 100 & 100 & 100 & 100 & 100 & 100 \\
-large\_data\_find              & 100 & 100 & 100 & 100 & 100 &   0 & 100 & 100 & 100 & 100 &   0 & 100 \\
-needle\_in\_haystack           & 100 & 100 & 100 & 100 & 100 &   0 &   0 & 100 & 100 &   0 &   0 &   0 \\
-refinement                   & 100 & 100 & 100 & 100 & 100 &   0 & 100 &   0 & 100 &   0 &   0 &   0 \\
-repl\_exploration             & 100 & 100 &   0 & 100 &   0 &   0 & 100 & 100 & 100 &   0 & 100 &   0 \\
-router\_analyze               & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 &   0 & 100 & 100 \\
-router\_multi\_analyze\_validate & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 \\
-router\_multi\_transform\_validate & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 \\
-router\_transform             & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 &  50 & 100 & 100 \\
-router\_validate              & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 \\
-sentiment\_batch              & 100 & 100 & 100 & 100 & 100 &   0 & 100 &   0 & 100 & 100 &   0 &   0 \\
-sentiment\_single             & 100 &  67 & 100 & 100 & 100 &  67 & 100 & 100 & 100 &  67 &  67 &  67 \\
-structured\_combined\_extraction & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 & 100 &   0 & 100 & 100 \\
-task\_decomposition           & 100 & 100 & 100 & 100 &   0 & 100 & 100 & 100 & 100 &   0 & 100 &   0 \\
+\texttt{claude-haiku} & 430/440 & 10 & 97.7\% \\
+\texttt{claude-opus-4-8} & 438/440 & 2 & 99.5\% \\
+\texttt{gemini-3.5-flash} & 439/440 & 1 & 99.8\% \\
+\texttt{gemini-3.1-pro-preview} & 438/440 & 2 & 99.5\% \\
+\texttt{glm-5.2} & 439/440 & 1 & 99.8\% \\
+\texttt{kimi-k2.6} & 431/440 & 9 & 98.0\% \\
+\texttt{nemotron3-nano-30b} & 403/440 & 37 & 91.6\% \\
+\texttt{nemotron-3-ultra} & 434/440 & 6 & 98.6\% \\
+\texttt{gpt-5.4-mini} & 417/440 & 23 & 94.8\% \\
+\texttt{gpt-5.5} & 440/440 & 0 & 100.0\% \\
 \midrule
-\textbf{Pass rate}            & \textbf{97\%} & \textbf{96\%} & \textbf{93\%} & \textbf{96\%} & \textbf{90\%} & \textbf{56\%} & \textbf{93\%} & \textbf{90\%} & \textbf{100\%} & \textbf{54\%} & \textbf{75\%} & \textbf{65\%} \\
+\textbf{Overall} & \textbf{4309/4400} & \textbf{91} & \textbf{97.9\%} \\
 \bottomrule
 \end{tabular}
-\end{adjustbox}
 \end{table}
-\end{landscape}
 
-\paragraph{What is not yet covered.}
-The current suite focuses on single-agent capabilities within the CodeAct and
-StructuredOutput strategies. Notable gaps include:
-\begin{itemize}
-  \item \textbf{Multi-agent orchestration}: sub-agent spawning, delegation,
-        and result aggregation across agent boundaries.
-  \item \textbf{Context block management}: verifying that the LLM correctly
-        reads, updates, and reasons over dynamic context blocks across turns.
-  \item \textbf{Long-horizon state tracking}: tasks requiring consistent state
-        management over 10+ turns with interleaved tool calls.
-  \item \textbf{Visibility control compliance}: testing that the LLM respects
-        \texttt{@hidden} boundaries and does not attempt to call hidden methods.
-\end{itemize}
+The important implication is that the interface itself is not an exotic burden
+for modern LLMs. They can read object documentation, call methods with typed
+arguments, use returned Python values, mutate object state, and return exact
+contract values. This supports the central design claim of this paper: an
+agent-computer interface can expose richer object structure without exceeding
+current model capabilities.
 
-\paragraph{Frontier tests.}
-Beyond coverage gaps, we identify three directions for next-generation
-capability tests:
-\begin{itemize}
-  \item \textbf{Self-correction under type errors}: can the model recover when
-        its generated code fails Pydantic validation, without human hints?
-  \item \textbf{Strategy-aware mode selection}: given a task that could be
-        solved by either StructuredOutput or CodeAct, does the model select the
-        more efficient strategy?
-  \item \textbf{Helper discovery}: when \texttt{doc(self)} reveals a
-        deterministic helper that solves the task exactly, does the model call
-        it instead of reimplementing the logic in generated code?
-\end{itemize}
+\paragraph{Stress tests expose the remaining frontier.}
+The residual failures are concentrated in six stress families, shown in
+Table~\ref{tab:captests-stress}. These are the tests that most resemble
+agentic work rather than single tool calls: preserving per-item bookkeeping in a
+batch, recovering from errors, iterating in a REPL, refining an intermediate
+answer, and decomposing repeated transformations into helpers. The stress subset
+passes 254 of 300 records (84.7\%), compared with 97.9\% overall. Large/frontier
+models pass 139/150 stress records (92.7\%), while small/efficient models pass
+115/150 (76.7\%).
+
+\begin{table}[t]
+\centering
+\caption{Stress-test pass rates after rubric updates. Each row has 50 records
+(10 models $\times$ five runs). The small/frontier split contains five models in
+each group.}
+\label{tab:captests-stress}
+\small
+\begin{tabular}{lrrr}
+\toprule
+\textbf{Stress test} & \textbf{Small/efficient} & \textbf{Large/frontier} & \textbf{Overall} \\
+\midrule
+\texttt{sentiment\_batch} & 13/25 (52\%) & 18/25 (72\%) & 31/50 (62\%) \\
+\texttt{calculate\_batch} & 19/25 (76\%) & 22/25 (88\%) & 41/50 (82\%) \\
+\texttt{refinement} & 16/25 (64\%) & 25/25 (100\%) & 41/50 (82\%) \\
+\texttt{task\_decomposition} & 20/25 (80\%) & 25/25 (100\%) & 45/50 (90\%) \\
+\texttt{error\_recovery} & 24/25 (96\%) & 24/25 (96\%) & 48/50 (96\%) \\
+\texttt{repl\_exploration} & 23/25 (92\%) & 25/25 (100\%) & 48/50 (96\%) \\
+\midrule
+\textbf{Stress aggregate} & \textbf{115/150 (76.7\%)} & \textbf{139/150 (92.7\%)} & \textbf{254/300 (84.7\%)} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The weakest family is \texttt{sentiment\_batch}, where failures are mostly
+bookkeeping errors: missing items, wrong list lengths, or labels shifted across
+examples. \texttt{calculate\_batch} and \texttt{refinement} expose a similar
+pattern for arithmetic and inventory-style constraints. These failures are not
+basic failures to understand \texttt{self} or to call a method; they are failures
+of disciplined multi-step harness use. This distinction matters: basic interface
+fluency is already widespread, while reliable long-horizon batching, recovery,
+and decomposition remain capability frontiers.
+
+\paragraph{Scoring review.}
+Because several stress tests used LLM methodology judges, we audited every
+failure trace. The original completed matrix was 4,294/4,400 (97.59\%). Manual
+trace review found fourteen false negatives, raising the score to 4,308/4,400
+(97.91\%). The rubric changes above add one more correction, for a final score
+of 4,309/4,400 (97.93\%). The corrections fall into predictable scorer-brittleness
+categories: treating documentation/signature inspection as hidden-source access,
+requiring an arbitrary subagent call order even when both subagents returned the
+right values, and judging successful REPL exploration by a brittle intermediate
+call-chain predicate rather than the accepted final method call.
+
+\paragraph{Takeaway.}
+Capability tests give us an interface-level regression suite for agent runtimes.
+They show that current models can use the object-oriented interface reliably, and
+they localize the remaining failures to advanced harness fluency: exact return
+contracts, batch bookkeeping, recovery protocol discipline, and reusable helper
+structure. This suggests a practical co-design loop. As models improve, runtimes
+can expose richer typed objects and stateful APIs; as runtimes expose clearer
+interfaces and sharper capability tests, they create training and regression
+signals for the next generation of agentic models.
 
 % ===========================================================================
 

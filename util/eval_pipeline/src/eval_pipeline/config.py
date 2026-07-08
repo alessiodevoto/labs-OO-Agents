@@ -213,12 +213,12 @@ def load_config(config_path: Path) -> EvalConfig:
 
     2. Registry reference (new - string value):
         models:
-          claude-haiku: aws/anthropic/claude-haiku-4-5-v1
+          claude-haiku: azure/anthropic/claude-haiku-4-5
 
     3. Registry reference with overrides (new - dict with 'registry' key):
         models:
           claude-haiku:
-            registry: aws/anthropic/claude-haiku-4-5-v1
+            registry: azure/anthropic/claude-haiku-4-5
             max_tokens: 64000
             reasoning_effort: medium
 
@@ -244,7 +244,7 @@ def load_config(config_path: Path) -> EvalConfig:
 
     for model_id, model_cfg in (models_data or {}).items():
         if isinstance(model_cfg, str):
-            # Style 2: "claude-haiku: aws/anthropic/claude-haiku-4-5-v1"
+            # Style 2: "claude-haiku: azure/anthropic/claude-haiku-4-5"
             fields = _resolve_registry_model(model_cfg)
             models[model_id] = ModelSpec(id=model_id, **fields)
 

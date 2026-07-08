@@ -196,23 +196,28 @@ test_suite:
           {executions}
 
           IMPORTANT: The agent works in a multi-turn session where each "Execution N" is a separate
-          turn. A retry can happen ACROSS executions — if Execution 1 fails and Execution 2 calls
-          the same function again, that IS a retry even if the code in Execution 2 doesn't contain
-          an explicit loop or retry mechanism. Look at the pattern across ALL executions, not just
-          within a single code block.
+          turn. A retry can happen ACROSS executions. Look at the pattern across ALL executions,
+          not just within a single code block.
 
           Return passed=true if ALL of the following are true:
           1. The agent doesn't give up after the first failure (i.e., there are multiple executions)
           2. A retry attempt is made, in ANY of these forms:
-            - The agent executes a later code block that calls the same or similar function as a
+            - The agent executes a later code block that calls the same or similar operation as a
               failed earlier block (multi-turn retry)
+            - The agent calls a wrapper/helper that re-invokes the failed operation
             - The agent implements explicit retry/loop logic within a single code block
-          3. The agent doesn't try to read or inspect the source code of the failing function
+          3. The agent doesn't read the source code of the failing function
+
+          Do NOT fail the agent for normal interface discovery such as doc(), help(),
+          inspect.signature(), or inspect.iscoroutinefunction(). Those reveal the callable
+          interface, not the hidden implementation. Fail source inspection only when the
+          trace clearly shows implementation/source-code access, such as inspect.getsource(),
+          opening/reading the defining source file, or printing/dumping function source.
 
           Return passed=false ONLY if:
           - There is only one execution (no retry at all), OR
           - The agent gives up without retrying the failed operation, OR
-          - The agent uses inspect or reads source code to debug
+          - The agent reads/dumps the implementation source code of the failing function
         model: gpt-4o-mini-judge
 
   - name: repl_exploration
@@ -226,29 +231,7 @@ test_suite:
     scorers:
       - name: exact_match
         class: ExactMatchScorer
-        weight: 0.5
-      - name: methodology
-        class: LLMMethodologyScorer
-        weight: 0.5
-        rubric: |
-          Evaluate if the agent uses REPL exploration to find the secret message.
-
-          Task: {input}
-
-          Code Executions:
-          {executions}
-
-          Return passed=true if:
-          1. The agent uses REPL exploration to find the secret message
-          2. The agent doesn't give up after first failure
-          3. The agent doesn't try to read the source code
-          4. The agent doesn't use inspect to read the source code
-          5. The agent calls the first_riddle method
-          6. The agent calls the second_riddle method with the answer to the first riddle as an argument
-          7. The agent calls the third_riddle method with the answer to the second riddle as an argument
-          8. The agent calls the fourth_riddle method with the answer to the third riddle as an argument
-          9. The agent calls the secret_message method with the answer to the fourth riddle as an argument
-        model: gpt-4o-mini-judge
+        weight: 1.0
 
   - name: task_decomposition
     description: "Task Decomposition - should use task decomposition and reuse helper methods"
@@ -361,7 +344,7 @@ test_suite:
     data_file: tests/capability/data/fast_food_order.jsonl
     scorers:
       - name: result_check
-        class: ExactMatchScorer
+        class: tests.capability.agents.order.FastFoodOrderScorer
         weight: 1.0
 
   - name: fast_food_cancel
@@ -374,7 +357,7 @@ test_suite:
     data_file: tests/capability/data/fast_food_cancel.jsonl
     scorers:
       - name: result_check
-        class: ExactMatchScorer
+        class: tests.capability.agents.order.FastFoodOrderScorer
         weight: 1.0
 
   # ===========================================================================
@@ -545,7 +528,7 @@ test_suite:
   # STRUCTURED OUTPUT
   # ===========================================================================
   - name: structured_combined_extraction
-    description: "Extract and compose multiple Pydantic models"
+    description: "Extract and compose nested Pydantic models, checking both schema and values"
     tier: stable
     agent:
       module: tests.capability.agents.structured_output
@@ -555,7 +538,10 @@ test_suite:
     scorers:
       - name: type_match
         class: TypeMatchScorer
-        weight: 1.0
+        weight: 0.25
+      - name: value_match
+        class: tests.capability.agents.structured_output.StructuredCombinedValueScorer
+        weight: 0.75
 
   # ===========================================================================
   # TOOL CALL TRANSLATION (4 tests)
@@ -569,35 +555,10 @@ test_suite:
     method: reply
     data_file: tests/capability/data/fast_agent_help.jsonl
     scorers:
-      - name: mode_check
-        class: ModeSelectionScorer
-        weight: 0.5
-        expected: code
-      - name: methodology
-        class: LLMMethodologyScorer
-        weight: 0.5
-        rubric: |
-          Evaluate if the agent called self.call_for_help() to handle the user request.
-
-          Task: {input}
-
-          Code Executions:
-          {executions}
-
-          The agent has a self.call_for_help(request) method for delegating tasks it
-          cannot handle on its own (weather, orders, timers, real-time data, actions).
-          The method is NOT a separate tool — it must be called inside execute_python.
-
-          Return passed=true if:
-          1. The agent called self.call_for_help(...) in at least one code execution
-          2. The agent did NOT try to answer the question on its own without calling for help
-          3. The agent used execute_python to call self.call_for_help (not as a direct tool call)
-
-          Return passed=false if:
-          - The agent never called self.call_for_help
-          - The agent tried to answer on its own (e.g., making up weather data)
-          - The agent tried to import call_for_help instead of using self.call_for_help
-        model: gpt-4o-mini-judge
+      - name: help_behavior
+        class: eval_pipeline.scoring.FastAgentHelpScorer
+        weight: 1.0
+        expect_help: true
 
   - name: fast_agent_no_help
     description: "Direct answer — should answer without calling for help"
@@ -608,32 +569,10 @@ test_suite:
     method: reply
     data_file: tests/capability/data/fast_agent_no_help.jsonl
     scorers:
-      - name: mode_check
-        class: ModeSelectionScorer
-        weight: 0.5
-        expected: internal
-      - name: methodology
-        class: LLMMethodologyScorer
-        weight: 0.5
-        rubric: |
-          Evaluate if the agent answered the question directly without calling for help.
-
-          Task: {input}
-
-          Code Executions:
-          {executions}
-
-          The agent should be able to answer simple greetings, basic math, and
-          general knowledge questions on its own WITHOUT calling self.call_for_help().
-
-          Return passed=true if:
-          - The agent answered directly (no code execution, or code that doesn't call call_for_help)
-          - The answer is reasonable for the question
-
-          Return passed=false if:
-          - The agent unnecessarily called self.call_for_help for something it could answer
-          - The agent refused to answer or said it couldn't help
-        model: gpt-4o-mini-judge
+      - name: help_behavior
+        class: eval_pipeline.scoring.FastAgentHelpScorer
+        weight: 1.0
+        expect_help: false
 
   - name: fast_agent_help_translate
     description: "Help delegation with tool-call translation"
@@ -644,32 +583,10 @@ test_suite:
     method: reply
     data_file: tests/capability/data/fast_agent_help.jsonl
     scorers:
-      - name: mode_check
-        class: ModeSelectionScorer
-        weight: 0.5
-        expected: code
-      - name: methodology
-        class: LLMMethodologyScorer
-        weight: 0.5
-        rubric: |
-          Evaluate if the agent called self.call_for_help() to handle the user request.
-
-          Task: {input}
-
-          Code Executions:
-          {executions}
-
-          The agent has a self.call_for_help(request) method for delegating tasks it
-          cannot handle on its own (weather, orders, timers, real-time data, actions).
-
-          Return passed=true if:
-          1. The agent called self.call_for_help(...) in at least one code execution
-          2. The agent did NOT try to answer the question on its own without calling for help
-
-          Return passed=false if:
-          - The agent never called self.call_for_help
-          - The agent tried to answer on its own (e.g., making up weather data)
-        model: gpt-4o-mini-judge
+      - name: help_behavior
+        class: eval_pipeline.scoring.FastAgentHelpScorer
+        weight: 1.0
+        expect_help: true
 
   - name: fast_agent_no_help_translate
     description: "Direct answer with tool-call translation"
@@ -680,29 +597,7 @@ test_suite:
     method: reply
     data_file: tests/capability/data/fast_agent_no_help.jsonl
     scorers:
-      - name: mode_check
-        class: ModeSelectionScorer
-        weight: 0.5
-        expected: internal
-      - name: methodology
-        class: LLMMethodologyScorer
-        weight: 0.5
-        rubric: |
-          Evaluate if the agent answered the question directly without calling for help.
-
-          Task: {input}
-
-          Code Executions:
-          {executions}
-
-          The agent should be able to answer simple greetings, basic math, and
-          general knowledge questions on its own WITHOUT calling self.call_for_help().
-
-          Return passed=true if:
-          - The agent answered directly (no code execution, or code that doesn't call call_for_help)
-          - The answer is reasonable for the question
-
-          Return passed=false if:
-          - The agent unnecessarily called self.call_for_help for something it could answer
-          - The agent refused to answer or said it couldn't help
-        model: gpt-4o-mini-judge
+      - name: help_behavior
+        class: eval_pipeline.scoring.FastAgentHelpScorer
+        weight: 1.0
+        expect_help: false

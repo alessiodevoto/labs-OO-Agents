@@ -15,7 +15,7 @@ chosen marker format) when rendering the parameter dump in the prefill.
 
 from typing import Annotated, Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from nemo_oo_agents import Agent
 from nemo_oo_agents.decorators import strategy
@@ -26,10 +26,32 @@ _patch_eval_pipeline_loader()
 
 
 class Answer(BaseModel):
-    answer: Annotated[
-        int | None, Field(description="Integer answer, or None if cannot be determined")
+    is_answerable: Annotated[
+        bool,
+        Field(
+            description="True if the answer can be determined from the data provided, False if it cannot be determined from the data"
+        ),
     ]
-    reason: Annotated[str, Field(description="Why you picked that answer (one or two sentences)")]
+    answer: Annotated[
+        int | bool | None,
+        Field(
+            description="Answer value: use an integer for numeric questions, a boolean for yes/no membership questions, or None if it cannot be determined from the data"
+        ),
+    ]
+    reason: Annotated[
+        str,
+        Field(
+            description="Why you picked that answer, or why it cannot be determined (one or two sentences)"
+        ),
+    ]
+
+    @field_validator("answer")
+    @classmethod
+    def answer_consistent_with_answerable(cls, v, info):
+        """Enforce: if is_answerable=False, answer must be None."""
+        if info.data.get("is_answerable") is False and v is not None:
+            raise ValueError("answer must be None when is_answerable is False")
+        return v
 
 
 class RealFmtAgent(Agent):
