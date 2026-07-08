@@ -795,9 +795,10 @@ class ActorRuntime:
     def current_call(self) -> Any:
         """Current call context.
 
-        Provides access to the current method invocation's call object, which contains
-        call_id, arguments, and other execution metadata. Useful for filtering events,
-        tracking execution, or accessing call-specific information.
+        Provides access to the current method invocation's call object (a
+        ``CurrentCall``), which exposes ``id``, arguments, and other execution
+        metadata. Useful for filtering events, tracking execution, or accessing
+        call-specific information.
 
         Example:
             # In DynamicContext expressions
@@ -805,7 +806,7 @@ class ActorRuntime:
                 CodeActStrategy(),
                 ScopedContext(events={
                     "history": DynamicContext(
-                        "self.runtime.event_manager.filter(call_id=self.runtime.current_call.call_id)"
+                        "self.runtime.event_manager.filter(call_id=self.runtime.current_call.id)"
                     )
                 })
             )
@@ -813,9 +814,24 @@ class ActorRuntime:
                 ...  # Only sees events from this method's call
 
             # Or directly in code
-            current_id = self.runtime.current_call.call_id
+            current_id = self.runtime.current_call.id
         """
         return _current_call_var.get()
+
+    @property
+    def last_prompt_tokens_actual(self) -> int | None:
+        """Provider-reported prompt token count from the most recent generation.
+
+        Read-only public accessor for the actual (API-reported) prompt token
+        count recorded after the last LLM call, or ``None`` if no provider count
+        is available yet (e.g. before the first response). Used by budget-based
+        summarizers (e.g. ``TokenBudgetSummarizer``).
+
+        NOTE: This is a plain instance attribute, not a ContextVar. Under
+        concurrent ``asyncio.gather`` on the same agent the last write wins; it is
+        intended for coarse budget checks, not per-task accounting.
+        """
+        return self._last_prompt_tokens_actual
 
     @property
     def _current_method(self) -> Any:

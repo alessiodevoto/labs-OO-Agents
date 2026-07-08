@@ -32,12 +32,14 @@ from __future__ import annotations
 import json
 import re
 import shlex
+from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Annotated, Any
 
 from nemo_oo_agents.agentdoc import hidden, spec
 from nemo_oo_agents.skill import Skill
 from nemo_oo_agents.tools._bash_session import BashSession
+from nemo_oo_agents.tools._results import StreamDone, StreamEvent
 
 
 class FileWrite:
@@ -379,6 +381,34 @@ class ShellTools(Skill):
             returncode=code,
             matches=matches,
         )
+
+    async def run_stream(
+        self,
+        command: Annotated[str, spec(description="Shell command to execute")],
+        timeout: Annotated[float, spec(description="Max seconds to wait before timeout")] = 30.0,
+    ) -> AsyncIterator[StreamEvent | StreamDone]:
+        """Stream command output line-by-line as it arrives, ending with a done event.
+
+        Yields ``StreamEvent`` chunks (``.kind`` is "stdout"/"stderr", ``.text``
+        the chunk) incrementally, then a final ``StreamDone`` (``.returncode``,
+        ``.timed_out``) once the command completes. Runs in the persistent
+        session, like ``run``.
+
+        This is what ``pyp.arun(self.shell, ...)`` consumes to stream output::
+
+            fails = await self.pyp.arun(self.shell, "make test").grep("FAIL").collect()
+        """
+        session = await self._get_session()
+        timed_out = False
+        exit_code = 0
+        async for stream_name, chunk in session.run_stream(command, timeout=timeout):
+            if stream_name == "__done__":
+                parts = chunk.split(",")
+                exit_code = int(parts[0])
+                timed_out = bool(int(parts[1])) if len(parts) > 1 else False
+                break
+            yield StreamEvent(kind=stream_name, text=chunk)
+        yield StreamDone(kind="done", returncode=exit_code, timed_out=timed_out)
 
     @staticmethod
     def _with_stdin(command: str, stdin: str | None) -> str:

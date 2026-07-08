@@ -18,11 +18,16 @@ from nemo_oo_agents.strategies.prefill import InspectInputsPrefill, Prefill
 from nemo_oo_agents.strategies.reflexion import ReflexionStrategy
 from nemo_oo_agents.strategies.template import TemplateStrategy
 
+# NOTE: CodeActLiteStrategy and ReflexionStrategy are experimental. The
+# FutureWarning gate lives on the top-level package (nemo_oo_agents.__getattr__),
+# so importing them from here — `from nemo_oo_agents.strategies import
+# CodeActLiteStrategy` — is an intentional un-gated (warning-free) escape hatch.
+
 # =============================================================================
 # Default Strategy Override
 # =============================================================================
 # Context variable for overriding the default strategy globally.
-# When None (default), get_default_strategy() returns PurePythonStrategy().
+# When None (default), get_default_strategy() returns a fresh CodeActStrategy().
 # Use set_default_strategy() to override for all agents in the current context.
 
 _default_strategy_var: ContextVar[GenerationStrategy | None] = ContextVar(
@@ -52,7 +57,7 @@ def get_default_strategy() -> GenerationStrategy:
 def set_default_strategy(strategy: GenerationStrategy | None) -> None:
     """Set the default strategy for all agents in the current async context.
 
-    This allows overriding the default strategy (PurePythonStrategy) without
+    This allows overriding the default strategy (CodeActStrategy) without
     modifying agent classes. Useful for:
     - Evaluation pipelines that want to test different strategies
     - Testing with a specific strategy across all agents
@@ -60,7 +65,8 @@ def set_default_strategy(strategy: GenerationStrategy | None) -> None:
 
     Args:
         strategy: GenerationStrategy instance to use as default, or None to
-                  reset to PurePythonStrategy (the library default)
+                  reset to CodeActStrategy (the library default returned by
+                  get_default_strategy())
 
     Example:
         from nemo_oo_agents import set_default_strategy, CodeActStrategy
