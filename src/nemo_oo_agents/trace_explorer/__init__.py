@@ -5,7 +5,7 @@
 Designed for agent-driven trace analysis.
 
 Usage:
-    from trace_explorer import TraceExplorer
+    from nemo_oo_agents.trace_explorer import TraceExplorer
 
     trace = await TraceExplorer.from_file("path/to/trace.jsonl")
     print(await trace.help())

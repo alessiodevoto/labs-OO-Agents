@@ -397,10 +397,11 @@ async def get_errors(
 async def search(
     session_id: str = Query(..., description="Viewer session ID"),
     pattern: str = Query(..., description="Search pattern"),
+    concise: bool = Query(True, description="Compact view"),
 ) -> ExplorerTextResponse:
     """Run search() server-side."""
     explorer = await asyncio.to_thread(_build_explorer, session_id)
-    result = await explorer.search(pattern)
+    result = await explorer.search(pattern, concise=concise)
     return ExplorerTextResponse(result=result)
 
 

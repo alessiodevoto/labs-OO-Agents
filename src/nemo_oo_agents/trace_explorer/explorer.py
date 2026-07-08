@@ -4,10 +4,9 @@
 
 Provides a programmatic interface for exploring agent traces.
 Supports loading from OTLP .jsonl files or from a viewer API.
-Designed to be used as a tool by TraceAnalyzerAgent.
 
 Usage:
-    from trace_explorer import TraceExplorer
+    from nemo_oo_agents.trace_explorer import TraceExplorer
 
     # From file (OTLP format)
     trace = await TraceExplorer.from_file("path/to/trace.jsonl")
@@ -170,12 +169,6 @@ class LLMMessage:
     tool_calls: list[ToolCall] = field(default_factory=list)  # For assistant messages
     tool_call_id: str = ""  # For tool messages
 
-    def format_preview(self, max_length: int = 100) -> str:
-        """Format a short preview of the message content."""
-        if len(self.content) <= max_length:
-            return self.content.replace("\n", " ")
-        return self.content[:max_length].replace("\n", " ") + "..."
-
 
 @dataclass
 class ToolDefinition:
@@ -212,7 +205,6 @@ class ExecutionTurn:
     stdout: str
     error: str | None
     returned_value: Any
-    status: str  # OK or ERROR
     duration_ms: float | None = None
     execution_id: str = ""  # Short 6-char ID from execution.id
     generation_id: str = ""  # Short 6-char ID from generation.id (for correlation)
@@ -1249,7 +1241,6 @@ def _populate_session_turns_from_generation(
             status_obj = span.get("status", {})
             error_msg = error or attrs.get("error.message") or status_obj.get("description")
             error_type = attrs.get("error.type")  # Capture error type (e.g., "_ReturnResultSignal")
-            status_code = "ERROR" if status_obj.get("status_code") == "ERROR" or error_msg else "OK"
 
             turn = ExecutionTurn(
                 # OI-first: code lives in ``input.value`` = {"code": ...}; fall
@@ -1258,7 +1249,6 @@ def _populate_session_turns_from_generation(
                 stdout=stdout,
                 error=error_msg,
                 returned_value=returned,
-                status=status_code,
                 duration_ms=duration_ns / 1_000_000 if duration_ns else None,
                 execution_id=_short_id(attrs.get("execution.id", "")),
                 generation_id=_short_id(gen_id),
@@ -1272,49 +1262,6 @@ def _populate_session_turns_from_generation(
 # =============================================================================
 # Summary Data Structures (Agent-friendly views)
 # =============================================================================
-
-
-@dataclass
-class TraceOverview:
-    """High-level summary of a trace."""
-
-    trace_file: str
-    root_agent: str
-    root_method: str
-    outcome: str  # "SUCCESS" or "FAILURE"
-    error_summary: str | None  # Brief error description if failed
-    total_sessions: int
-    total_turns: int
-    total_llm_calls: int
-    total_executions: int
-    duration_ms: float
-    has_subagents: bool
-    # Recursion detection fields
-    raw_agent_spans: int = 0  # Total AGENT spans in raw trace
-    agent_span_ratio: float = 0.0  # raw_agent_spans / total_sessions
-    recursion_warning: str | None = None  # Warning message if recursion detected
-
-    def __str__(self) -> str:
-        lines = [
-            f"Trace: {self.trace_file}",
-            f"Agent: {self.root_agent}.{self.root_method}()",
-            f"Outcome: {self.outcome}",
-        ]
-        if self.error_summary:
-            lines.append(f"Error: {self.error_summary}")
-        lines.extend(
-            [
-                f"Sessions: {self.total_sessions} | Turns: {self.total_turns}",
-                f"LLM calls: {self.total_llm_calls} | Executions: {self.total_executions}",
-                f"Duration: {self.duration_ms:.1f}ms",
-            ]
-        )
-        if self.has_subagents:
-            lines.append("Has subagent calls: Yes")
-        if self.recursion_warning:
-            lines.append("")
-            lines.append(f"⚠️  RECURSION: {self.recursion_warning}")
-        return "\n".join(lines)
 
 
 @dataclass
@@ -1562,7 +1509,6 @@ class SearchResult:
     turn_type: str
     location: str  # "response", "message", "code", "stdout", "error"
     match_text: str  # The matched text with context
-    line_number: int | None = None
 
     def __str__(self) -> str:
         return (
@@ -1576,7 +1522,6 @@ class SearchResult:
             "turn_type": self.turn_type,
             "location": self.location,
             "match_text": self.match_text,
-            "line_number": self.line_number,
         }
 
 
@@ -1697,25 +1642,6 @@ class OverviewData:
             "benchmark_context": self.benchmark_context,
             "call_graph": self.call_graph,
         }
-
-
-@dataclass
-class ValidationErrorInfo:
-    """Information about a validation error in tool execution."""
-
-    span_id: str
-    tool_name: str  # e.g., "return_result"
-    error_type: str  # e.g., "ValidationError"
-    error_message: str  # Full error message
-    arguments: str  # The invalid arguments passed
-    agent_name: str
-
-    def __str__(self) -> str:
-        return (
-            f"[{self.span_id[:6]}] {self.tool_name}: {self.error_type}\n"
-            f"  Args: {self.arguments[:100]}...\n"
-            f"  Error: {self.error_message[:200]}"
-        )
 
 
 @dataclass
@@ -1984,6 +1910,7 @@ class TraceExplorer:
         benchmark_context: str | None = None,
         raw_spans: list[dict[str, Any]] | None = None,
         viewer_url: str | None = None,
+        viewer_session_id: str | None = None,
     ):
         self._sessions = sessions
         self._trace_file = trace_file
@@ -1991,14 +1918,14 @@ class TraceExplorer:
         self._benchmark_context = benchmark_context
         self._raw_spans = raw_spans or []
         self._viewer_url = viewer_url  # set when loaded via from_viewer
+        # Viewer session id that loaded this trace; needed to emit valid
+        # viewer-mode CLI nav hints (the CLI requires --session-id with --viewer).
+        self._viewer_session_id = viewer_session_id
 
         # Build flat session index for quick lookup
         # This is the unified tree structure with depth and parent-child relationships
         self._all_sessions = _get_all_sessions(sessions)
         self._session_by_id = {s.session_id: s for s in self._all_sessions}
-
-        # Cache for mechanical findings (computed lazily)
-        self._mechanical_findings: list | None = None
 
     def _find_session(self, session_id: str) -> AgentSession | None:
         """Find a session by ID (supports both short 6-char and full IDs)."""
@@ -2014,9 +1941,17 @@ class TraceExplorer:
         return None
 
     def _source_prefix(self) -> str:
-        """Return the base trace-explorer CLI invocation for this trace source."""
+        """Return the base trace-explorer CLI invocation for this trace source.
+
+        In viewer mode the CLI requires ``--session-id`` alongside ``--viewer``
+        (see ``_async_main``), so the hint includes the session id that loaded
+        this trace to stay valid against the parser's own argument validation.
+        """
         if self._viewer_url:
-            return f"trace-explorer --viewer {shlex.quote(self._viewer_url)}"
+            prefix = f"trace-explorer --viewer {shlex.quote(self._viewer_url)}"
+            if self._viewer_session_id:
+                prefix += f" --session-id {shlex.quote(self._viewer_session_id)}"
+            return prefix
         return f"trace-explorer {shlex.quote(str(self._trace_file))}"
 
     def _nav_hint(self, session_id: str) -> str:
@@ -2120,16 +2055,19 @@ class TraceExplorer:
         - Turns with messages and code executions
 
         Raises:
-            ValueError: If the file is not a valid trace file (e.g., .noo-eval.jsonl)
+            ValueError: If the file is an eval-results file (e.g. .noo-eval.jsonl)
+                or otherwise does not contain OTLP execution spans.
         """
         trace_path = Path(trace_path)
 
-        # Check file extension
-        if ".006eval." in trace_path.name:
+        # Reject eval-result files by name. Current runs write ``.noo-eval.jsonl``
+        # (see eval_pipeline.experiment_writer); legacy runs used ``.006eval.``.
+        # Both contain evaluation records, not agent execution traces.
+        if ".noo-eval." in trace_path.name or ".006eval." in trace_path.name:
             raise ValueError(
                 f"Cannot load eval file as trace: {trace_path.name}\n"
-                "Use .jsonl files instead. Eval files contain evaluation results, "
-                "not agent execution traces."
+                "Use .jsonl trace files instead. Eval files contain evaluation "
+                "results, not agent execution traces."
             )
 
         import asyncio
@@ -2138,12 +2076,16 @@ class TraceExplorer:
             # Load spans once
             raw_spans = _load_spans(trace_path)
 
-            # Validate that this looks like a trace file (spans should have 'name' field)
-            if raw_spans and "name" not in raw_spans[0]:
+            # Structural guard for eval files that slipped past the name check
+            # (e.g. renamed). Eval records are JSONL objects tagged with a
+            # top-level ``_type`` of metadata/result/completion (see
+            # eval_pipeline.eval_types) and carry no OTLP span identity, so a
+            # normalized "span" from such a file has neither a name nor a span_id.
+            if raw_spans and not raw_spans[0]["name"] and not raw_spans[0]["span_id"]:
                 raise ValueError(
                     f"File does not appear to be a valid trace file: {trace_path.name}\n"
-                    "Expected JSONL with span objects containing 'name' field. "
-                    "This may be an eval results file (.noo-eval.jsonl) or other format."
+                    "Expected JSONL with OTLP span objects (each with a 'name' and "
+                    "'span_id'). This may be an eval results file or another format."
                 )
 
             # Build unified session tree from spans
@@ -2244,6 +2186,7 @@ class TraceExplorer:
                 eval_result=er,
                 raw_spans=all_spans,
                 viewer_url=base_url,
+                viewer_session_id=session_id,
             )
 
         return await asyncio.to_thread(_build)
@@ -2356,6 +2299,7 @@ class TraceExplorer:
                         eval_result=eval_result,
                         raw_spans=spans,
                         viewer_url=base_url,
+                        viewer_session_id=primary_session_id,
                     )
                     result[primary_session_id] = explorer
             finally:
@@ -3045,53 +2989,6 @@ class TraceExplorer:
             result = _pformat(value, max_string=1200, max_length=100, max_depth=6)
         return " ".join(result.split())
 
-    def _get_session_input_preview(self, session: AgentSession, max_len: int = 80) -> str | None:
-        """Extract input preview from session's first LLM turn.
-
-        Looks at the LAST user message in the turn (the current task), not the first.
-        This handles multi-turn conversations where history is included.
-        """
-        for turn in session.turns:
-            if isinstance(turn, LLMTurn):
-                # Find the LAST user message (the current task)
-                last_user_msg = None
-                for msg in turn.messages:
-                    if msg.role == "user":
-                        last_user_msg = msg
-
-                if last_user_msg:
-                    content = last_user_msg.content
-                    # Try to extract the user_message parameter value
-                    # Pattern 1: user_message = 'string' or "string"
-                    if "user_message = " in content:
-                        for line in content.split("\n"):
-                            if "user_message = " in line:
-                                start = line.find("user_message = ") + len("user_message = ")
-                                val = line[start:].strip()
-                                if val.startswith(("'", '"')) and len(val) > 1:
-                                    quote = val[0]
-                                    if val.endswith(quote):
-                                        val = val[1:-1]
-                                    else:
-                                        val = val[1:]
-                                if len(val) > max_len:
-                                    return val[:max_len] + "..."
-                                return val
-                    # Pattern 2: Look for "The customer said:" in task content
-                    if "The customer said:" in content:
-                        idx = content.find("The customer said:")
-                        rest = content[idx + len("The customer said:") :].strip()
-                        end = rest.find("\n\n")
-                        if end > 0:
-                            val = rest[:end].strip()
-                        else:
-                            val = rest.split("\n")[0].strip()
-                        if len(val) > max_len:
-                            return val[:max_len] + "..."
-                        return val
-                break
-        return None
-
     def _get_session_output_preview(self, session: AgentSession, max_len: int = 80) -> str | None:
         """Extract output preview from session's return_result call or last execution."""
         # First, look for return_result tool calls in raw spans within this session's time range
@@ -3119,183 +3016,9 @@ class TraceExplorer:
                     return f"ERROR: {turn.error.split(chr(10))[0][:max_len]}"
         return None
 
-    def _format_session_turns_compact(self, session: AgentSession, max_turns: int = 5) -> list[str]:
-        """Format turns for a session in compact tree format."""
-        lines = []
-        turn_count = 0
-        i = 0
-
-        while i < len(session.turns) and turn_count < max_turns:
-            turn = session.turns[i]
-            turn_count += 1
-
-            if isinstance(turn, LLMTurn):
-                tools = [tc.function_name for tc in turn.tool_calls]
-                tool_str = ", ".join(tools) if tools else "thinking"
-                turn_id = _short_id(turn.span_id) if turn.span_id else "------"
-
-                # Check if next turn is execution
-                exec_result = ""
-                if i + 1 < len(session.turns):
-                    next_turn = session.turns[i + 1]
-                    if isinstance(next_turn, ExecutionTurn):
-                        if next_turn.error:
-                            err_type = next_turn.error_type or "ERROR"
-                            exec_result = f" → {err_type}"
-                        elif next_turn.stdout:
-                            preview = next_turn.stdout.strip().split("\n")[0][:30]
-                            exec_result = f" → {preview}"
-                        else:
-                            exec_result = " → OK"
-                        i += 1  # Skip exec turn
-
-                lines.append(f"[{turn_id}] LLM: {tool_str}{exec_result}")
-            else:
-                # Standalone execution (shouldn't happen often)
-                turn_id = _short_id(turn.span_id) if turn.span_id else "------"
-                status = turn.error_type if turn.error else "OK"
-                lines.append(f"[{turn_id}] EXEC: {status}")
-
-            i += 1
-
-        remaining = len(session.turns) - i
-        if remaining > 0:
-            lines.append(f"... ({remaining} more turns)")
-
-        return lines
-
-    def _build_overview(self) -> TraceOverview:
-        """Build the overview data structure."""
-        if not self.sessions:
-            return TraceOverview(
-                trace_file=self.trace_file,
-                root_agent="Unknown",
-                root_method="Unknown",
-                outcome="UNKNOWN",
-                error_summary="No sessions found in trace",
-                total_sessions=0,
-                total_turns=0,
-                total_llm_calls=0,
-                total_executions=0,
-                duration_ms=0,
-                has_subagents=False,
-            )
-
-        root = self.sessions[0]
-
-        # Count turns across all sessions
-        total_llm = 0
-        total_exec = 0
-        for session in self._all_sessions:
-            for turn in session.turns:
-                if isinstance(turn, LLMTurn):
-                    total_llm += 1
-                else:
-                    total_exec += 1
-
-        # Determine outcome
-        outcome = "SUCCESS" if root.status == "OK" else "FAILURE"
-
-        # Error summary
-        error_summary = None
-        if outcome == "FAILURE":
-            errors = self._find_errors()
-            if errors:
-                error_summary = errors[0].error_message[:200]
-            elif self.eval_result:
-                error_summary = self.eval_result.error or "Unknown error"
-
-        # Duration
-        if self._all_sessions:
-            start = min(s.start_time for s in self._all_sessions)
-            end = max(s.end_time for s in self._all_sessions)
-            duration_ms = (end - start) / 1_000_000
-        else:
-            duration_ms = 0
-
-        # Recursion detection: use session tree
-        raw_agent_spans = self.agent_count
-        agent_span_ratio = 0.0
-        recursion_warning = None
-
-        if raw_agent_spans > 10 or self.max_agent_depth > 5:
-            pattern = self._get_recursion_pattern()
-            recursion_warning = (
-                f"{raw_agent_spans} agent invocations (max depth {self.max_agent_depth}) - "
-                f"runaway recursive calls, {pattern}"
-            )
-
-        return TraceOverview(
-            trace_file=self.trace_file,
-            root_agent=root.agent_name,
-            root_method=root.method_name,
-            outcome=outcome,
-            error_summary=error_summary,
-            total_sessions=len(self._all_sessions),
-            total_turns=total_llm + total_exec,
-            total_llm_calls=total_llm,
-            total_executions=total_exec,
-            duration_ms=duration_ms,
-            has_subagents=len(self._all_sessions) > 1,
-            raw_agent_spans=raw_agent_spans,
-            agent_span_ratio=agent_span_ratio,
-            recursion_warning=recursion_warning,
-        )
-
     # =========================================================================
     # Session Navigation
     # =========================================================================
-
-    def _get_session_list(self, concise: bool = True) -> str:
-        """Internal: Get a list of all sessions with summary info.
-
-        Prefer get_overview() which shows this in context of call graph.
-        """
-        if not self._all_sessions:
-            return "No sessions found in trace."
-
-        # Summary stats
-        total = len(self._all_sessions)
-        ok_count = sum(1 for s in self._all_sessions if s.status == "OK")
-        err_count = total - ok_count
-        max_depth = max(s.depth for s in self._all_sessions)
-
-        lines = [
-            f"Found {total} session(s) ([OK] {ok_count}, [ERR] {err_count}, max depth {max_depth}):",
-            "",
-        ]
-
-        if concise:
-            for session in self._all_sessions:
-                status_marker = "[OK]" if session.status == "OK" else "[ERR]"
-                depth_indent = "  " * session.depth
-                llm_count = sum(1 for t in session.turns if isinstance(t, LLMTurn))
-                exec_count = len(session.turns) - llm_count
-                lines.append(
-                    f"  {depth_indent}{status_marker} [{session.session_id}] "
-                    f"{session.full_name} ({llm_count}L/{exec_count}E, {session.duration_ms:.1f}ms)"
-                )
-        else:
-            for session in self._all_sessions:
-                status_marker = "[OK]" if session.status == "OK" else "[ERR]"
-                depth_indent = "  " * session.depth
-                llm_count = sum(1 for t in session.turns if isinstance(t, LLMTurn))
-                exec_count = len(session.turns) - llm_count
-                lines.append(
-                    f"  {depth_indent}{status_marker} [{session.session_id}] {session.full_name}"
-                )
-                lines.append(
-                    f"  {depth_indent}    {len(session.turns)} turns ({llm_count} LLM, {exec_count} exec) "
-                    f"in {session.duration_ms:.1f}ms"
-                )
-                if session.parent_session_id:
-                    lines.append(f"  {depth_indent}    parent: {session.parent_session_id}")
-
-        # Navigation hint
-        lines.append("")
-        lines.append(f"→ {self._nav_hint('<session_id>')} to see all turns in a session")
-
-        return "\n".join(lines)
 
     def _build_session_summary(self, session: AgentSession) -> SessionSummary:
         """Build summary for a single session."""
@@ -3746,359 +3469,6 @@ class TraceExplorer:
 
         return lines
 
-    def _get_method_io(self, session_id: str, *, concise: bool = True) -> str:
-        """Internal: Get high-level input/output summary for a session.
-
-        Prefer get_session() which shows I/O in header plus turns.
-        """
-        session = self._session_by_id.get(session_id)
-        if not session:
-            return f"Session not found: {session_id}"
-
-        lines = [
-            f"# Method: {session.agent_name}.{session.method_name}()",
-            "",
-        ]
-
-        # Signature if available
-        if session.method_signature:
-            lines.append(f"**Signature**: `{session.method_signature}`")
-
-        # Docstring if available
-        if session.docstring:
-            lines.append(f"**Purpose**: {session.docstring}")
-
-        lines.append(f"**Status**: {session.status}")
-        lines.append(f"**Duration**: {session.duration_ms:.1f}ms")
-        lines.append("")
-
-        # Input: Extract from first LLM turn's user message
-        lines.append("## Input")
-        llm_turns = session.get_llm_turns()
-        if llm_turns:
-            first_turn = llm_turns[0]
-            # Find user message in the first turn (LLMMessage has .role and .content)
-            user_msgs = [m for m in first_turn.messages if m.role == "user"]
-            if user_msgs:
-                user_content = user_msgs[-1].content or ""
-                # Try to extract clean inputs from prefill XML format
-                clean_inputs = _extract_prefill_inputs(user_content)
-                if clean_inputs:
-                    user_content = clean_inputs
-                if concise:
-                    user_content = _pformat(user_content, max_string=500)
-                lines.append("```")
-                lines.append(user_content)
-                lines.append("```")
-            else:
-                lines.append("*(No user input found)*")
-        else:
-            lines.append("*(No LLM turns)*")
-
-        lines.append("")
-
-        # Output: Show the result (prioritize return_result tool calls over session.result)
-        lines.append("## Output")
-        result_found = False
-
-        # First, try to get from return_result tool call in raw spans (most reliable)
-        output_preview = self._get_session_output_preview(session, max_len=10000)
-        if output_preview:
-            try:
-                # Try to parse as JSON for nice formatting
-                result = json.loads(output_preview)
-                if concise:
-                    result_str = _pformat(result, max_length=50, max_string=500, max_depth=3)
-                else:
-                    result_str = json.dumps(result, indent=2, default=str)
-                lines.append("```")
-                lines.append(result_str)
-                lines.append("```")
-                result_found = True
-            except (json.JSONDecodeError, TypeError):
-                # Not JSON, use as-is
-                if concise:
-                    output_preview = _pformat(output_preview, max_string=1000)
-                lines.append("```")
-                lines.append(output_preview)
-                lines.append("```")
-                result_found = True
-
-        # Fallback: try session.result (but skip if it looks like an object repr)
-        if not result_found and session.result:
-            result_str_raw = str(session.result)
-            # Skip unhelpful object representations
-            if not re.match(r"^'?<object object at 0x[0-9a-f]+>'?$", result_str_raw):
-                try:
-                    if isinstance(session.result, str):
-                        result = json.loads(session.result)
-                    else:
-                        result = session.result
-                    if concise:
-                        result_str = _pformat(result, max_length=50, max_string=200, max_depth=3)
-                    else:
-                        result_str = json.dumps(result, indent=2, default=str)
-                    lines.append("```")
-                    lines.append(result_str)
-                    lines.append("```")
-                    result_found = True
-                except (json.JSONDecodeError, TypeError):
-                    if concise:
-                        result_str_raw = _pformat(result_str_raw, max_string=1000)
-                    lines.append("```")
-                    lines.append(result_str_raw)
-                    lines.append("```")
-                    result_found = True
-
-        # Last fallback: check execution turns
-        if not result_found:
-            exec_turns = session.get_execution_turns()
-            if exec_turns:
-                last_exec = exec_turns[-1]
-                if last_exec.returned_value is not None:
-                    ret_val = last_exec.returned_value
-                    if concise:
-                        ret_str = _pformat(ret_val, max_length=50, max_string=500, max_depth=3)
-                    else:
-                        ret_str = str(ret_val)
-                    lines.append("```")
-                    lines.append(ret_str)
-                    lines.append("```")
-                elif last_exec.error:
-                    lines.append(f"**Error**: {last_exec.error}")
-                else:
-                    lines.append("*(No return value)*")
-            else:
-                lines.append("*(No output)*")
-
-        return "\n".join(lines)
-
-    def _get_all_method_io(self, *, concise: bool = True) -> str:
-        """Internal: Get input/output summary for all sessions.
-
-        Prefer get_overview() which shows I/O in call graph.
-        """
-        lines = ["# All Method Calls (Input/Output Summary)", ""]
-
-        for session in self._all_sessions:
-            lines.append(f"## [{session.session_id}] {session.agent_name}.{session.method_name}()")
-            lines.append(f"Status: {session.status} | Duration: {session.duration_ms:.1f}ms")
-
-            # Brief input - prefer span args/kwargs, fallback to LLM turns
-            has_span_input = session.args or session.kwargs
-            if has_span_input:
-                # Use span-captured args/kwargs (most reliable source)
-                input_parts = []
-                if session.args:
-                    for arg in session.args:
-                        if concise:
-                            arg_str = _pformat(arg, max_length=10, max_string=100, max_depth=2)
-                        else:
-                            arg_str = repr(arg)
-                        input_parts.append(arg_str)
-                if session.kwargs:
-                    for k, v in session.kwargs.items():
-                        if concise:
-                            v_str = _pformat(v, max_length=10, max_string=100, max_depth=2)
-                        else:
-                            v_str = repr(v)
-                        input_parts.append(f"{k}={v_str}")
-                if input_parts:
-                    lines.append(f"**Input**: {', '.join(input_parts)}")
-            else:
-                # Fallback to LLM turns if no span input
-                llm_turns = session.get_llm_turns()
-                if llm_turns:
-                    user_msgs = [m for m in llm_turns[0].messages if m.role == "user"]
-                    if user_msgs:
-                        user_content = user_msgs[-1].content or ""
-                        # Try to extract clean inputs from prefill XML format
-                        clean_inputs = _extract_prefill_inputs(user_content)
-                        if clean_inputs:
-                            user_content = clean_inputs
-                        if concise:
-                            user_content = _pformat(user_content, max_string=200)
-                        lines.append(f"**Input**: {user_content}")
-
-            # Brief output (prioritize return_result tool calls)
-            output_preview = self._get_session_output_preview(session, max_len=200)
-            if output_preview:
-                try:
-                    result = json.loads(output_preview)
-                    if concise:
-                        result_str = _pformat(result, max_length=20, max_string=100, max_depth=2)
-                    else:
-                        result_str = json.dumps(result, default=str)
-                    lines.append(f"**Output**: {result_str}")
-                except (json.JSONDecodeError, TypeError):
-                    if concise:
-                        output_preview = _pformat(output_preview, max_string=200)
-                    lines.append(f"**Output**: {output_preview}")
-            elif session.result:
-                result_str_raw = str(session.result)
-                # Skip unhelpful object representations
-                if not re.match(r"^'?<object object at 0x[0-9a-f]+>'?$", result_str_raw):
-                    try:
-                        if isinstance(session.result, str):
-                            result = json.loads(session.result)
-                        else:
-                            result = session.result
-                        if concise:
-                            result_str = _pformat(
-                                result, max_length=20, max_string=100, max_depth=2
-                            )
-                        else:
-                            result_str = json.dumps(result, default=str)
-                        lines.append(f"**Output**: {result_str}")
-                    except (json.JSONDecodeError, TypeError):
-                        if concise:
-                            result_str_raw = _pformat(result_str_raw, max_string=200)
-                        lines.append(f"**Output**: {result_str_raw}")
-
-            lines.append("")
-
-        return "\n".join(lines)
-
-    def _get_session_reasoning(self, session_id: str, *, concise: bool = True) -> str:
-        """Internal: Get the reasoning chain for a session.
-
-        Prefer get_session() which shows reasoning in context of turns.
-        """
-        session = self._session_by_id.get(session_id)
-        if not session:
-            return f"Session not found: {session_id}"
-
-        lines = [
-            f"# Reasoning Chain: {session.agent_name}.{session.method_name}()",
-            f"Session: {session_id} | {len(session.turns)} turns | {session.duration_ms:.1f}ms",
-            "",
-        ]
-
-        for i, turn in enumerate(session.turns):
-            if isinstance(turn, LLMTurn):
-                # Show assistant's response (the decision/action)
-                lines.append(f"## Turn {i}: LLM Response")
-                response = turn.response or ""
-                if concise:
-                    response = _pformat(response, max_string=800)
-                lines.append("```")
-                lines.append(response)
-                lines.append("```")
-            else:
-                # ExecutionTurn - show code and result
-                lines.append(f"## Turn {i}: Code Execution")
-                code = turn.code or ""
-                if concise:
-                    code = _pformat(code, max_string=500)
-                lines.append("```python")
-                lines.append(code)
-                lines.append("```")
-
-                # Show result briefly
-                if turn.error:
-                    lines.append(f"**ERROR**: {turn.error}")
-                elif turn.returned_value is not None:
-                    if concise:
-                        ret_str = _pformat(
-                            turn.returned_value, max_length=20, max_string=200, max_depth=2
-                        )
-                    else:
-                        ret_str = str(turn.returned_value)
-                    lines.append(f"**Returned**: {ret_str}")
-                elif turn.stdout:
-                    stdout = turn.stdout
-                    if concise:
-                        stdout = _pformat(stdout, max_string=200)
-                    lines.append(f"**Output**: {stdout}")
-
-            lines.append("")
-
-        # Final result
-        if session.result:
-            lines.append("## Final Result")
-            try:
-                if isinstance(session.result, str):
-                    result = json.loads(session.result)
-                else:
-                    result = session.result
-                if concise:
-                    result_str = _pformat(result, max_length=30, max_string=300, max_depth=3)
-                else:
-                    result_str = json.dumps(result, indent=2, default=str)
-                lines.append("```")
-                lines.append(result_str)
-                lines.append("```")
-            except (json.JSONDecodeError, TypeError):
-                result_str = str(session.result)
-                if concise:
-                    result_str = _pformat(result_str, max_string=500)
-                lines.append(f"```\n{result_str}\n```")
-
-        return "\n".join(lines)
-
-    def _get_turn_context(self, session_id: str, turn_index: int, *, concise: bool = True) -> str:
-        """Internal: Get the full LLM context window at a specific turn.
-
-        Prefer get_turn() which provides the same info with better formatting.
-        """
-        session = self._session_by_id.get(session_id)
-        if not session:
-            return f"Session not found: {session_id}"
-
-        if turn_index < 0 or turn_index >= len(session.turns):
-            return f"Turn index {turn_index} out of range (session has {len(session.turns)} turns)"
-
-        turn = session.turns[turn_index]
-        if not isinstance(turn, LLMTurn):
-            return f"Turn {turn_index} is not an LLM turn. Use get_turn() for execution turns."
-
-        lines = [
-            "# Full Context Window",
-            f"Session: {session_id} ({session.agent_name}.{session.method_name})",
-            f"Turn: {turn_index}",
-            "",
-        ]
-
-        # Show all messages in the context (LLMMessage has .role and .content)
-        for i, msg in enumerate(turn.messages):
-            role = msg.role or "unknown"
-            content = msg.content or ""
-
-            if role == "system":
-                lines.append(f"## [{i}] SYSTEM PROMPT")
-                lines.append("```")
-                lines.append(content)
-                lines.append("```")
-            elif role == "user":
-                lines.append(f"## [{i}] USER")
-                lines.append("```")
-                lines.append(content)
-                lines.append("```")
-            elif role == "assistant":
-                lines.append(f"## [{i}] ASSISTANT")
-                lines.append("```")
-                lines.append(content)
-                lines.append("```")
-            elif role == "tool":
-                tool_name = getattr(msg, "name", None) or "tool"
-                lines.append(f"## [{i}] TOOL RESULT ({tool_name})")
-                # Tool results can be very long; truncate when concise
-                if concise:
-                    content = _pformat(content, max_string=2000)
-                lines.append("```")
-                lines.append(content)
-                lines.append("```")
-
-            lines.append("")
-
-        # Show the response generated at this turn
-        lines.append("## RESPONSE GENERATED")
-        lines.append("```")
-        lines.append(turn.response or "(no response)")
-        lines.append("```")
-
-        return "\n".join(lines)
-
     # =========================================================================
     # Turn Navigation
     # =========================================================================
@@ -4471,21 +3841,6 @@ class TraceExplorer:
         lines.append("</exec_turn>")
         return "\n".join(lines)
 
-    def _get_span(self, span_id: str) -> str:
-        """Internal: Get full details of a turn by its span ID.
-
-        Prefer get_turn(session_id, turn_index) which is more direct.
-        """
-        # Search all sessions for a turn with matching span_id
-        for session in self._all_sessions:
-            for i, turn in enumerate(session.turns):
-                turn_span_id = _short_id(turn.span_id) if turn.span_id else ""
-                if turn_span_id == span_id or turn.span_id == span_id:
-                    turn_info = self._build_turn_info(session.session_id, i, turn)
-                    return turn_info.full_content()
-
-        return f"Span not found: {span_id}. Use get_timeline() to see available span IDs."
-
     def _build_turn_info(
         self,
         session_id: str,
@@ -4673,27 +4028,6 @@ class TraceExplorer:
     # Result Access
     # =========================================================================
 
-    def _get_final_result(self) -> str:
-        """Internal: Get the final result of the root session.
-
-        Prefer get_eval_context() which shows result in context of expected.
-        """
-        if not self.sessions:
-            return "No sessions in trace"
-
-        root = self.sessions[0]
-        if root.result is None:
-            return "No result captured (method may have returned None or failed)"
-
-        try:
-            if isinstance(root.result, str):
-                result = json.loads(root.result)
-            else:
-                result = root.result
-            return json.dumps(result, indent=2, default=str)
-        except (json.JSONDecodeError, TypeError):
-            return str(root.result)
-
     async def get_eval_context(self, concise: bool = True) -> str:
         """Get evaluation context if available.
 
@@ -4837,15 +4171,9 @@ class TraceExplorer:
             return "\n".join(lines)
 
         # Use the schema to drive display (single source of truth)
-        try:
-            from nemo_oo_agents.runtime.harness_metrics import get_span_schema
+        from nemo_oo_agents.runtime.harness_metrics import get_span_schema
 
-            schema = get_span_schema()
-        except ImportError:
-            # Fall back to raw key display if schema not available
-            for key, value in sorted(metrics.items()):
-                lines.append(f"  {key}: {value}")
-            return "\n".join(lines)
+        schema = get_span_schema()
 
         # Group schema entries by category
         categories: dict[str, list[tuple[str, str, bool]]] = {}
@@ -5244,144 +4572,6 @@ class TraceExplorer:
         return matches
 
     # =========================================================================
-    # Tool Calls
-    # =========================================================================
-
-    def _get_tool_calls(self, concise: bool = True) -> str:
-        """Internal: Get all LLM tool invocations in the trace.
-
-        Prefer get_session() which shows tool calls in context.
-        """
-        tool_calls = []
-
-        for session in self._all_sessions:
-            for i, turn in enumerate(session.turns):
-                if isinstance(turn, LLMTurn):
-                    for tc in turn.tool_calls:
-                        tool_calls.append(
-                            {
-                                "session_id": session.session_id,
-                                "turn_index": i,
-                                "function": tc.function_name,
-                                "args_preview": tc.arguments[:100] if tc.arguments else "{}",
-                            }
-                        )
-
-        if not tool_calls:
-            return "No tool calls found in trace."
-
-        # Group by function name for summary
-        func_counts: dict[str, int] = {}
-        for call in tool_calls:
-            func_counts[call["function"]] = func_counts.get(call["function"], 0) + 1
-
-        lines = [f"Found {len(tool_calls)} tool call(s):", ""]
-
-        # Summary
-        lines.append("Summary:")
-        for func, count in sorted(func_counts.items(), key=lambda x: -x[1]):
-            lines.append(f"  • {func}: {count}")
-        lines.append("")
-
-        # List
-        lines.append("Calls:")
-        if concise:
-            for call in tool_calls:
-                args_short = call["args_preview"].replace("\n", " ")[:50]
-                lines.append(
-                    f"  • [{call['session_id']} t{call['turn_index']}] {call['function']}({args_short})"
-                )
-        else:
-            for call in tool_calls:
-                lines.append(
-                    f"  [{call['session_id']}, turn {call['turn_index']}] {call['function']}"
-                )
-                args_preview = call["args_preview"].replace("\n", " ")[:80]
-                lines.append(f"    args: {args_preview}")
-
-        # Navigation hint
-        lines.append("")
-        hint = self._nav_hint_cmd("get_span(span_id)", "--raw <span_id>")
-        lines.append(f"→ {hint} to see full tool call and response")
-
-        return "\n".join(lines)
-
-    # =========================================================================
-    # Validation Errors (from raw spans)
-    # =========================================================================
-
-    def _get_validation_errors(self) -> list[ValidationErrorInfo]:
-        """Internal: Get all validation errors from tool execution spans."""
-        errors = []
-
-        for span in self._raw_spans:
-            name = span.get("name", "")
-            attrs = span.get("attributes", {})
-
-            # Look for tool execution spans with errors
-            if name.startswith("tool_execution") and attrs.get("error.type"):
-                errors.append(
-                    ValidationErrorInfo(
-                        span_id=span.get("span_id", "unknown"),
-                        tool_name=attrs.get("tool.name", name),
-                        error_type=attrs.get("error.type", "Unknown"),
-                        error_message=attrs.get("error.message", ""),
-                        arguments=_io_value(attrs, "input.value", "tool.arguments") or "{}",
-                        agent_name=attrs.get("agent.name", "Unknown"),
-                    )
-                )
-
-        return errors
-
-    def _get_validation_errors_summary(self) -> str:
-        """Internal: Get a human-readable summary of validation errors."""
-        errors = self._get_validation_errors()
-
-        if not errors:
-            return "No validation errors found."
-
-        lines = [f"Found {len(errors)} validation error(s):", ""]
-        for err in errors:
-            lines.append(str(err))
-            lines.append("")
-
-        return "\n".join(lines)
-
-    # =========================================================================
-    # Mechanical Analysis
-    # =========================================================================
-
-    def _get_mechanical_findings(self, force_refresh: bool = False) -> str:
-        """Internal: Get mechanical analysis results for this trace."""
-        if self._mechanical_findings is None or force_refresh:
-            self._mechanical_findings = self._run_mechanical_checks()
-
-        if not self._mechanical_findings:
-            return "No mechanical issues detected."
-
-        lines = [f"Found {len(self._mechanical_findings)} mechanical issue(s):", ""]
-        for finding in self._mechanical_findings:
-            lines.append(f"- [{finding.severity}] {finding.check_id}: {finding.message}")
-            lines.append(f"  Session: {finding.session_id}")
-        return "\n".join(lines)
-
-    def _run_mechanical_checks(self) -> list:
-        """Run mechanical checks and return findings.
-
-        Returns an empty list when no checks are implemented.
-        This allows callers expecting iterable results to handle it gracefully.
-        """
-        from e2e_optimization.mechanical_checks import run_all_checks  # type: ignore
-
-        return run_all_checks(self)
-
-    def _get_mechanical_findings_raw(self) -> list:
-        """Internal: Get raw MechanicalFinding objects (for annotation export)."""
-        if self._mechanical_findings is None:
-            self._mechanical_findings = self._run_mechanical_checks()
-        return self._mechanical_findings or []
-
-    # =========================================================================
     # Recursion Analysis (via Session Tree)
     # =========================================================================
 
@@ -5413,12 +4603,6 @@ class TraceExplorer:
         """
         return self._get_method_counts()
 
-    def _get_depth_distribution(self) -> dict[int, int]:
-        """Internal: Get count of sessions at each depth level."""
-        from collections import Counter
-
-        return dict(Counter(s.depth for s in self._all_sessions))
-
     async def get_recursion_pattern(self) -> str:
         """Identify the recursion pattern (self-recursion, mutual, etc.).
 
@@ -5442,116 +4626,9 @@ class TraceExplorer:
     # Backward compat alias
     _get_recursion_pattern = get_recursion_pattern
 
-    def _get_session_by_span_id(self, span_id: str) -> AgentSession | None:
-        """Internal: Get a session by its full span_id."""
-        for session in self._all_sessions:
-            if session.span_id == span_id:
-                return session
-        return None
-
-    # =========================================================================
-    # Session Depth Analysis
-    # =========================================================================
-
-    def _get_session_depth_analysis(self) -> str:
-        """Internal: Analyze session nesting depth and detect potential recursion issues."""
-        if not self._all_sessions:
-            return "# Session Depth Analysis\n\nNo sessions found in trace."
-
-        method_counts = self._get_method_counts()
-        depth_distribution = self._get_depth_distribution()
-        pattern = self._get_recursion_pattern()
-
-        # Build output
-        lines = [
-            "# Session Depth Analysis",
-            "",
-            f"**Total agent sessions**: {self.agent_count}",
-            f"**Max recursion depth**: {self.max_agent_depth}",
-            "",
-        ]
-
-        # Depth distribution (sample first 10)
-        if len(depth_distribution) > 1:
-            lines.append("**Depth distribution**:")
-            for d in sorted(depth_distribution.keys())[:10]:
-                lines.append(f"  Depth {d}: {depth_distribution[d]} sessions")
-            if len(depth_distribution) > 10:
-                lines.append(f"  ... ({len(depth_distribution) - 10} more depth levels)")
-            lines.append("")
-
-        # Method breakdown
-        lines.append("**Method invocations**:")
-        for method, count in sorted(method_counts.items(), key=lambda x: -x[1]):
-            lines.append(f"  {method}: {count}")
-        lines.append("")
-
-        # Recursion warning
-        is_excessive = self.agent_count > 10 or self.max_agent_depth > 5
-        if is_excessive:
-            lines.append(f"⚠️  **RECURSION WARNING**: {pattern}")
-            lines.append("")
-            lines.append("**Call chain preview** (first 10 levels):")
-            sorted_sessions = sorted(self._all_sessions, key=lambda s: s.depth)
-            seen_depths: set[int] = set()
-            for session in sorted_sessions:
-                if session.depth in seen_depths:
-                    continue
-                if len(seen_depths) >= 10:
-                    remaining = len(sorted_sessions) - len(seen_depths)
-                    lines.append(f"  ... ({remaining} more levels)")
-                    break
-                seen_depths.add(session.depth)
-                lines.append(f"  [{session.depth}] {session.full_name}")
-        else:
-            lines.append("[OK] Session depth appears normal (no excessive recursion detected)")
-
-        return "\n".join(lines)
-
-    # =========================================================================
-    # Full Context (for LLM Analysis)
-    # =========================================================================
-
-    async def _get_full_context(self) -> str:
-        """Internal: Get all available context for the analyzer.
-
-        Prefer get_overview() + get_eval_context() for targeted analysis.
-        """
-        parts = []
-
-        # 1. Benchmark context template (optional)
-        if self.benchmark_context:
-            parts.append("## Benchmark Context")
-            parts.append(self.benchmark_context)
-
-        # 2. Eval result context (optional - not present for manual debugging traces)
-        if self.eval_result:
-            parts.append("## Task Details")
-            parts.append(await self.get_eval_context())
-
-        # 3. Mechanical findings (always available)
-        findings_text = self._get_mechanical_findings()
-        if "No mechanical issues" not in findings_text:
-            parts.append("## Mechanical Analysis Findings")
-            parts.append(findings_text)
-
-        # Note: If no context is available, the analyzer still works by
-        # examining the trace content directly (turns, errors, tool calls)
-        if not parts:
-            return "No additional context available. Analyze trace content directly."
-
-        return "\n\n".join(parts)
-
     # =========================================================================
     # Navigation Helpers
     # =========================================================================
-
-    def _get_parent_session(self, session_id: str) -> AgentSession | None:
-        """Internal: Get the parent session of a given session."""
-        session = self._session_by_id.get(session_id)
-        if not session or not session.parent_session_id:
-            return None
-        return self._session_by_id.get(session.parent_session_id)
 
     def _find_first_error(self) -> tuple[AgentSession, int, ExecutionTurn] | None:
         """Internal: Find the first error in the trace."""
@@ -5561,103 +4638,6 @@ class TraceExplorer:
                 if isinstance(turn, ExecutionTurn) and turn.error:
                     return (session, i, turn)
         return None
-
-    def _get_context_around(
-        self, session_id: str, turn_index: int, before: int = 2, after: int = 2
-    ) -> str:
-        """Internal: Get turns around a specific turn for context.
-
-        Prefer get_session() which shows all turns.
-        """
-        session = self._session_by_id.get(session_id)
-        if not session:
-            return f"Session not found: {session_id}"
-
-        start = max(0, turn_index - before)
-        end = min(len(session.turns), turn_index + after + 1)
-
-        lines = [
-            f"# Context around [{session_id}] turn {turn_index}",
-            f"Session: {session.full_name}",
-            f"Showing turns {start}-{end - 1} (target: {turn_index})",
-            "",
-        ]
-
-        for i in range(start, end):
-            turn = session.turns[i]
-            marker = ">>>" if i == turn_index else "   "
-
-            if isinstance(turn, LLMTurn):
-                tool_info = f", {len(turn.tool_calls)} tool calls" if turn.tool_calls else ""
-                lines.append(f"{marker} [{i}] LLM: {len(turn.messages)} messages{tool_info}")
-                if turn.response:
-                    preview = turn.response[:100].replace("\n", " ")
-                    lines.append(f"       Response: {preview}...")
-            else:
-                status = "ERROR" if turn.error else "OK"
-                lines.append(f"{marker} [{i}] EXEC ({status})")
-                if turn.code:
-                    code_preview = turn.code[:80].replace("\n", " ")
-                    lines.append(f"       Code: {code_preview}...")
-                if turn.error:
-                    error_preview = turn.error[:100].replace("\n", " ")
-                    lines.append(f"       Error: {error_preview}...")
-
-        return "\n".join(lines)
-
-    # =========================================================================
-    # Tool Call Correlation
-    # =========================================================================
-
-    def _get_tool_call_with_result(
-        self, session_id: str, turn_index: int, tool_index: int = 0
-    ) -> dict | None:
-        """Internal: Get a tool call paired with its execution result.
-
-        Prefer get_turn() which shows tool calls with results.
-        """
-        session = self._session_by_id.get(session_id)
-        if not session:
-            return None
-
-        if turn_index >= len(session.turns):
-            return None
-
-        llm_turn = session.turns[turn_index]
-        if not isinstance(llm_turn, LLMTurn):
-            return None
-
-        if tool_index >= len(llm_turn.tool_calls):
-            return None
-
-        tool_call = llm_turn.tool_calls[tool_index]
-
-        # Find the corresponding execution turn (usually the next turn)
-        exec_turn = None
-        for i in range(turn_index + 1, len(session.turns)):
-            turn = session.turns[i]
-            if isinstance(turn, ExecutionTurn):
-                exec_turn = turn
-                break
-            elif isinstance(turn, LLMTurn):
-                # Hit another LLM turn before finding execution
-                break
-
-        return {
-            "call": {
-                "function_name": tool_call.function_name,
-                "arguments": tool_call.arguments,
-            },
-            "result": {
-                "code": exec_turn.code if exec_turn else None,
-                "stdout": exec_turn.stdout if exec_turn else None,
-                "error": exec_turn.error if exec_turn else None,
-                "returned_value": exec_turn.returned_value if exec_turn else None,
-            }
-            if exec_turn
-            else None,
-            "success": exec_turn is not None and exec_turn.error is None,
-        }
 
     # =========================================================================
     # Timeline View
@@ -6865,9 +5845,7 @@ def main() -> None:
     asyncio.run(_async_main())
 
 
-async def _try_thin_client(
-    viewer_url: str, session_id: str, root_generation: int | None
-) -> TraceExplorerClient | None:
+async def _try_thin_client(viewer_url: str, session_id: str) -> TraceExplorerClient | None:
     """Try to connect via thin-client endpoints; return None if unavailable."""
     import httpx
 
@@ -7053,7 +6031,7 @@ Examples (experiment mode):
                 and not args.harness
                 and not args.root_generation
             ):
-                trace = await _try_thin_client(args.viewer, args.session_id, args.root_generation)
+                trace = await _try_thin_client(args.viewer, args.session_id)
             else:
                 trace = None
             # Fall back to full loading if thin client unavailable
