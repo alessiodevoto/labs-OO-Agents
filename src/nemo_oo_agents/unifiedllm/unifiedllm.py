@@ -87,87 +87,224 @@ warnings.filterwarnings(
 
 
 # ============================================================================
-# CRITICAL FIX: Global httpx monkey-patch to prevent CLOSE_WAIT hangs
+# Per-client HTTP transport
 # ============================================================================
-_httpx_patched = False
-_active_http_config: "HttpConfig | None" = None
+# Previously this module monkey-patched httpx.AsyncClient globally at import
+# time to force max_keepalive_connections=0 (prevents CLOSE_WAIT hangs). That
+# affected *every* httpx client in the host process — user code and unrelated
+# libraries included — and its config lived in a module global, so the most
+# recently constructed client silently won (see GitLab #329).
+#
+# Instead, each UnifiedLLM client now owns its own httpx client(s), built from
+# its HttpConfig, and passes them to litellm per call via litellm's
+# caller-provided-client support. No global state, no monkey-patch, and two
+# clients with different HttpConfigs stay fully independent.
 
 
-def _apply_httpx_no_pool_patch():
-    """Monkey-patch httpx.AsyncClient to disable connection pooling globally."""
-    global _httpx_patched
+class _ClientHttp:
+    """Per-client HTTP transport: owns httpx clients + litellm wrappers.
 
-    if _httpx_patched:
-        return  # Already patched — _active_http_config is read dynamically each call
+    Builds one ``httpx.AsyncClient`` and one ``httpx.Client`` from the given
+    ``HttpConfig`` (so the configured connection-pool limits — notably
+    ``max_keepalive_connections`` — and timeouts apply to exactly this client's
+    requests) and wraps them in the object litellm expects for the target
+    provider:
 
-    try:
+    * The Responses API always routes through litellm's ``base_llm_http_handler``,
+      which accepts an ``AsyncHTTPHandler`` / ``HTTPHandler`` for any provider, so
+      responses clients always use those wrappers.
+    * Chat Completions is provider-specific: OpenAI and OpenAI-compatible
+      providers go through the OpenAI SDK path (``client=`` must be an
+      ``AsyncOpenAI`` / ``OpenAI``), while anthropic/bedrock/etc. accept the
+      ``AsyncHTTPHandler`` / ``HTTPHandler`` wrappers.
+
+    If the correct wrapper can't be built (e.g. provider detection fails or the
+    OpenAI SDK client can't be constructed) the corresponding wrapper is left as
+    ``None`` and litellm falls back to building its own default client — the call
+    still succeeds, it just doesn't get this client's custom pool/timeout.
+    """
+
+    def __init__(self, model: str, config: dict[str, Any], http_config: HttpConfig):
         import httpx
 
-        _original_async_init = httpx.AsyncClient.__init__
+        self.http_config = http_config
+        self._sync_closed = False
+        self._async_closed = False
+        self._timeout = http_config.to_httpx_timeout()
+        self.limits = http_config.to_httpx_limits()
 
-        def _no_pool_async_init(self, *args, **kwargs):
-            """Patched __init__ that forces max_keepalive_connections=0 and read timeout."""
-            cfg = _active_http_config or HttpConfig()
-            # Force no connection pooling
-            if "limits" not in kwargs:
-                kwargs["limits"] = httpx.Limits(
-                    max_connections=cfg.max_connections,
-                    max_keepalive_connections=cfg.max_keepalive_connections,
-                    keepalive_expiry=cfg.keepalive_expiry,
-                )
-            elif isinstance(kwargs["limits"], httpx.Limits):
-                # Override user-provided limits to force no pooling
-                kwargs["limits"] = httpx.Limits(
-                    max_connections=kwargs["limits"].max_connections or cfg.max_connections,
-                    max_keepalive_connections=0,  # FORCE no pooling
-                    keepalive_expiry=0.0,
-                )
+        # Mirror the SSL / redirect / default-header hardening litellm applies to
+        # its own httpx clients, so handing litellm our client only changes the
+        # connection-pool limits + timeout — not TLS verification, client certs,
+        # or redirect handling (see GitLab #329 review). Falls back to plain
+        # limits+timeout if litellm's internals move.
+        hardening = self._httpx_hardening()
 
-            # Force read timeout to catch CLOSE_WAIT hangs
-            # read timeout = time between receiving bytes (resets on every byte)
-            # This catches frozen connections without killing long valid responses
-            if "timeout" not in kwargs:
-                kwargs["timeout"] = httpx.Timeout(
-                    connect=cfg.connect_timeout,
-                    read=cfg.read_timeout,
-                    write=cfg.write_timeout,
-                    pool=cfg.pool_timeout,
-                )
-            elif isinstance(kwargs["timeout"], (int, float)):
-                # Convert simple timeout to full Timeout object with read timeout
-                kwargs["timeout"] = httpx.Timeout(
-                    connect=cfg.connect_timeout,
-                    read=cfg.read_timeout,
-                    write=cfg.write_timeout,
-                    pool=cfg.pool_timeout,
-                )
-
-            return _original_async_init(self, *args, **kwargs)
-
-        # Apply the patch
-        httpx.AsyncClient.__init__ = _no_pool_async_init
-        _httpx_patched = True
-
-        logger.info(
-            "Applied global httpx monkey-patch: ALL AsyncClient instances will use "
-            "HttpConfig settings (default: max_keepalive_connections=0, read_timeout=60s)"
+        # The per-client httpx clients. These are what carry this client's
+        # connection-pool limits (incl. max_keepalive_connections) + timeouts.
+        # transport is left as httpx's default so ``limits`` actually applies.
+        self.httpx_async: httpx.AsyncClient = httpx.AsyncClient(
+            limits=self.limits, timeout=self._timeout, **hardening
+        )
+        self.httpx_sync: httpx.Client = httpx.Client(
+            limits=self.limits, timeout=self._timeout, **hardening
         )
 
-    except ImportError:
-        logger.warning("httpx not available, skipping connection pooling patch")
-    except Exception as e:
-        logger.error(f"Failed to apply httpx monkey-patch: {e}")
+        # litellm wrappers, filled in by _build_* below.
+        self.async_client: Any = None
+        self.sync_client: Any = None
+        self._openai_clients: list[Any] = []
 
+    @staticmethod
+    def _httpx_hardening() -> dict[str, Any]:
+        """Transport kwargs mirroring litellm's own httpx client construction.
 
-def _set_http_config(config: HttpConfig) -> None:
-    """Set the active HttpConfig read by the httpx monkey-patch."""
-    global _active_http_config
-    _active_http_config = config
-    _apply_httpx_no_pool_patch()
+        litellm builds its clients with SSL verification (``litellm.ssl_verify`` /
+        ``SSL_VERIFY``), an optional client cert (``SSL_CERTIFICATE`` /
+        ``litellm.ssl_certificate``), ``follow_redirects=True``, and a default
+        User-Agent. We replicate that here so a client that supplies its own
+        HttpConfig doesn't silently lose TLS/redirect behaviour.
+        """
+        try:
+            import os
 
+            from litellm.llms.custom_httpx.http_handler import (
+                get_default_headers,
+                get_ssl_configuration,
+            )
 
-# Apply the patch immediately when module is imported
-_apply_httpx_no_pool_patch()
+            return {
+                "verify": get_ssl_configuration(),
+                "cert": os.getenv("SSL_CERTIFICATE", getattr(litellm, "ssl_certificate", None)),
+                "follow_redirects": True,
+                "headers": get_default_headers(),
+            }
+        except Exception as e:  # noqa: BLE001
+            logger.debug("Falling back to minimal httpx transport config: %s", e)
+            return {"follow_redirects": True}
+
+    def _build_handler_wrappers(self) -> None:
+        """Wrap the httpx clients in litellm's AsyncHTTPHandler / HTTPHandler."""
+        from litellm.llms.custom_httpx.http_handler import AsyncHTTPHandler, HTTPHandler
+
+        # AsyncHTTPHandler eagerly creates an httpx.AsyncClient in __init__.
+        # Build the wrapper object directly so there is no throwaway async client
+        # to leak before replacing it with this _ClientHttp's managed client.
+        async_handler = AsyncHTTPHandler.__new__(AsyncHTTPHandler)
+        async_handler.timeout = self._timeout
+        async_handler.event_hooks = None
+        async_handler.client = self.httpx_async
+        async_handler.client_alias = None
+        self.async_client = async_handler
+
+        sync_handler = HTTPHandler(timeout=self._timeout)
+        try:
+            sync_handler.client.close()  # close the throwaway sync client
+        except Exception:  # noqa: BLE001
+            pass
+        sync_handler.client = self.httpx_sync
+        self.sync_client = sync_handler
+
+    def _build_completion_wrappers(self, model: str, config: dict[str, Any]) -> None:
+        """Pick the right litellm client type for a Chat Completions provider."""
+        try:
+            _, provider, dynamic_api_key, dynamic_api_base = litellm.get_llm_provider(
+                model,
+                api_key=config.get("api_key"),
+                api_base=config.get("api_base"),
+            )
+        except Exception as e:  # noqa: BLE001
+            # Unknown/ambiguous model — don't risk handing an incompatible client
+            # to a handler we can't identify. Let litellm build its own.
+            logger.debug(
+                "Could not detect provider for %r (%s); using litellm's default HTTP client.",
+                model,
+                e,
+            )
+            return
+
+        openai_family = provider == "openai" or provider in getattr(
+            litellm, "openai_compatible_providers", []
+        )
+        if not openai_family:
+            # anthropic / bedrock / vertex / ... accept AsyncHTTPHandler|HTTPHandler
+            # (guarded by isinstance in their handlers).
+            self._build_handler_wrappers()
+            return
+
+        # OpenAI SDK path: client= must be an AsyncOpenAI / OpenAI wrapping httpx.
+        api_key = config.get("api_key") or dynamic_api_key
+        api_base = config.get("api_base") or dynamic_api_base
+        common: dict[str, Any] = {"timeout": self._timeout}
+        if api_key:
+            common["api_key"] = api_key
+        if api_base:
+            common["base_url"] = api_base
+        try:
+            from openai import AsyncOpenAI, OpenAI
+
+            self.async_client = AsyncOpenAI(http_client=self.httpx_async, **common)
+            self.sync_client = OpenAI(http_client=self.httpx_sync, **common)
+            self._openai_clients = [self.async_client, self.sync_client]
+        except Exception as e:  # noqa: BLE001
+            # e.g. no API key resolvable — fall back to litellm's own client so
+            # auth/behaviour is preserved (this client just loses its custom pool).
+            logger.debug(
+                "Could not build OpenAI client for %r (%s); using litellm's default HTTP client.",
+                model,
+                e,
+            )
+            self.async_client = None
+            self.sync_client = None
+
+    @classmethod
+    def for_completion(cls, model: str, config: dict[str, Any], http_config: HttpConfig):
+        inst = cls(model, config, http_config)
+        inst._build_completion_wrappers(model, config)
+        return inst
+
+    @classmethod
+    def for_responses(cls, model: str, config: dict[str, Any], http_config: HttpConfig):
+        inst = cls(model, config, http_config)
+        # The Responses API always accepts the handler wrappers, regardless of
+        # provider.
+        inst._build_handler_wrappers()
+        return inst
+
+    def close(self) -> None:
+        """Close the sync HTTP resources owned by this client."""
+        if self._sync_closed:
+            return
+        self._sync_closed = True
+        for oc in self._openai_clients:
+            close = getattr(oc, "close", None)
+            if close is not None and not inspect.iscoroutinefunction(close):
+                try:
+                    close()
+                except Exception:  # noqa: BLE001
+                    pass
+        try:
+            self.httpx_sync.close()
+        except Exception:  # noqa: BLE001
+            pass
+
+    async def aclose(self) -> None:
+        """Close both the sync and async HTTP resources owned by this client."""
+        if not self._async_closed:
+            self._async_closed = True
+            for oc in self._openai_clients:
+                close = getattr(oc, "close", None)
+                if close is None or not inspect.iscoroutinefunction(close):
+                    continue
+                try:
+                    await close()
+                except Exception:  # noqa: BLE001
+                    pass
+            try:
+                await self.httpx_async.aclose()
+            except Exception:  # noqa: BLE001
+                pass
+        self.close()
 
 
 def _recursively_parse_json_strings(obj: Any) -> Any:
@@ -1024,6 +1161,31 @@ class UnifiedLLM(ABC):
         self.cache_control_injection_points: list[dict[str, Any]] = (
             DEFAULT_CACHE_CONTROL_INJECTION_POINTS
         )
+        # Per-client HTTP transport (httpx clients + litellm wrappers). Set by
+        # concrete subclasses; guarded here so base helpers stay safe.
+        self._http: _ClientHttp | None = None
+
+    def close(self) -> None:
+        """Release this client's sync HTTP resources (its own httpx clients)."""
+        if self._http is not None:
+            self._http.close()
+
+    async def aclose(self) -> None:
+        """Release this client's sync + async HTTP resources."""
+        if self._http is not None:
+            await self._http.aclose()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_info):
+        self.close()
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc_info):
+        await self.aclose()
 
     @staticmethod
     def _inject_cache_control_on_content(msg: dict) -> None:
@@ -1699,9 +1861,12 @@ class CompletionClient(UnifiedLLM):
                          RetryConfig(max_retries=0, rate_limit_extra_retries=0) to disable endpoint retries. Set
                          retry_on_empty_content=True to also retry when reasoning
                          models return empty content.
-            http_config: Optional HTTP connection pool and timeout settings. Values
-                         are applied process-wide via the httpx monkey-patch; the most
-                         recent CompletionClient's config applies to new httpx clients.
+            http_config: Optional per-client HTTP connection-pool and timeout
+                         settings. Applied only to THIS client's requests: the
+                         client builds its own httpx client from these values and
+                         passes it to litellm per call. No global state and no
+                         monkey-patching of httpx — two clients with different
+                         http_configs are fully independent.
             cache_control_injection_points: Optional list of message indices to enable prompt caching.
                 This will be applied to all calls made with this client.
                 Example: [0] to cache the first (system) message in every request.
@@ -1711,7 +1876,7 @@ class CompletionClient(UnifiedLLM):
         super().__init__(model, **config)
         self.retry_config = retry_config or RetryConfig()
         self._http_config = http_config or HttpConfig()
-        _set_http_config(self._http_config)
+        self._http = _ClientHttp.for_completion(self.model, self.config, self._http_config)
         # Only set default if explicitly None (not if empty list is passed)
         if cache_control_injection_points is not None:
             self.cache_control_injection_points = cache_control_injection_points
@@ -1784,6 +1949,11 @@ class CompletionClient(UnifiedLLM):
             api_params.pop("parallel_tool_calls", None)
 
         retry_on_empty = self.retry_config.retry_on_empty_content if self.retry_config else False
+
+        http_client = self._http
+        assert http_client is not None
+        if http_client.sync_client is not None:
+            api_params.setdefault("client", http_client.sync_client)
 
         def _make_call():
             raw_response = _collect_sync(litellm.completion(**api_params))
@@ -1956,6 +2126,11 @@ class CompletionClient(UnifiedLLM):
             api_params.pop("parallel_tool_calls", None)
 
         retry_on_empty = self.retry_config.retry_on_empty_content if self.retry_config else False
+
+        http_client = self._http
+        assert http_client is not None
+        if http_client.async_client is not None:
+            api_params.setdefault("client", http_client.async_client)
 
         async def _make_call():
             raw_response = await _collect_async(await _litellm_acompletion(api_params))
@@ -2211,8 +2386,10 @@ class ResponsesClient(UnifiedLLM):
                           disconnects, and unreachable endpoints. Pass
                           RetryConfig(max_retries=0, rate_limit_extra_retries=0) to
                           disable endpoint retries.
-            http_config: Optional HTTP connection pool and timeout settings. Values
-                         are applied process-wide via the httpx monkey-patch.
+            http_config: Optional per-client HTTP connection-pool and timeout
+                         settings. Applied only to THIS client's requests (its
+                         own httpx client is passed to litellm per call). No
+                         global state and no monkey-patching of httpx.
             cache_control_injection_points: Optional list of role/position rules to
                 enable prompt caching (for example: {"role": "system"} or
                 {"role": "tool", "position": "last"}). Applied to all calls.
@@ -2221,7 +2398,7 @@ class ResponsesClient(UnifiedLLM):
         super().__init__(model, **config)
         self.retry_config = retry_config or RetryConfig()
         self._http_config = http_config or HttpConfig()
-        _set_http_config(self._http_config)
+        self._http = _ClientHttp.for_responses(self.model, self.config, self._http_config)
         # Only set default if explicitly None (not if empty list is passed)
         if cache_control_injection_points is not None:
             self.cache_control_injection_points = cache_control_injection_points
@@ -2311,6 +2488,11 @@ class ResponsesClient(UnifiedLLM):
 
         if reasoning := self.config.get("reasoning"):
             api_params["reasoning"] = reasoning
+
+        http_client = self._http
+        assert http_client is not None
+        if http_client.sync_client is not None:
+            api_params.setdefault("client", http_client.sync_client)
 
         def _make_call():
             return cast("litellm.ResponsesAPIResponse", litellm.responses(**api_params))
@@ -2437,6 +2619,11 @@ class ResponsesClient(UnifiedLLM):
 
         if reasoning := self.config.get("reasoning"):
             api_params["reasoning"] = reasoning
+
+        http_client = self._http
+        assert http_client is not None
+        if http_client.async_client is not None:
+            api_params.setdefault("client", http_client.async_client)
 
         async def _make_call():
             return cast("litellm.ResponsesAPIResponse", await litellm.aresponses(**api_params))
