@@ -800,16 +800,6 @@ class SQLiteStorageManager:
             ).fetchone()
             return row[0] if row is not None else None
 
-    def get_latest_snapshot_created_at(self) -> datetime | None:
-        """Return the creation timestamp of the most recent snapshot, or None."""
-        with self._db_lock:
-            row = self._conn.execute(
-                "SELECT created_at FROM snapshots ORDER BY created_at DESC LIMIT 1"
-            ).fetchone()
-            if row is None:
-                return None
-            return datetime.fromisoformat(row[0])
-
     def restore_latest_snapshot(self, agent: Agent) -> bool:
         """Restore the most recent snapshot into agent.
 

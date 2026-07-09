@@ -12,17 +12,14 @@ _current_agent_var: ContextVar[Any] = ContextVar("current_agent", default=None)
 _current_runtime_var: ContextVar[Any] = ContextVar("current_runtime", default=None)
 
 
-def _set_current_agent(agent: Any) -> None:
-    """Set the current agent (called during code execution)."""
-    _current_agent_var.set(agent)
-
-
 def _current_agent() -> Any:
     """
     Get the current agent instance.
 
-    This is used by utility modules (message, context, logger, task) to access
-    the agent without requiring it to be passed as an argument.
+    Reads ``_current_agent_var``, which the runtime sets only around the
+    implemented-method execution path (``runtime/actor.py``); it is not
+    set for LLM-generated code. Callers therefore only get an agent when
+    invoked from an implemented agent method.
 
     Returns:
         Current agent instance
@@ -33,6 +30,6 @@ def _current_agent() -> Any:
     agent = _current_agent_var.get()
     if agent is None:
         raise RuntimeError(
-            "No agent in context. Utility modules can only be used from generated code."
+            "No agent in context. This utility is only available from implemented agent methods."
         )
     return agent

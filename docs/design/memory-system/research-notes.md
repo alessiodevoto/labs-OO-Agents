@@ -506,7 +506,7 @@ Key constraint: it stores **`EventBase` instances only** — every record must b
 | `InMemoryBackend` (EventBackend) | `event_backend.py:215` | n/a | dict + list, live objects | No |
 | `SQLiteEventBackend` (EventBackend) | `sqlite.py:209` | n/a | SQLite `events` + `active_tags` tables | Yes |
 
-`SQLiteStorageManager` adds non-protocol convenience methods beyond the interface: `get_latest_snapshot_id()` (`sqlite.py:758`), `get_latest_snapshot_created_at()` (`sqlite.py:766`), `restore_latest_snapshot()` (`sqlite.py:776`), plus `close()`/context-manager support and a process-level **session lock** (`_acquire_session_lock`, `sqlite.py:600`) — only one process may open a given DB file.
+`SQLiteStorageManager` adds non-protocol convenience methods beyond the interface: `get_latest_snapshot_id()`, `restore_latest_snapshot()`, plus `close()`/context-manager support and a process-level **session lock** (`_acquire_session_lock`) — only one process may open a given DB file.
 
 ##### SQLite schema — `sqlite.py:100-128`
 ```sql

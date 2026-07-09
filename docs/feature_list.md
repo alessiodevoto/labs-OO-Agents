@@ -475,7 +475,7 @@ NeMo OO Agents is a single repository that ships as several lockstep packages:
 
 - **Save a snapshot** — `storage.save_snapshot(agent)` extracts state via `AgentSnapshot.from_agent`, writes a row to the `snapshots` table, and returns a UUID `snapshot_id`.
 - **Restore a snapshot** — `storage.restore_snapshot(snapshot_id, agent)` loads the row and applies it additively into a freshly constructed agent, raising `SnapshotNotFoundError` if the id is missing.
-- **Resume the most recent session** — `restore_latest_snapshot(agent)` restores the newest snapshot (returns `False` if none exist); `get_latest_snapshot_id()` and `get_latest_snapshot_created_at()` inspect it without restoring.
+- **Resume the most recent session** — `restore_latest_snapshot(agent)` restores the newest snapshot (returns `False` if none exist); `get_latest_snapshot_id()` inspects it without restoring.
 - **Serialize an agent to a JSON dict** — `snapshot_to_json(agent)` returns a `json.dumps`-ready dict (shorthand for `AgentSnapshot.from_agent(agent).model_dump()`).
 - **Restore an agent from a JSON dict** — `snapshot_from_json(snapshot, agent)` validates and applies the dict back onto an agent.
 - **Work with the snapshot model directly** — `AgentSnapshot` (Pydantic, `version` = `SNAPSHOT_VERSION` = 2) carries `context`, `attributes`, and a `type_allowlist`; `from_agent`/`restore` convert to and from an agent; for plain-dict conversion of the model itself use `model_dump()`/`model_validate()`.

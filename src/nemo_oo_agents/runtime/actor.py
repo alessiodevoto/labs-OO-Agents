@@ -2488,8 +2488,11 @@ class ActorRuntime:
                     # Lock-free execution (Methodic-style concurrent strategies)
                     return await self._execute_with_generation(method, args, kwargs, method_name)
         else:
-            # Method has implementation - call directly with context vars set
-            # This enables utility modules (context, logger, message) to work
+            # Method has implementation - call directly with context vars set.
+            # These context vars (_current_agent_var / _current_runtime_var)
+            # are consumed by nemo_oo_agents.util._context._current_agent() and
+            # by child-agent runtime inheritance; they are set only on this
+            # implemented-method path, not for LLM-generated code.
             from nemo_oo_agents.util._context import _current_agent_var, _current_runtime_var
 
             agent_token = _current_agent_var.set(self.agent)
