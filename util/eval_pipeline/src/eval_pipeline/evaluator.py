@@ -242,7 +242,9 @@ class Evaluator:
         exporter_list: list = [_headless_journal]
         if _use_viewer:
             exporter_list.append(exporters.journal(endpoint=_external_otlp))
-        if not no_files:
+        # File traces: always suppressed when no_files. Otherwise written unless a
+        # viewer is active (traces go to OTLP only), which --trace-files overrides.
+        if not no_files and (not _use_viewer or trace_files):
             exporter_list.append(exporters.jsonl(traces_dir))
 
         if self._langfuse_host:

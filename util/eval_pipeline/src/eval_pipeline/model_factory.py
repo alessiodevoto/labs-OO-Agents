@@ -124,11 +124,14 @@ def client(model_id: str, **kwargs) -> UnifiedLLM:
     Returns:
         Configured UnifiedLLM client
     """
-    # Try unifiedllm registry first — it handles client_type dispatch
+    # Try unifiedllm registry first — it handles client_type dispatch.
+    # The registry lazily auto-loads on first use, so trigger ensure_loaded()
+    # before the membership check (MODELS is empty until then).
     try:
-        from unifiedllm.registry import MODELS as _REGISTRY
-        from unifiedllm.registry import get_llm_client
+        from nemo_oo_agents.unifiedllm.registry import MODELS as _REGISTRY
+        from nemo_oo_agents.unifiedllm.registry import ensure_loaded, get_llm_client
 
+        ensure_loaded()
         if model_id in _REGISTRY:
             return get_llm_client(model_id, **kwargs)
     except ImportError:
