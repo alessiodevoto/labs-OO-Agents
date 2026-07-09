@@ -35,27 +35,23 @@ def _build_llm(
     """
     from nemo_oo_agents.unifiedllm import (
         CompletionClient,
-        ensure_loaded,
         resolve_api_key_from_config,
     )
 
-    # Check the registry for defaults. The nat plugin reads MODELS
-    # directly without going through get_llm_client, so we must
-    # explicitly trigger the lazy auto-load — otherwise an
-    # un-bootstrapped nat process would see an empty registry and
-    # silently lose its fallback values.
+    # Check the registry for defaults via the public snapshot accessor.
+    # get_registry_config() triggers the lazy auto-load (so an
+    # un-bootstrapped nat process still sees registered aliases instead of
+    # an empty registry) and returns a defensive copy taken under the
+    # registry lock — no coupling to the module-private MODELS /
+    # _registry_lock.
     #
     # Catch broadly: a broken llm_config.yaml or any other
     # registry-load failure must not abort NAT client construction —
     # NAT config alone is sufficient to build the client.
     try:
-        from nemo_oo_agents.unifiedllm.registry import MODELS, _registry_lock
+        from nemo_oo_agents.unifiedllm import get_registry_config
 
-        ensure_loaded()
-        # Snapshot under the lock so a concurrent reload_registry()
-        # can't make us observe an empty dict mid-mutation.
-        with _registry_lock:
-            registry_config = dict(MODELS.get(model_name, {}))
+        registry_config = get_registry_config(model_name)
     except Exception as exc:
         logger.debug(
             "Registry defaults unavailable; proceeding with NAT config only: %s",

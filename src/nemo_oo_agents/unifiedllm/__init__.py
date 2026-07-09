@@ -6,6 +6,7 @@ from nemo_oo_agents.unifiedllm.registry import (
     MODELS,
     ensure_loaded,
     get_llm_client,
+    get_registry_config,
     reload_registry,
     resolve_api_key_from_config,
 )
@@ -36,6 +37,7 @@ __all__ = [
     "ResponsesClient",
     # Model registry
     "get_llm_client",
+    "get_registry_config",
     "reload_registry",
     "ensure_loaded",
     "resolve_api_key_from_config",
