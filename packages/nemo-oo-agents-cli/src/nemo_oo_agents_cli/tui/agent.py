@@ -972,7 +972,7 @@ class TUIAgent(BaseTUIAgent, llm=_DEFAULT_LLM):  # type: ignore[call-arg]
         1. REPRODUCE: Find a way to trigger the issue. Run a test or command
            that demonstrates the bug. If you cannot reproduce, ask the user.
         2. HYPOTHESIZE: Based on the reproduction, form 2-3 hypotheses about
-           the root cause. State them explicitly via reasoning().
+           the root cause. State them explicitly in `#` comments.
         3. INVESTIGATE: For each hypothesis, run targeted investigation
            (read code, add logging, inspect state). Eliminate hypotheses.
         4. FIX: Once root cause is confirmed, implement the fix.

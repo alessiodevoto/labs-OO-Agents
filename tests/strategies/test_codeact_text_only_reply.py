@@ -150,7 +150,7 @@ async def test_multiple_drifts_all_marked_recovered():
 
 @pytest.mark.asyncio
 async def test_route_b_does_not_add_contradictory_correction():
-    """Route B (synthetic_reasoning) injects its own synthetic tool result, so it must
+    """Route B (synthetic_comment) injects its own synthetic tool result, so it must
     NOT also add a 'no tool call' Error — that would contradict the synthetic call."""
 
     class TestAgent(Agent, llm=_TEST_LLM):
@@ -159,7 +159,7 @@ async def test_route_b_does_not_add_contradictory_correction():
                 config=CodeActConfig(
                     max_retries=8,
                     max_iterations=12,
-                    text_only_stop_behavior="synthetic_reasoning",
+                    text_only_stop_behavior="synthetic_comment",
                 )
             )
         )
@@ -180,7 +180,7 @@ async def test_route_b_does_not_add_contradictory_correction():
     # Drift recorded and recovered.
     drifts = _drifts(agent)
     assert len(drifts) == 1
-    assert drifts[0].route == "synthetic_reasoning"
+    assert drifts[0].route == "synthetic_comment"
     assert drifts[0].recovered is True
     # No contradictory "no tool call" Error correction in Route B.
     assert not [e for e in _errors(agent) if "no tool call" in e.content], (

@@ -133,17 +133,16 @@ class MyAgent(Agent, llm=my_llm):
 
 ## Reserved Parameter Names
 
-The following parameter names are **reserved** and cannot be used:
+Avoid the following parameter name — it shadows a strategy builtin:
 
-- `reasoning` - Used for LLM's internal reasoning
 - `message` - Used for messages to the user
 
 ```python
-# ❌ ERROR - reserved name
-async def bad_method(self, reasoning: str): ...
+# ❌ BAD - shadows the message() builtin
+async def bad_method(self, message: str): ...
 
 # ✅ OK - use different name
-async def good_method(self, rationale: str): ...
+async def good_method(self, user_message: str): ...
 ```
 
 ---

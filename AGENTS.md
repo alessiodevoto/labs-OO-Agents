@@ -123,10 +123,9 @@ Common typing constructs and framework symbols (`asyncio`, `typing`, strategies,
 
 ### Reserved Parameters
 
-- **`reasoning`** — Reserved parameter name. If present in the method signature, the runtime adds chain-of-thought instructions.
 - **`message`** — Reserved parameter name. Used for multi-turn communication. The `message()` function is available in CodeAct for the LLM to send messages back to the caller.
 
-**Avoid using these names** for your own parameters. Use alternatives like `rationale` or `user_message`.
+**Avoid using this name** for your own parameters. Use an alternative like `user_message`.
 
 ### Context Blocks
 

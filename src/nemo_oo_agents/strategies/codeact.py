@@ -48,7 +48,6 @@ from nemo_oo_agents.events import (
     Error,
     ExecutionSignal,
     PythonOutput,
-    Reasoning,
     Task,
     TextOnlyReply,
 )
@@ -91,37 +90,30 @@ class _ReturnResultSignal(ExecutionSignal):
         super().__init__("return_result() called")
 
 
-# Maximum characters of LLM text to embed in a synthetic reasoning() call.
-# Long verbatim text inflates trace storage and is rarely useful beyond a preview.
-_MAX_REASONING_TEXT = 500
+def _as_comment(text: str) -> str:
+    """Render *text* as Python comment lines (one ``#`` prefix per line)."""
+    return "\n".join(f"# {line}" if line else "#" for line in text.splitlines())
 
 
-def _truncate_reasoning(text: str) -> str:
-    """Truncate *text* to _MAX_REASONING_TEXT chars for embedding in reasoning()."""
-    if len(text) <= _MAX_REASONING_TEXT:
-        return text
-    return text[:_MAX_REASONING_TEXT] + " [truncated]"
-
-
-def _prepend_reasoning(tool_calls: list[ToolCall], text: str) -> list[ToolCall]:
-    """Return a copy of *tool_calls* with reasoning(text) prepended to the
+def _prepend_comment(tool_calls: list[ToolCall], text: str) -> list[ToolCall]:
+    """Return a copy of *tool_calls* with *text* prepended as a comment to the
     first execute_python code block.  Other tool calls are left unchanged.
     """
     result: list[ToolCall] = []
     prepended = False
-    preview = _truncate_reasoning(text)
+    preview = _as_comment(text)
     for tc in tool_calls:
         if not prepended and tc.name == "execute_python":
             try:
                 args = json.loads(tc.arguments)
                 original_code = args.get("code", "")
-                args["code"] = f"reasoning({preview!r})\n{original_code}"
+                args["code"] = f"{preview}\n{original_code}"
                 tc = replace(tc, arguments=json.dumps(args))
                 prepended = True
-                get_harness_metrics().content_prepended_as_reasoning()
+                get_harness_metrics().content_prepended_as_comment()
             except json.JSONDecodeError:
                 logger.debug(
-                    "[CODEACT] _prepend_reasoning: skipping execute_python with unparseable arguments (tool_call_id=%s)",
+                    "[CODEACT] _prepend_comment: skipping execute_python with unparseable arguments (tool_call_id=%s)",
                     tc.id,
                 )
         result.append(tc)
@@ -500,7 +492,7 @@ Standard Python builtins and agent instance (`self`) are available."""
 
         parts.append(
             "Always available without import: `self`, `print()`, `pprint()`, `doc()`, "
-            "`return_result()`, `reasoning()`, plus stdlib `asyncio` and `typing`."
+            "`return_result()`, plus stdlib `asyncio` and `typing`."
         )
 
         return "\n".join(parts)
@@ -815,12 +807,12 @@ Standard Python builtins and agent instance (`self`) are available."""
 
                 # ── Post-response cleanup (CodeAct) ──────────────────────
                 # Intercept point: strategy-specific response transforms.
-                # Handles text-only→synthetic, reasoning prepend, tool call
+                # Handles text-only→synthetic, comment prepend, tool call
                 # translation. Consider making extensible in the future.
                 if response.finish_reason == "tool_calls" and response.tool_calls:
                     tool_calls = response.tool_calls
                     # If the LLM also emitted message content alongside the tool
-                    # call(s), preserve it by prepending reasoning(text) at the
+                    # call(s), preserve it by prepending it as a comment at the
                     # top of the first execute_python code block.
                     if response.content:
                         content = response.content
@@ -830,7 +822,7 @@ Standard Python builtins and agent instance (`self`) are available."""
                             else str(content)
                         )
                         if text.strip():
-                            tool_calls = _prepend_reasoning(tool_calls, text)
+                            tool_calls = _prepend_comment(tool_calls, text)
                     # A real tool call counts as progress: reset the consecutive
                     # text-only guard (issue 185) before executing, so a single
                     # exec mid-stream rescues the run from accidental drift.
@@ -927,7 +919,7 @@ Standard Python builtins and agent instance (`self`) are available."""
                     max_text_only = self.config.max_consecutive_text_only
                     if max_text_only > 0 and session.consecutive_text_only >= max_text_only:
                         get_harness_metrics().text_only_loop_abort()
-                        preview = _truncate_reasoning(_text) if _has_text else "(empty)"
+                        preview = _text if _has_text else "(empty)"
                         turn_state.is_final = True
                         raise GenerationError(
                             f"CodeAct aborted: LLM returned plain text without a tool call "
@@ -940,8 +932,8 @@ Standard Python builtins and agent instance (`self`) are available."""
 
                     continue
 
-                # Route B: "synthetic_reasoning" mode — convert text to a no-op
-                # execute_python(reasoning(...)) call that preserves content in traces.
+                # Route B: "synthetic_comment" mode — convert text to a no-op
+                # execute_python comment that preserves content in traces.
                 elif _has_text:
                     session.record_iteration()
                     # Capture the drift faithfully for /bug + replay (recorded but
@@ -951,7 +943,7 @@ Standard Python builtins and agent instance (`self`) are available."""
                         TextOnlyReply(
                             content=_text,
                             finish_reason=str(response.finish_reason),
-                            route="synthetic_reasoning",
+                            route="synthetic_comment",
                             consecutive_text_only=session.consecutive_text_only + 1,
                         )
                     )
@@ -961,10 +953,10 @@ Standard Python builtins and agent instance (`self`) are available."""
                         ToolCallEvent(
                             tool_call_id=synthetic_id,
                             name="execute_python",
-                            arguments={"code": f"reasoning({_truncate_reasoning(_text)!r})"},
+                            arguments={"code": _as_comment(_text)},
                             result=ToolResult(
                                 tool_call_id=synthetic_id,
-                                content="status: reasoning only — task is NOT finished. You must call return_result() to complete.",
+                                content="status: commentary only — task is NOT finished. You must call return_result() to complete.",
                                 result_status=ResultStatus.COMPLETE,
                             ),
                             metadata={"synthetic": True, "synthetic_type": "text_response"},
@@ -981,10 +973,10 @@ Standard Python builtins and agent instance (`self`) are available."""
                     get_harness_metrics().text_to_synthetic()
                     logger.debug(
                         f"[CODEACT] Text-only response ({len(_text)} chars) "
-                        f"converted to synthetic reasoning() call."
+                        f"converted to synthetic comment."
                     )
                     # No extra Error correction here: Route B already injects a
-                    # synthetic execute_python(reasoning(...)) whose ToolResult tells
+                    # synthetic execute_python comment whose ToolResult tells
                     # the model the task isn't finished. Adding a "your reply had no
                     # tool call" Error would contradict that synthetic tool call and
                     # confuse the model. The backstop below still aborts on repeated
@@ -993,7 +985,7 @@ Standard Python builtins and agent instance (`self`) are available."""
                     max_text_only = self.config.max_consecutive_text_only
                     if max_text_only > 0 and session.consecutive_text_only >= max_text_only:
                         get_harness_metrics().text_only_loop_abort()
-                        preview = _truncate_reasoning(_text)
+                        preview = _text
                         turn_state.is_final = True
                         raise GenerationError(
                             f"CodeAct aborted: LLM returned plain text without a tool call "
@@ -2614,13 +2606,9 @@ Standard Python builtins and agent instance (`self`) are available."""
         was written directly in the method body, with access to:
         - Module-level imports
         - Module-level type definitions (Pydantic models, etc.)
-        - Strategy builtins (reasoning, return_result)
+        - Strategy builtins (return_result)
         - Method parameters
         """
-
-        def reasoning(text: str) -> None:
-            """Record reasoning (not shown to user)."""
-            runtime.event_manager.add(Reasoning(content=str(text)), record=False)
 
         def return_result(*args: Any, **kwargs: Any) -> None:
             """Submit the final answer from within execute_python code.
@@ -2669,7 +2657,6 @@ Standard Python builtins and agent instance (`self`) are available."""
         # Add strategy builtins (these override any module-level names)
         builtins.update(
             {
-                "reasoning": reasoning,
                 "return_result": return_result,
             }
         )

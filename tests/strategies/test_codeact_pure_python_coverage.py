@@ -2221,37 +2221,6 @@ class TestReturnResultSignal:
 
 
 # ---------------------------------------------------------------------------
-# PurePythonStrategy - _strip_reasoning_calls
-# ---------------------------------------------------------------------------
-
-
-class TestStripReasoningCalls:
-    """Tests for _strip_reasoning_calls."""
-
-    def test_strips_reasoning_calls(self):
-        """reasoning() calls should be stripped from code."""
-        strat = PurePythonStrategy()
-        code = "reasoning('thinking...')\nreturn 42"
-        result = strat._strip_reasoning_calls(code)
-        assert "reasoning" not in result
-        assert "42" in result
-
-    def test_syntax_error_returns_original(self):
-        """Syntax error in code should return code unchanged."""
-        strat = PurePythonStrategy()
-        code = "this is not valid @#$ python"
-        result = strat._strip_reasoning_calls(code)
-        assert result == code
-
-    def test_no_reasoning_calls_unchanged(self):
-        """Code without reasoning() should be unchanged."""
-        strat = PurePythonStrategy()
-        code = "x = 1\nreturn x"
-        result = strat._strip_reasoning_calls(code)
-        assert result == code
-
-
-# ---------------------------------------------------------------------------
 # PurePythonStrategy - _extract_function_body_if_wrapped (line 610)
 # ---------------------------------------------------------------------------
 
@@ -2966,8 +2935,8 @@ class TestPurePythonBuildBuiltins:
         ):
             builtins = strat._build_builtins(rt, call)
 
-        # Should have reasoning at minimum
-        assert "reasoning" in builtins
+        # Should have message at minimum
+        assert "message" in builtins
 
 
 # ---------------------------------------------------------------------------
@@ -3382,8 +3351,7 @@ class TestBuildBuiltinsModuleContext:
         rt.event_manager = MagicMock()
 
         builtins = strat._build_builtins(rt, call)
-        # Should have reasoning, return_result
-        assert "reasoning" in builtins
+        # Should have return_result
         assert "return_result" in builtins
         # Should have method param x=5 (from merged kwargs)
         assert "x" in builtins
@@ -3561,7 +3529,6 @@ class TestCodeActModuleContextBuilding:
 
         builtins = strat._build_builtins(rt, call)
         # Verify basic structure
-        assert "reasoning" in builtins
         assert "return_result" in builtins
 
     def test_build_builtins_with_value_error_in_signature(self):
@@ -3598,7 +3565,7 @@ class TestCodeActModuleContextBuilding:
         ):
             builtins = strat._build_builtins(rt, call)
 
-        assert "reasoning" in builtins
+        assert "return_result" in builtins
 
 
 # ---------------------------------------------------------------------------

@@ -152,7 +152,7 @@ class InspectInputsPrefill:
             max_depth = 4
 
         code_lines = [
-            f'reasoning(f"""Inspecting inputs for {method_name}().""")',
+            f"# Inspecting inputs for {method_name}().",
             f'print(f"Task: {method_name}()")',
         ]
 

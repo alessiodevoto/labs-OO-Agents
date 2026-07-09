@@ -1171,7 +1171,7 @@ class TestCodeActStrategyEventSequence:
 
         This is the fix for issue #185: when the LLM emits text without a tool call
         (infinite loop scenario), routing through return_result() gives the LLM an
-        actionable validation error instead of a no-op synthetic reasoning() call.
+        actionable validation error instead of a no-op synthetic comment call.
         The LLM then self-corrects by calling return_result() with proper typed data.
         """
 
@@ -1250,7 +1250,7 @@ class TestCodeActStrategyEventSequence:
         """Whitespace-only text response (no tool calls) is treated as empty, not synthetic.
 
         "   " is truthy but str.strip() is falsy, so it should fall through to the
-        empty-response error handler rather than creating reasoning('   ').
+        empty-response error handler rather than creating a synthetic comment.
         """
         from nemo_oo_agents.errors import GenerationError
 
@@ -1283,8 +1283,8 @@ class TestCodeActStrategyEventSequence:
         )
 
     @pytest.mark.asyncio
-    async def test_text_only_basemodel_response_with_tool_calls_prepends_reasoning(self):
-        """BaseModel content alongside execute_python tool calls is prepended as reasoning().
+    async def test_text_only_basemodel_response_with_tool_calls_prepends_comment(self):
+        """BaseModel content alongside execute_python tool calls is prepended as a comment.
 
         Exercises the model_dump_json() branch in the content+tool_calls path.
         """
@@ -1323,7 +1323,7 @@ class TestCodeActStrategyEventSequence:
         ]
         assert len(exec_calls) == 1
         code = exec_calls[0].arguments["code"]
-        assert code.startswith("reasoning("), f"Expected reasoning() prepended, got: {code!r}"
+        assert code.startswith("# "), f"Expected comment prepended, got: {code!r}"
         assert "I should calculate this." in code, f"BaseModel JSON should appear in code: {code!r}"
         assert "x = 6 * 7" in code, f"Original code should follow: {code!r}"
 
@@ -1413,9 +1413,9 @@ class TestCodeActStrategyEventSequence:
             )
 
     @pytest.mark.asyncio
-    async def test_content_plus_tool_calls_prepends_reasoning(self):
+    async def test_content_plus_tool_calls_prepends_comment(self):
         """When LLM returns both content and execute_python tool calls, the content
-        is prepended as reasoning(text) at the top of the first execute_python code.
+        is prepended as a comment at the top of the first execute_python code.
 
         This preserves any explanatory text the LLM produced alongside its tool
         call without creating a separate synthetic event.
@@ -1446,14 +1446,14 @@ class TestCodeActStrategyEventSequence:
         events = agent_instance.event_manager.values()
         tool_calls = [e for e in events if e.event_type == "ToolCallEvent"]
 
-        # First tool call should have reasoning prepended to the code
+        # First tool call should have the content prepended as a comment
         first_tc = tool_calls[0]
         code = first_tc.arguments["code"]
-        assert code.startswith("reasoning("), f"Expected reasoning() prepended, got: {code!r}"
+        assert code.startswith("# "), f"Expected comment prepended, got: {code!r}"
         assert "Let me work through this step by step." in code, (
-            f"Original content should appear in reasoning(), got: {code!r}"
+            f"Original content should appear in the comment, got: {code!r}"
         )
-        assert "x = 42" in code, f"Original code should follow reasoning(), got: {code!r}"
+        assert "x = 42" in code, f"Original code should follow the comment, got: {code!r}"
 
     @pytest.mark.asyncio
     async def test_content_plus_tool_calls_empty_content_not_prepended(self):
@@ -1476,12 +1476,12 @@ class TestCodeActStrategyEventSequence:
 
         assert result == 7
 
-        # The return_result tool call should have no reasoning prepended
+        # The return_result tool call should have no comment prepended
         events = agent_instance.event_manager.values()
         tool_calls = [e for e in events if e.event_type == "ToolCallEvent"]
         final_tc = tool_calls[0]
         code = final_tc.arguments.get("code", "")
-        assert not code.startswith("reasoning("), (
+        assert not code.startswith("# "), (
             f"Whitespace-only content should not be prepended, got: {code!r}"
         )
 
@@ -1616,7 +1616,7 @@ class TestCodeActStrategyEventSequence:
                 CodeActStrategy(
                     config=CodeActConfig(
                         max_consecutive_text_only=2,
-                        text_only_stop_behavior="synthetic_reasoning",
+                        text_only_stop_behavior="synthetic_comment",
                     )
                 )
             )
@@ -1643,7 +1643,7 @@ class TestCodeActStrategyEventSequence:
 
     @pytest.mark.asyncio
     async def test_content_plus_tool_calls_prepends_first_execute_python_only(self):
-        """reasoning() is prepended to the first execute_python; later ones are untouched."""
+        """The comment is prepended to the first execute_python; later ones are untouched."""
 
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(CodeActStrategy(config=CodeActConfig()))
@@ -1672,40 +1672,40 @@ class TestCodeActStrategyEventSequence:
         exec_calls = [
             e for e in events if e.event_type == "ToolCallEvent" and e.name == "execute_python"
         ]
-        # First execute_python should have reasoning prepended
-        assert exec_calls[0].arguments["code"].startswith("reasoning("), (
-            f"First execute_python should have reasoning prepended, got: {exec_calls[0].arguments['code']!r}"
+        # First execute_python should have the comment prepended
+        assert exec_calls[0].arguments["code"].startswith("# "), (
+            f"First execute_python should have the comment prepended, got: {exec_calls[0].arguments['code']!r}"
         )
         # Second execute_python should be unchanged
         assert exec_calls[1].arguments["code"] == "y = 2", (
             f"Second execute_python should be unchanged, got: {exec_calls[1].arguments['code']!r}"
         )
 
-    def test_prepend_reasoning_skips_to_next_on_invalid_json(self):
+    def test_prepend_comment_skips_to_next_on_invalid_json(self):
         """If the first execute_python has invalid JSON arguments, skip it and prepend to next."""
-        from nemo_oo_agents.strategies.codeact import _prepend_reasoning
+        from nemo_oo_agents.strategies.codeact import _prepend_comment
         from nemo_oo_agents.unifiedllm import ToolCall
 
         bad_tc = ToolCall(id="bad", name="execute_python", arguments="NOT VALID JSON")
         good_tc = ToolCall(id="c2", name="execute_python", arguments=json.dumps({"code": "x = 42"}))
-        result = _prepend_reasoning([bad_tc, good_tc], "Thinking aloud.")
+        result = _prepend_comment([bad_tc, good_tc], "Thinking aloud.")
 
         # First tool call unchanged (bad JSON)
         assert result[0].arguments == "NOT VALID JSON"
-        # Second tool call should have reasoning prepended
+        # Second tool call should have the comment prepended
         args = json.loads(result[1].arguments)
-        assert args["code"].startswith("reasoning("), (
-            f"Second execute_python should have reasoning prepended, got: {args['code']!r}"
+        assert args["code"].startswith("# "), (
+            f"Second execute_python should have the comment prepended, got: {args['code']!r}"
         )
         assert "x = 42" in args["code"]
 
-    def test_prepend_reasoning_no_execute_python_unchanged(self):
+    def test_prepend_comment_no_execute_python_unchanged(self):
         """If there's no execute_python in the list, all tool calls are returned unchanged."""
-        from nemo_oo_agents.strategies.codeact import _prepend_reasoning
+        from nemo_oo_agents.strategies.codeact import _prepend_comment
         from nemo_oo_agents.unifiedllm import ToolCall
 
         rr = ToolCall(id="ret", name="return_result", arguments=json.dumps({"result": 7}))
-        result = _prepend_reasoning([rr], "some content")
+        result = _prepend_comment([rr], "some content")
 
         assert len(result) == 1
         assert result[0].arguments == rr.arguments

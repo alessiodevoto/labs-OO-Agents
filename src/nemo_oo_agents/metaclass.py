@@ -173,17 +173,6 @@ class AgentMeta(ABCMeta):
         return None
 
     @staticmethod
-    def _validate_reserved_parameters(func: Callable[..., Any]) -> None:
-        """Validate that generation method doesn't use reserved parameter names."""
-        sig = inspect.signature(func)
-        reserved = {"reasoning"}
-        param_names = set(sig.parameters.keys())
-        if reserved & param_names:
-            raise ValueError(
-                f"{func.__name__} uses reserved parameter names: {reserved & param_names}"
-            )
-
-    @staticmethod
     def _extract_source_code(func: Callable[..., Any]) -> str | None:
         """Extract source code from function, returning None if unavailable."""
         try:
@@ -230,10 +219,6 @@ class AgentMeta(ABCMeta):
         """
         # Import shared wrapper logic
         from nemo_oo_agents.runtime.method_wrapper import create_agent_method_wrapper
-
-        # Generation-specific validation at class creation time
-        if needs_generation:
-            AgentMeta._validate_reserved_parameters(original_func)
 
         # Extract source code once at class creation time (cached via closure)
         # Only for tracing-only methods (generation methods don't need source code in traces)

@@ -283,15 +283,13 @@ def test_original_func_preserved():
     assert hasattr(TestAgent.task, "_original")
 
 
-def test_reserved_parameter_validation_at_class_creation():
-    """Reserved parameter validation happens at class creation time."""
-    import pytest
+def test_no_reserved_parameter_names():
+    """No parameter names are reserved (reasoning() builtin was removed)."""
 
-    # Should raise at class creation (not deferred)
-    with pytest.raises(ValueError, match="reserved parameter names"):
+    class TestAgent(Agent, llm=_TEST_LLM):
+        async def task(self, reasoning: str): ...
 
-        class TestAgent(Agent, llm=_TEST_LLM):
-            async def bad_task(self, reasoning: str): ...
+    assert hasattr(TestAgent.task, "_original")
 
 
 def test_compatible_with_existing_decorators():

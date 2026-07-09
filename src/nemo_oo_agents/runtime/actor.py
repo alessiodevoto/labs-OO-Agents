@@ -593,7 +593,7 @@ class ActorRuntime:
 
         For callbacks on LLM output, use:
             agent.event_manager.on("Message", handler)
-            agent.event_manager.on("Reasoning", handler)
+            agent.event_manager.on("LLMOutput", handler)
         """
         # Agent instance
         self.agent: Any = agent
@@ -1255,7 +1255,7 @@ class ActorRuntime:
 
         Args:
             code: Python code to execute.
-            builtins: Strategy-provided functions (reasoning, message, method args, etc.)
+            builtins: Strategy-provided functions (return_result, message, method args, etc.)
             validate: Run planning language validation first.
             wrap_in_function: If True, wrap code in async function and capture return value.
             timeout: Maximum execution time in seconds (default 30s). None to disable.
