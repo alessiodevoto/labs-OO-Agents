@@ -17,6 +17,11 @@ the same:
   now-wrong action; an agent without memory instead inspects current reality and
   succeeds → ON should fail, OFF should pass.
 
+* ``stale`` + REFERENCES (the fix): the same scenario, but the memory stores a
+  *pointer* to the schema doc (``references=["file:...SCHEMA.md"]``) instead of a
+  frozen copy of the value. At recall time the reference resolves LIVE against
+  the CURRENT file → the memory cannot go stale → ON+refs should pass.
+
 Run::
 
     uv run python examples/memory_bench/memory_effect.py                 # auto (llm if creds, else oracle)
@@ -31,6 +36,7 @@ import asyncio
 import json
 import logging
 import re
+import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -175,6 +181,39 @@ def s2_test_oracle(wd: Path, mem: MemFacade) -> None:
     (wd / "settings.json").write_text(json.dumps({field: 5}))
 
 
+S2_SETUP_INSTR_REF = (
+    "Read SCHEMA.md in {wd}. Implement apply_config() in {wd}/conf.py that writes the retry "
+    "setting (value 3) to {wd}/settings.json using the field name the schema specifies, and "
+    "call it. Then remember the convention BY REFERENCE — "
+    'self.remember("the retry field name is defined by the schema doc", type="skill", '
+    'references=["file:{ref_path}"]) — so the memory follows the file instead of freezing '
+    "today's value."
+)
+S2_TEST_INSTR_REF = (
+    "Set the retry setting to 5 in {wd}/settings.json (write it via apply_config() in "
+    "{wd}/conf.py and run it). Recall your conventions first; referenced values in recalled "
+    "memories are re-read fresh — trust them over the memory text."
+)
+
+
+def s2_setup_oracle_ref(wd: Path, mem: MemFacade) -> None:
+    field = _schema_field(wd)  # v1 -> retry_count
+    (wd / "settings.json").write_text(json.dumps({field: 3}))
+    # Store a POINTER to the schema doc, not a copy of today's field name.
+    mem.remember(
+        "The retry field name for settings.json is whatever the schema doc currently says.",
+        type="skill",
+        references=[f"file:{wd.name}/SCHEMA.md"],
+    )
+
+
+def s2_test_oracle_ref(wd: Path, mem: MemFacade) -> None:
+    rendered = "\n".join(mem.recall_rendered("settings.json retry field name"))
+    # The reference resolves LIVE against the current schema -> v2 field.
+    field = "max_retries" if "max_retries" in rendered else "retry_count"
+    (wd / "settings.json").write_text(json.dumps({field: 5}))
+
+
 def s2_verify(wd: Path) -> tuple[bool, str]:
     try:
         data = json.loads((wd / "settings.json").read_text())
@@ -205,17 +244,32 @@ SCENARIOS = {
         "test_instr": S2_TEST_INSTR,
         "setup_oracle": s2_setup_oracle,
         "test_oracle": s2_test_oracle,
+        "setup_oracle_ref": s2_setup_oracle_ref,
+        "test_oracle_ref": s2_test_oracle_ref,
+        "setup_instr_ref": S2_SETUP_INSTR_REF,
+        "test_instr_ref": S2_TEST_INSTR_REF,
         "verify": s2_verify,
-        "expect": "ON fails, OFF passes",
+        "expect": "ON fails, OFF passes, ON+refs passes",
     },
 }
 
 
 async def run_scenario(
-    name: str, *, solver: str, memory_on: bool, backend: str, embed: str
+    name: str,
+    *,
+    solver: str,
+    memory_on: bool,
+    backend: str,
+    embed: str,
+    use_references: bool = False,
 ) -> bool:
     sc = SCENARIOS[name]
-    wd = Path(tempfile.mkdtemp(prefix=f"memeffect_{name}_"))
+    if use_references:
+        # file: references resolve relative to the working dir (containment),
+        # so the by-reference arm keeps its files under cwd.
+        wd = Path(tempfile.mkdtemp(prefix=f"memeffect_{name}_", dir=".")).resolve()
+    else:
+        wd = Path(tempfile.mkdtemp(prefix=f"memeffect_{name}_"))
     llm = build_llm() if solver == "llm" else FakeLLMClient()
     agent = make_agent_cls(llm, with_memory=memory_on and solver == "llm")()
     manager: MemoryManager | None = None
@@ -236,9 +290,11 @@ async def run_scenario(
     sc["setup_files"](wd)
     # --- setup session ---
     if solver == "oracle":
-        sc["setup_oracle"](wd, MemFacade(manager))
+        setup = sc["setup_oracle_ref"] if use_references else sc["setup_oracle"]
+        setup(wd, MemFacade(manager))
     else:
-        await agent.solve(sc["setup_instr"].format(wd=wd), str(wd))
+        instr = sc["setup_instr_ref"] if use_references else sc["setup_instr"]
+        await agent.solve(instr.format(wd=wd, ref_path=f"{wd.name}/SCHEMA.md"), str(wd))
 
     # --- new session: wipe short-term context; mutate the world ---
     agent.event_manager.clear()
@@ -246,10 +302,12 @@ async def run_scenario(
 
     # --- test session ---
     if solver == "oracle":
-        sc["test_oracle"](wd, MemFacade(manager))
+        test = sc["test_oracle_ref"] if use_references else sc["test_oracle"]
+        test(wd, MemFacade(manager))
     else:
         try:
-            await agent.solve(sc["test_instr"].format(wd=wd), str(wd))
+            instr = sc["test_instr_ref"] if use_references else sc["test_instr"]
+            await agent.solve(instr.format(wd=wd), str(wd))
         except Exception as e:  # noqa: BLE001
             log.warning("%s test solve error: %r", name, e)
 
@@ -257,9 +315,10 @@ async def run_scenario(
     if manager is not None:
         log.info("[%s ON] memory: %s", name, manager.memory_stats().summary())
         manager.uninstall()
-    log.info(
-        "[%s %s] %s (%s)", name, "ON" if memory_on else "OFF", "PASS" if ok else "FAIL", detail
-    )
+    arm = ("ON+refs" if use_references else "ON") if memory_on else "OFF"
+    log.info("[%s %s] %s (%s)", name, arm, "PASS" if ok else "FAIL", detail)
+    if use_references:
+        shutil.rmtree(wd, ignore_errors=True)  # cwd-based tmp dir: always clean up
     return ok
 
 
@@ -293,28 +352,45 @@ def main() -> None:
             off = await run_scenario(
                 name, solver=solver, memory_on=False, backend=args.backend, embed=args.embedder
             )
-            out[name] = (on, off)
+            ref = None
+            if "setup_oracle_ref" in SCENARIOS[name]:
+                ref = await run_scenario(
+                    name,
+                    solver=solver,
+                    memory_on=True,
+                    backend=args.backend,
+                    embed=args.embedder,
+                    use_references=True,
+                )
+            out[name] = (on, off, ref)
         return out
 
     res = asyncio.run(go())
 
     print("\n" + "=" * 72)
-    print("MEMORY: USEFUL vs DETRIMENTAL")
+    print("MEMORY: USEFUL vs DETRIMENTAL vs BY-REFERENCE")
     print("=" * 72)
-    print(f"  {'scenario':10s} {'intended effect':14s} {'mem ON':8s} {'mem OFF':8s} verdict")
-    for name, (on, off) in res.items():
+    print(
+        f"  {'scenario':10s} {'intended effect':14s} {'mem ON':8s} {'mem OFF':8s} "
+        f"{'ON+refs':8s} verdict"
+    )
+    for name, (on, off, ref) in res.items():
         effect = SCENARIOS[name]["effect"]
         if effect == "useful":
             verdict = "memory HELPED" if (on and not off) else "no clear effect"
         else:
             verdict = "memory HURT" if (off and not on) else "no clear effect"
+            if ref:
+                verdict += "; references FIXED it"
+        ref_s = "-" if ref is None else ("PASS" if ref else "FAIL")
         print(
             f"  {name:10s} {effect:14s} {'PASS' if on else 'FAIL':8s} "
-            f"{'PASS' if off else 'FAIL':8s} {verdict}"
+            f"{'PASS' if off else 'FAIL':8s} {ref_s:8s} {verdict}"
         )
     print("=" * 72)
     print("recall: a stable convention only memory still holds → memory helps.")
     print("stale : a convention that changed → recalled-but-outdated memory misleads.")
+    print("refs  : the same memory stored as a POINTER resolves live → cannot go stale.")
     print("=" * 72 + "\n")
 
 

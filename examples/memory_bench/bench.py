@@ -45,6 +45,8 @@ from nemo_oo_agents.memory import (  # noqa: E402
     MemoryStats,
     MemoryToolsMixin,
     MemoryType,
+    render,
+    resolve,
 )
 from nemo_oo_agents.memory.config import (  # noqa: E402
     ReflectionPolicy,
@@ -64,10 +66,10 @@ class MemFacade:
     def __init__(self, manager: MemoryManager | None) -> None:
         self.m = manager
 
-    def remember(self, text: str, type: str = "info") -> None:
+    def remember(self, text: str, type: str = "info", references: list[str] | None = None) -> None:
         if self.m is not None:
             try:
-                self.m.remember(text, type=MemoryType(type))
+                self.m.remember(text, type=MemoryType(type), references=references)
             except Exception:
                 pass
 
@@ -76,6 +78,20 @@ class MemFacade:
             return []
         try:
             return [m.content for m in self.m.recall(query, k=k)]
+        except Exception:
+            return []
+
+    def recall_rendered(self, query: str, k: int = 3) -> list[str]:
+        """Contents plus resolved reference lines (the pass-by-reference view)."""
+        if self.m is None:
+            return []
+        try:
+            out: list[str] = []
+            for m in self.m.recall(query, k=k):
+                out.append(m.content)
+                for ref in m.references:
+                    out.append(render(resolve(self.m.agent, self.m.store, ref)))
+            return out
         except Exception:
             return []
 

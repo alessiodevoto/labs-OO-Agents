@@ -41,7 +41,9 @@ def test_attach_installs_manager_and_round_trips():
     assert skill.stats().writes >= 1
 
     assert skill._mgr is not None
-    assert skill._mgr.config.instruct is False  # the skill owns instruction injection
+    # The manager owns guide injection, rendered with the skill's API prefix.
+    assert skill._mgr.config.instruct is True
+    assert skill._mgr.config.api_prefix == "self.memory."
     assert skill._config.instruct_block_key in agent.context_manager
 
     skill.detach()

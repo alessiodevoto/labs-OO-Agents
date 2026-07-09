@@ -42,3 +42,17 @@ def to_label(kind: str, value: float) -> str:
     """Map a numeric value to its nearest band label (ties resolve to the higher band)."""
     bands = _LADDERS[kind]
     return min(bands, key=lambda lbl: (abs(bands[lbl] - value), -bands[lbl]))
+
+
+# TODO lifecycle states — a state machine's states, not an ordered ladder.
+# Agent-facing form is ALL-CAPS (OPEN | DONE | DROPPED); the stored form is lower.
+TODO_STATUSES: tuple[str, ...] = ("open", "done", "dropped")
+
+
+def to_status(label: str) -> str:
+    """Map an agent-facing todo status to its stored form. Raise on unknown (no fallback)."""
+    status = label.strip().lower()
+    if status not in TODO_STATUSES:
+        expected = " | ".join(s.upper() for s in TODO_STATUSES)
+        raise ValueError(f"unknown todo status {label!r}; expected {expected}")
+    return status

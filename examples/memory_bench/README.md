@@ -101,7 +101,7 @@ Terminal-Bench harness; to run the memory agent against those, point an adapter
 at `longcli-bench/tasks_long_cli/` and drive each container with the same
 `MemoryToolsMixin` + `MemoryManager.install(...)` agent used here.
 
-## When does memory actually matter? (five runnable benchmarks)
+## When does memory actually matter? (eight runnable benchmarks)
 
 The KVStore suite above shows the *system* works but not a memory *lift* — a
 strong model (gpt-5.4) solves those self-contained tasks with or without memory.
@@ -198,6 +198,70 @@ proactive-interference failure the design's reconsolidation/forgetting targets.
 The deterministic oracle shows both sides cleanly (recall → helped, stale → hurt).
 With a strong model the `recall` *lift* only appears when the fact is genuinely
 unavailable in-session — which is what `recall_qa.py` demonstrates.
+
+**The by-reference fix (third arm, `ON+refs`).** The same `stale` scenario, but
+the memory stores a *pointer* to the schema doc
+(`references=["file:.../SCHEMA.md"]`) instead of a frozen copy of the value. At
+recall time the reference resolves LIVE against the current file — the memory
+cannot go stale. Oracle result: `stale` ON **FAIL** / OFF PASS / **ON+refs
+PASS** → "memory HURT; references FIXED it". This is the direct proof of the
+pass-by-reference feature (design plan §4).
+
+### `todo_prospective.py` — prospective memory: do commitments fire later?
+
+Session 0 plants "when X happens, do Y" commitments as `type="todo"` memories
+(plus 12 distractor facts); later sessions announce one cue each with context
+wiped. Metrics: **surfaced** (the right todo appears in its cue session's
+injected block — the memory system's job), **fired** (a minimally-judging
+policy then acts — the agent's job), **false fires**, and **closed** (fired
+todos marked DONE). Arms = the `inject_open_todos` A/B: `OFF` / `relevant` /
+`always`.
+
+```bash
+uv run python examples/memory_bench/todo_prospective.py --solver oracle
+```
+
+Oracle result: OFF 0/4 by construction; both `relevant` and `always` surface
+and fire 4/4 with 0 false fires and full lifecycle closure. The
+`relevant`-vs-`always` gap is expected to open on larger stores / LLM arms —
+that comparison decides the shipped default (design plan §2.3).
+
+### `shared_memory.py` — owner isolation by default, transfer on request
+
+Two agents, one store. Scout (owner=`scout`) ingests 6 facts; builder
+(owner=`builder`) answers questions twice: default own-scope (must find
+NOTHING — isolation is a correctness property, leakage exits non-zero) and
+`owner="*"` (knowledge transfers).
+
+```bash
+uv run python examples/memory_bench/shared_memory.py --solver oracle
+```
+
+Oracle result: default scope **0/6 + 0 leaked (ISOLATED)**; `owner="*"`
+**6/6 (TRANSFERS)**; the `cross_owner_recalls` stats counter tracks the
+explicit widenings.
+
+### `ranger_bench.py` — an EBR-style continual-learning protocol (behavioral)
+
+Epoch AI's EBR-Bench tests whether agents **learn from experience** across
+repeated playthroughs where notes are all that persists, scoring only the final
+20%. The benchmark itself is closed (no public harness, copyrighted game
+content — see the design plan §7.2), so `ranger_bench.py` adopts the *protocol*
+with an original deterministic mini campaign game ("Trail Ranger": 5-day
+expedition, 4 loadout archetypes, 5 hidden gotchas, 12 objectives). Unlike
+LoCoMo/LongMemEval this measures whether memory **changes behavior**, not
+whether it recalls facts.
+
+```bash
+uv run python examples/memory_bench/ranger_bench.py   # offline, deterministic
+```
+
+Result (10 playthroughs, score 0..12): OFF flat at **8** (relearns every run,
+never explores loadouts), ON climbs **8 → 11** by playthrough 4 (explores all 4
+loadouts, converges on rope_map, **0 repeated mistakes**), GUIDE (pre-seeded
+strategy = the ceiling) at **11** from playthrough 1. Memory effect **+3.0** on
+the final-2 mean; ON reaches the GUIDE ceiling. The script exits non-zero if
+the calibration invariant (GUIDE ≥ ON > OFF) breaks.
 
 ### `reflecting.py` — does consolidation (reflection) actually help?
 

@@ -19,6 +19,7 @@ offline-testable. See ``docs/design/memory-system/design.md`` §4.2.4.
 from __future__ import annotations
 
 import math
+import time
 from collections.abc import Callable
 
 from pydantic import BaseModel
@@ -31,6 +32,10 @@ from nemo_oo_agents.memory.schema import EdgeType, Memory, _now
 from nemo_oo_agents.memory.store import MemoryStore
 
 
+def _never() -> bool:
+    return False
+
+
 class ReflectionReport(BaseModel):
     """Summary of what a consolidation pass changed (for logs/auditability)."""
 
@@ -41,6 +46,9 @@ class ReflectionReport(BaseModel):
     created: int = 0
     reconciled: int = 0  # clusters where an updated/current value superseded older ones
     superseded: int = 0  # memories archived because they were outdated
+    interrupted: bool = False  # a should_stop probe fired before completion
+    stopped_in: str | None = None  # the op during/after which the stop was observed
+    duration_ms: float = 0.0
 
 
 class ReflectionEngine:
@@ -52,11 +60,16 @@ class ReflectionEngine:
         embedder: Embedder,
         config: ReflectionPolicy,
         forget_config: ForgetPolicy,
+        *,
+        owner: str | None = None,
     ) -> None:
         self.store = store
         self.embedder = embedder
         self.config = config
-        self._forgetting = ForgettingEngine(store, forget_config)
+        # Consolidation only ever touches this owner's + unowned memories —
+        # it must never merge/archive another agent's records in a shared store.
+        self.owner = owner
+        self._forgetting = ForgettingEngine(store, forget_config, owner=owner)
 
     def consolidate(
         self,
@@ -64,33 +77,89 @@ class ReflectionEngine:
         reasoner: Callable[[list[Memory]], list[Memory]] | None = None,
         reconciler: Callable[[list[Memory]], tuple[Memory | None, list[str]]] | None = None,
     ) -> ReflectionReport:
+        return self.consolidate_interruptible(
+            should_stop=_never, reasoner=reasoner, reconciler=reconciler
+        )
+
+    def consolidate_interruptible(
+        self,
+        *,
+        should_stop: Callable[[], bool],
+        reasoner: Callable[[list[Memory]], list[Memory]] | None = None,
+        reconciler: Callable[[list[Memory]], tuple[Memory | None, list[str]]] | None = None,
+    ) -> ReflectionReport:
+        """Run the consolidation ops, checking ``should_stop`` between items.
+
+        Every op commits per item, so stopping anywhere leaves a consistent
+        store; the returned report says what completed and where the stop was
+        observed. The ops are idempotent over an already-consolidated store —
+        an interrupted pass followed by a full pass converges to the same
+        state as a never-interrupted one.
+        """
+        t0 = time.perf_counter()
         report = ReflectionReport()
-        report.merged = self._merge_duplicates()
+
+        def _merge() -> None:
+            report.merged = self._merge_duplicates(should_stop)
+
+        def _recon() -> None:
+            report.reconciled, report.superseded = self._reconsolidate(reconciler, should_stop)
+
+        def _edges() -> None:
+            report.edges_added = self._form_edges(should_stop)
+
+        def _rescore() -> None:
+            report.rescored = self._rescore_importance(should_stop)
+
+        def _abstract() -> None:
+            report.created = self._abstract_episodes(reasoner, should_stop)
+
+        def _prune() -> None:
+            report.pruned = len(self._forgetting.prune(should_stop=should_stop))
+
+        ops: list[tuple[str, Callable[[], None]]] = [("merge_duplicates", _merge)]
         if reconciler is not None:
-            report.reconciled, report.superseded = self._reconsolidate(reconciler)
-        report.edges_added = self._form_edges()
-        report.rescored = self._rescore_importance()
+            ops.append(("reconsolidate", _recon))
+        ops.extend([("form_edges", _edges), ("rescore_importance", _rescore)])
         if reasoner is not None:
-            report.created = self._abstract(reasoner)
-        report.pruned = len(self._forgetting.prune())
+            ops.append(("abstract", _abstract))
+        ops.append(("prune", _prune))
+
+        for name, run in ops:
+            if should_stop():
+                report.interrupted = True
+                report.stopped_in = report.stopped_in or name
+                break
+            run()
+            if should_stop():
+                # The flag fired while (or right after) this op ran; the op
+                # broke between items, so everything committed is consistent.
+                report.interrupted = True
+                report.stopped_in = name
+                break
+        report.duration_ms = round((time.perf_counter() - t0) * 1000.0, 3)
         return report
 
     # ------------------------------------------------------------------
     # NREM: dedup / merge
     # ------------------------------------------------------------------
-    def _merge_duplicates(self) -> int:
+    def _merge_duplicates(self, should_stop: Callable[[], bool] = _never) -> int:
         merged: set[str] = set()
         count = 0
         # Stable order so merges are deterministic; the iteration anchor is canonical.
-        anchors = sorted(self.store.all_memories(), key=lambda m: (m.created_at, m.id))
+        anchors = sorted(
+            self.store.all_memories(owner=self.owner), key=lambda m: (m.created_at, m.id)
+        )
         for m in anchors:
+            if should_stop():
+                break
             if m.id in merged:
                 continue
             emb = self.store.get_embedding(m.id)
             if emb is None:
                 continue
             dirty = False
-            for nid, cos in self.store.knn(emb, 6):
+            for nid, cos in self.store.knn(emb, 6, owner=self.owner):
                 if nid == m.id or nid in merged or cos < self.config.merge_threshold:
                     continue
                 dup = self.store.get(nid)
@@ -118,7 +187,9 @@ class ReflectionEngine:
     # reconsolidation: resolve updated/contradicted facts (keep the current one)
     # ------------------------------------------------------------------
     def _reconsolidate(
-        self, reconciler: Callable[[list[Memory]], tuple[Memory | None, list[str]]]
+        self,
+        reconciler: Callable[[list[Memory]], tuple[Memory | None, list[str]]],
+        should_stop: Callable[[], bool] = _never,
     ) -> tuple[int, int]:
         """Cluster related memories and let ``reconciler`` resolve outdated values.
 
@@ -129,8 +200,13 @@ class ReflectionEngine:
         """
         reconciled = 0
         superseded = 0
+        clusters_done = 0
         visited: set[str] = set()
-        for m in sorted(self.store.all_memories(), key=lambda x: (x.created_at, x.id)):
+        for m in sorted(
+            self.store.all_memories(owner=self.owner), key=lambda x: (x.created_at, x.id)
+        ):
+            if should_stop():
+                break  # checked BEFORE each reconciler (LLM) call
             if m.id in visited:
                 continue
             emb = self.store.get_embedding(m.id)
@@ -138,7 +214,7 @@ class ReflectionEngine:
                 continue
             cluster = [m]
             visited.add(m.id)
-            for nid, cos in self.store.knn(emb, self.config.recon_max_cluster):
+            for nid, cos in self.store.knn(emb, self.config.recon_max_cluster, owner=self.owner):
                 if nid in visited or cos < self.config.recon_threshold:
                     continue
                 c = self.store.get(nid)
@@ -147,6 +223,9 @@ class ReflectionEngine:
                     visited.add(nid)
             if len(cluster) < 2:
                 continue
+            if clusters_done >= self.config.max_clusters_per_reflection:
+                break  # LLM-cost ceiling; the rest wait for the next run
+            clusters_done += 1
             cluster.sort(key=lambda x: (x.created_at, x.id))  # oldest -> newest
             try:
                 consolidated, archive_ids = reconciler(cluster)
@@ -160,6 +239,8 @@ class ReflectionEngine:
                 self.store.archive(aid)
                 superseded += 1
             if consolidated is not None:
+                if self.owner is not None and not consolidated.owner:
+                    consolidated.owner = self.owner
                 for c in cluster:
                     consolidated.add_edge(c.id, EdgeType.REFINES, 1.0)
                 self.store.add(consolidated, self.embedder.embed(consolidated.embedding_text()))
@@ -169,15 +250,19 @@ class ReflectionEngine:
     # ------------------------------------------------------------------
     # form associative edges between close memories
     # ------------------------------------------------------------------
-    def _form_edges(self) -> int:
+    def _form_edges(self, should_stop: Callable[[], bool] = _never) -> int:
         added = 0
-        for m in self.store.all_memories():
+        for m in self.store.all_memories(owner=self.owner):
+            if should_stop():
+                break
             emb = self.store.get_embedding(m.id)
             if emb is None:
                 continue
             existing = {e.target_id for e in m.edges}
             new = 0
-            for nid, cos in self.store.knn(emb, self.config.max_edges_per_node + 1):
+            for nid, cos in self.store.knn(
+                emb, self.config.max_edges_per_node + 1, owner=self.owner
+            ):
                 if nid == m.id or nid in existing:
                     continue
                 if cos < self.config.edge_threshold or cos >= self.config.merge_threshold:
@@ -195,10 +280,12 @@ class ReflectionEngine:
     # ------------------------------------------------------------------
     # renormalise importance (salience + access-frequency aware)
     # ------------------------------------------------------------------
-    def _rescore_importance(self) -> int:
+    def _rescore_importance(self, should_stop: Callable[[], bool] = _never) -> int:
         now = _now()
         n = 0
-        for m in self.store.all_memories():
+        for m in self.store.all_memories(owner=self.owner):
+            if should_stop():
+                break
             base = _sigmoid(base_level_activation(m.access_log, now, 0.5))
             new_imp = 0.5 * m.importance + 3.0 * m.salience + 2.0 * base
             new_imp = max(0.0, min(10.0, new_imp))
@@ -214,17 +301,29 @@ class ReflectionEngine:
     # ------------------------------------------------------------------
     # REM: optional generative abstraction (needs an LLM-backed reasoner)
     # ------------------------------------------------------------------
-    def _abstract(self, reasoner: Callable[[list[Memory]], list[Memory]]) -> int:
-        episodes = [m for m in self.store.all_memories() if m.type.value == "episode"]
-        if not episodes:
-            return 0
+    def _abstract_episodes(
+        self,
+        reasoner: Callable[[list[Memory]], list[Memory]],
+        should_stop: Callable[[], bool] = _never,
+    ) -> int:
+        episodes = [
+            m for m in self.store.all_memories(owner=self.owner) if m.type.value == "episode"
+        ]
+        if not episodes or should_stop():
+            return 0  # never START an LLM call when stopping
         sliced = episodes[: self.config.max_episodes_per_reflection]
         try:
             new_memories = reasoner(sliced)
         except Exception:
             return 0
+        if should_stop():
+            return 0  # stop observed while the reasoner ran: discard, commit nothing
         created = 0
         for nm in new_memories or []:
+            if should_stop():
+                break
+            if self.owner is not None and not nm.owner:
+                nm.owner = self.owner
             emb = self.embedder.embed(nm.embedding_text())
             # Link the abstraction back only to episodes the reasoner saw.
             for ep in sliced:

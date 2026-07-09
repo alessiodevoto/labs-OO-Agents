@@ -7,7 +7,7 @@ import pytest
 from nemo_oo_agents.memory.config import RetrievalConfig
 from nemo_oo_agents.memory.embeddings import HashingEmbedder
 from nemo_oo_agents.memory.retrieval import RetrievalEngine, base_level_activation
-from nemo_oo_agents.memory.schema import EdgeType, Memory
+from nemo_oo_agents.memory.schema import AccessRecord, EdgeType, Memory
 from nemo_oo_agents.memory.store import MemoryStore
 
 
@@ -67,8 +67,8 @@ def test_recall_empty_store_returns_empty(store, emb):
 
 def test_base_level_activation_recent_beats_old():
     now = 1_000_000.0
-    recent = base_level_activation([now - 10], now, 0.5)
-    old = base_level_activation([now - 1_000_000], now, 0.5)
+    recent = base_level_activation([AccessRecord(ts=now - 10, channel="recalled")], now, 0.5)
+    old = base_level_activation([AccessRecord(ts=now - 1_000_000, channel="recalled")], now, 0.5)
     assert recent > old
 
 

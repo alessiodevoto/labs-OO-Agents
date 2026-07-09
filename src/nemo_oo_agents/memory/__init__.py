@@ -28,6 +28,7 @@ from nemo_oo_agents.memory.config import (
     EmbeddingConfig,
     ForgetPolicy,
     MemoryConfig,
+    ObservabilityConfig,
     ReflectionPolicy,
     RetrievalConfig,
     ScoringWeights,
@@ -35,13 +36,20 @@ from nemo_oo_agents.memory.config import (
     VectorConfig,
     WritePolicy,
 )
-from nemo_oo_agents.memory.descriptors import ladder, to_label, to_numeric
+from nemo_oo_agents.memory.descriptors import (
+    TODO_STATUSES,
+    ladder,
+    to_label,
+    to_numeric,
+    to_status,
+)
 from nemo_oo_agents.memory.embeddings import (
     Embedder,
     HashingEmbedder,
     LiteLLMEmbedder,
     get_embedder,
 )
+from nemo_oo_agents.memory.generative import llm_reasoner, llm_reconciler
 from nemo_oo_agents.memory.manager import MemoryManager, MemoryToolsMixin
 from nemo_oo_agents.memory.monitoring import (
     MemoryInjected,
@@ -49,9 +57,21 @@ from nemo_oo_agents.memory.monitoring import (
     MemoryStats,
     MemoryWritten,
     ReflectionCompleted,
+    ReflectionStarted,
 )
-from nemo_oo_agents.memory.schema import Edge, EdgeType, Memory, MemoryType
-from nemo_oo_agents.memory.store import MemoryStore
+from nemo_oo_agents.memory.observability import per_memory_usage, prune_eta, store_kpis
+from nemo_oo_agents.memory.references import ResolvedRef, capture, parse_ref, render, resolve
+from nemo_oo_agents.memory.schema import (
+    ACCESS_CHANNELS,
+    REF_KINDS,
+    AccessRecord,
+    Edge,
+    EdgeType,
+    Memory,
+    MemoryRef,
+    MemoryType,
+)
+from nemo_oo_agents.memory.store import SCHEMA_VERSION, MemorySchemaError, MemoryStore
 from nemo_oo_agents.memory.vector_backends import (
     ChromaVectorIndex,
     NumpyVectorIndex,
@@ -66,6 +86,16 @@ __all__ = [
     "MemoryType",
     "Edge",
     "EdgeType",
+    "MemoryRef",
+    "REF_KINDS",
+    "AccessRecord",
+    "ACCESS_CHANNELS",
+    # references (pass-by-reference resolution)
+    "ResolvedRef",
+    "parse_ref",
+    "capture",
+    "resolve",
+    "render",
     # config
     "MemoryConfig",
     "RetrievalConfig",
@@ -76,6 +106,7 @@ __all__ = [
     "WritePolicy",
     "ReflectionPolicy",
     "ForgetPolicy",
+    "ObservabilityConfig",
     # embeddings
     "Embedder",
     "HashingEmbedder",
@@ -83,6 +114,8 @@ __all__ = [
     "get_embedder",
     # store
     "MemoryStore",
+    "MemorySchemaError",
+    "SCHEMA_VERSION",
     # vector backends
     "VectorIndex",
     "NumpyVectorIndex",
@@ -93,13 +126,21 @@ __all__ = [
     "ladder",
     "to_numeric",
     "to_label",
+    "to_status",
+    "TODO_STATUSES",
     # manager / integration
     "MemoryManager",
     "MemoryToolsMixin",
-    # monitoring
+    # monitoring / observability
     "MemoryStats",
+    "llm_reasoner",
+    "llm_reconciler",
+    "per_memory_usage",
+    "store_kpis",
+    "prune_eta",
     "MemoryWritten",
     "MemoryRecalled",
     "MemoryInjected",
     "ReflectionCompleted",
+    "ReflectionStarted",
 ]

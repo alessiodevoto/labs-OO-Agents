@@ -20,12 +20,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections.abc import Callable
 from typing import Any
 
 from nemo_oo_agents.agent import Agent
 from nemo_oo_agents.memory.config import MemoryConfig
-from nemo_oo_agents.memory.descriptors import to_numeric
+from nemo_oo_agents.memory.descriptors import to_numeric, to_status
 from nemo_oo_agents.memory.embeddings import Embedder, get_embedder
 from nemo_oo_agents.memory.forgetting import ForgettingEngine
 from nemo_oo_agents.memory.monitoring import (
@@ -34,11 +35,21 @@ from nemo_oo_agents.memory.monitoring import (
     MemoryStats,
     MemoryWritten,
     ReflectionCompleted,
+    ReflectionStarted,
 )
+from nemo_oo_agents.memory.references import capture, parse_ref, render, resolve
 from nemo_oo_agents.memory.reflection import ReflectionEngine, ReflectionReport
 from nemo_oo_agents.memory.retrieval import RetrievalEngine, derive_queries
-from nemo_oo_agents.memory.schema import EdgeType, Memory, MemoryType
+from nemo_oo_agents.memory.schema import (
+    AccessRecord,
+    EdgeType,
+    Memory,
+    MemoryRef,
+    MemoryType,
+    role_of,
+)
 from nemo_oo_agents.memory.store import MemoryStore
+from nemo_oo_agents.memory.tracing_bridge import current_trace_ref, install_tracing_bridge
 
 logger = logging.getLogger(__name__)
 # Dedicated logger for memory-usage monitoring/debug (raise to DEBUG to trace ops).
@@ -52,34 +63,63 @@ _EVENT_SALIENCE: dict[str, tuple[float, float]] = {
     "Message": (0.4, 5.0),
 }
 
-# The instruction injected into the agent's context when memory is installed. This
-# is the heart of the design: the AGENT owns and curates its memory (writes +
-# refines it per the schema) — the framework does NOT silently extract it for you.
+# The instruction injected into the agent's context when memory is installed —
+# a TEMPLATE: {api} is the host's tool prefix ("self." for the mixin install,
+# "self.memory." for the skill), so the guide never documents a missing method.
+# This is the heart of the design: the AGENT owns and curates its memory.
 MEMORY_SCHEMA_GUIDE = """\
 ## Your long-term memory
 
-You have a persistent long-term memory that YOU own and curate. Other systems
-extract memories for the agent behind its back; here, *you* decide what to keep
-and how to structure it. As you work, deliberately maintain it:
+You have a persistent long-term memory that YOU own and curate: you decide what
+to keep and how to structure it. The runtime also auto-writes a few operational
+memories (salient events, task episodes) — curate those like your own: refine or
+forget them when they are wrong. Store: {store} (your identity: {owner}).
 
-- WRITE durable, reusable knowledge — `self.remember(content, type=..., importance=..., tags=[...])`.
+- WRITE durable, reusable knowledge — `{api}remember(content, type=..., importance=..., tags=[...])`.
   Store distilled facts/skills/decisions, ONE self-contained item each — never raw
-  transcripts or chit-chat.
-- REFINE — when a memory becomes more accurate, `self.update_memory(id, ...)`; when it
-  is wrong or obsolete, `self.forget(id)`; link related memories with
-  `self.associate(id_a, id_b, relation)`.
-- RECALL before acting — `self.recall(query)` to reuse what you already know.
+  transcripts or chit-chat. A near-duplicate write reinforces the existing memory
+  and returns ITS id instead of creating a new one — if your new wording is
+  sharper, follow up with `{api}update_memory(id, content=...)`.
+- REFINE — when a memory becomes more accurate, `{api}update_memory(id, ...)`; when it
+  is wrong or obsolete, `{api}forget(id)`; link related memories with
+  `{api}associate(id_a, id_b, relation)` where relation is one of: related |
+  supports | contradicts | refines | derived_from | created_by | causes |
+  precedes | part_of | triggers.
+- RECALL — `{api}recall(query)` (associative: semantic + keyword + recency + graph)
+  or `{api}search(query)` (term-focused, graph spread disabled). Recall before work
+  that touches prior decisions, preferences, plans, or files; skip it for one-off
+  questions. Recalled and injected memories are labeled [type#id] — pass that id
+  (the 8-char prefix suffices) to update_memory/forget/associate. Injected
+  "Recalled memories" are hints, not ground truth.
+- PASS BY REFERENCE — when a memory is about live state (a var, a file, a todo),
+  store a short description plus `references=["var:plan", "file:docs/spec.md"]`
+  instead of pasting the value: references are re-read fresh at recall time
+  (`{api}deref("var:plan")` reads one on demand), so the memory cannot go stale.
 
-Memory schema (set the fields deliberately):
+Memory schema — the fields YOU set: type, importance, tags, title, references,
+and (todos only) status:
   type:        info       — a durable fact, preference, rule, or convention
                skill      — a reusable, verified procedure / how-to
                episode    — what happened in a specific task or event
-               intent     — a future intention / reminder / TODO
+               intent     — a trigger-based reminder ("when X happens, do Y")
+               todo       — a durable commitment to act, tracked until resolved;
+                            close it with {api}update_memory(id, status="DONE")
+                            (or "DROPPED" if abandoned)
                reflection — an insight distilled from several episodes
   importance:  CRITICAL | HIGH | MEDIUM | LOW | TRIVIAL — how much this should influence future decisions
   tags:        salient entities/keywords for retrieval (names, files, dates, topics)
-Near-duplicate writes are auto-merged, so prefer writing over worrying about overlap.
+For task tracking WITHIN this session use self.todo (when available); use
+type="todo" only for commitments that must survive the session.
+Memories you write are yours; on a shared store, `{api}recall(query, owner="*")`
+also searches what other agents learned (read-only — you cannot edit theirs).
 """
+
+
+def render_schema_guide(*, api: str = "self.", store: str = "", owner: str = "") -> str:
+    """Render the guide for a host: its tool prefix, store path, and identity."""
+    return MEMORY_SCHEMA_GUIDE.format(
+        api=api, store=store or "(in-memory)", owner=owner or "(shared)"
+    )
 
 
 class MemoryManager:
@@ -96,16 +136,34 @@ class MemoryManager:
     ) -> None:
         self.agent = agent
         self.config = config or MemoryConfig()
+        # Writer identity for shared stores: explicit config wins (hosts like
+        # the TUI pass their stable per-agent key; "" writes to the shared
+        # namespace); the honest library default is the agent's class name.
+        self.owner = self.config.owner if self.config.owner is not None else type(agent).__name__
         self.embedder = embedder or get_embedder(self.config.embedding)
         self.store = self._make_store(agent)
-        self.retrieval = RetrievalEngine(self.store, self.embedder, self.config.retrieval)
-        self.reflection_engine = ReflectionEngine(
-            self.store, self.embedder, self.config.reflection, self.config.forget
+        self.retrieval = RetrievalEngine(
+            self.store,
+            self.embedder,
+            self.config.retrieval,
+            access_log_cap=self.config.observability.access_log_cap,
         )
-        self.forgetting = ForgettingEngine(self.store, self.config.forget)
+        # Engines consolidate at ROLE scope: instance scope would fragment
+        # knowledge per session (and reflection must fold across instances).
+        self.reflection_engine = ReflectionEngine(
+            self.store,
+            self.embedder,
+            self.config.reflection,
+            self.config.forget,
+            owner=self.role,
+        )
+        self.forgetting = ForgettingEngine(self.store, self.config.forget, owner=self.role)
         self._reasoner = reasoner
         self._reconciler = reconciler
         self.stats = MemoryStats()
+        # Set by hosts (TUI session id, bench run id); lands on AccessRecords.
+        self.session_ref: str | None = None
+        self._last_injected_ids: list[str] = []
 
         # hook state
         self._unsubs: list[Callable[[], None]] = []
@@ -150,7 +208,10 @@ class MemoryManager:
         if self.config.instruct:
             try:
                 self.agent.context_manager.set_static(
-                    self.config.instruct_block_key, MEMORY_SCHEMA_GUIDE
+                    self.config.instruct_block_key,
+                    render_schema_guide(
+                        api=self.config.api_prefix, store=self.store.path, owner=self.owner
+                    ),
                 )
             except Exception:
                 mem_logger.debug("memory: could not inject instruction block", exc_info=True)
@@ -162,6 +223,8 @@ class MemoryManager:
             self._unsubs.append(em.on(evt, self._on_write_event))
         if self.config.reflection.enabled and self.config.reflection.trigger == "post_task":
             self._unsubs.append(em.intercept("agent_call", self._reflect_middleware))
+        # Bridge memory events into tracing spans (no-op without opentelemetry).
+        self._unsubs.extend(install_tracing_bridge(self))
 
     def uninstall(self) -> None:
         """Remove all hooks and cancel pending background work."""
@@ -198,6 +261,7 @@ class MemoryManager:
         tags: list[str] | None = None,
         source_task_ref: str | None = None,
         dedup: bool = True,
+        references: list[str] | None = None,
     ) -> str:
         """Encode a memory (dedup-on-write). Returns the memory id."""
         mem = Memory(
@@ -208,15 +272,21 @@ class MemoryManager:
             salience=salience,
             tags=tags or [],
             source_task_ref=source_task_ref,
+            owner=self.owner,
+            references=[capture(self.agent, self.store, r) for r in references or []],
         )
         emb = self.embedder.embed(mem.embedding_text())
 
         if dedup and self.store.count() > 0:
-            for nid, cos in self.store.knn(emb, self.config.write.dedup_top_k):
+            # Dedup within own scope only — never reinforce another agent's memory.
+            for nid, cos in self.store.knn(emb, self.config.write.dedup_top_k, owner=self.role):
                 if cos >= self.config.write.dedup_threshold:
                     existing = self.store.get(nid)
                     if existing is not None and existing.type == type:
-                        existing.touch()
+                        existing.log_access(
+                            self._access("reinforced"),
+                            cap=self.config.observability.access_log_cap,
+                        )
                         existing.reinforcement_count += 1
                         existing.importance = max(existing.importance, mem.importance)
                         existing.salience = max(existing.salience, mem.salience)
@@ -247,15 +317,79 @@ class MemoryManager:
         )
         return mem.id
 
-    def recall(self, query: str, k: int | None = None, *, hops: int | None = None) -> list[Memory]:
+    @property
+    def role(self) -> str:
+        """The role part of this manager's hierarchical owner (``role[@instance]``)."""
+        return role_of(self.owner)
+
+    def _resolve_owner(self, owner: str | None) -> str | None:
+        """Read-scope policy (hierarchical owners, design §5b).
+
+        None = my ROLE (+ unowned) — every instance of this agent; '*' =
+        everyone; a bare role = that role's instances; ``role@inst`` = that
+        exact instance.
+        """
+        if owner is None:
+            return self.role
+        if owner == "*":
+            return None
+        return owner
+
+    def _access(self, channel: str) -> AccessRecord:
+        """Template access record carrying this manager's read context."""
+        return AccessRecord(
+            ts=time.time(),
+            channel=channel,
+            reader_owner=self.owner,
+            session_ref=self.session_ref,
+            trace_ref=current_trace_ref(),
+        )
+
+    def _assert_writable(self, m: Memory) -> None:
+        # Role-based: any instance of the same role curates the role's memories.
+        if m.owner != "" and role_of(m.owner) != self.role:
+            raise PermissionError(
+                f"memory {m.id[:8]} belongs to {m.owner!r}; cross-owner writes are not allowed"
+            )
+
+    def recall(
+        self,
+        query: str,
+        k: int | None = None,
+        *,
+        hops: int | None = None,
+        owner: str | None = None,
+        channel: str = "recalled",
+    ) -> list[Memory]:
         """Associative + keyword recall, scored and ranked."""
-        res = self.retrieval.recall(query, k=k, hops=hops)
+        if owner is not None and owner != self.owner:
+            self.stats.cross_owner_recalls += 1
+        res = self.retrieval.recall(
+            query,
+            k=k,
+            hops=hops,
+            owner=self._resolve_owner(owner),
+            access=self._access(channel),
+        )
         eff_hops = self.config.retrieval.hops if hops is None else hops
         self.stats.recalls += 1
         self.stats.recalled_items += len(res)
-        self._emit(MemoryRecalled(query=query[:200], n_results=len(res), hops=eff_hops))
+        self._emit(
+            MemoryRecalled(
+                query=query[:200],
+                n_results=len(res),
+                hops=eff_hops,
+                channel=channel,
+                memory_ids=[m.id for m in res],
+            )
+        )
         mem_logger.debug("memory.recall q=%r hops=%d -> %d results", query[:60], eff_hops, len(res))
         return res
+
+    def _find(self, memory_id: str) -> Memory | None:
+        """Exact id, or the unique 8-char prefix rendered in recalled lines."""
+        resolved = self.store.resolve_id(memory_id)
+        return self.store.get(resolved) if resolved else None
 
     def update(
         self,
@@ -265,11 +399,14 @@ class MemoryManager:
         importance: float | None = None,
         type: MemoryType | None = None,
         tags: list[str] | None = None,
+        status: str | None = None,
+        references: list[str] | None = None,
     ) -> bool:
         """Refine an existing memory in place (re-embeds if content changed)."""
-        m = self.store.get(memory_id)
+        m = self._find(memory_id)
         if m is None:
             return False
+        self._assert_writable(m)
         content_changed = content is not None and content != m.content
         if content is not None:
             m.content = content
@@ -277,10 +414,25 @@ class MemoryManager:
             m.importance = max(0.0, min(10.0, importance))
         if type is not None:
             m.type = type
+            # Switching taxonomy: a todo opens its lifecycle; nothing else has one.
+            if m.type is MemoryType.TODO and m.status is None:
+                m.status = "open"
+            elif m.type is not MemoryType.TODO:
+                m.status = None
+        if status is not None:
+            if m.type is not MemoryType.TODO:
+                raise ValueError("status applies only to todo memories")
+            m.status = to_status(status)
         if tags is not None:
             m.tags = tags
+        if references is not None:
+            m.references = [capture(self.agent, self.store, r) for r in references]
         m.reinforcement_count += 1
-        m.touch(reinforce=False)
+        m.log_access(
+            self._access("reinforced"),
+            reinforce=False,
+            cap=self.config.observability.access_log_cap,
+        )
         if content_changed:
             self.store.add(m, self.embedder.embed(m.embedding_text()))  # re-embed + replace
         else:
@@ -295,18 +447,23 @@ class MemoryManager:
 
     def forget(self, memory_id: str) -> bool:
         """Archive (tombstone) a memory the agent judges wrong or obsolete."""
-        m = self.store.get(memory_id)
+        m = self._find(memory_id)
         if m is None:
             return False
-        self.store.archive(memory_id)
+        self._assert_writable(m)
+        self.store.archive(m.id)
         self.stats.pruned += 1
         self._emit(
             MemoryWritten(
-                memory_id=memory_id, mem_type=m.type.value, op="forget", importance=m.importance
+                memory_id=m.id, mem_type=m.type.value, op="forget", importance=m.importance
             )
         )
-        mem_logger.debug("memory.forget id=%s", memory_id[:8])
+        mem_logger.debug("memory.forget id=%s", m.id[:8])
         return True
+
+    def explain(self, query: str, *, k: int = 10, owner: str | None = None) -> list[dict]:
+        """Dry-run recall: the scored candidate table (no touch, no logging)."""
+        return self.retrieval.explain(query, k=k, owner=self._resolve_owner(owner))
 
     def _emit(self, event: Any) -> None:
         """Emit a runtime memory event on the agent's bus (never enters LLM context)."""
@@ -318,25 +475,78 @@ class MemoryManager:
     def memory_stats(self) -> MemoryStats:
         """Snapshot of how the agent has used its memory (also refreshes store_size)."""
         self.stats.store_size = self.store.count()
+        todos = [m for m in self.store.all_memories(owner=self.role) if m.type is MemoryType.TODO]
+        self.stats.todos_open = sum(1 for t in todos if t.status == "open")
+        self.stats.todos_done = len(todos) - self.stats.todos_open
         return self.stats
 
     def log_summary(self) -> None:
         """Log a one-line memory-usage summary at INFO."""
         mem_logger.info("memory stats: %s", self.memory_stats().summary())
 
+    def deref(self, ref: str) -> str:
+        """Resolve a ``kind:key`` reference against live state and render it."""
+        kind, key = parse_ref(ref)
+        resolved = resolve(self.agent, self.store, MemoryRef(kind=kind, key=key))
+        self._count_resolution(resolved.status)
+        if kind == "memory":
+            # Agents pass the 8-char prefixes that recalled lines render
+            # ([type#id8]) — resolve exactly like references._lookup does, so
+            # the memory that rendered LIVE is the one whose access gets logged.
+            try:
+                full_id = self.store.resolve_id(key)
+            except ValueError:
+                full_id = None  # ambiguous prefix: resolve() rendered DANGLING
+            target = self.store.get(full_id) if full_id else None
+            if target is not None:
+                target.log_access(
+                    self._access("deref"), cap=self.config.observability.access_log_cap
+                )
+                self.store.save(target)
+        return render(resolved)
+
+    def _count_resolution(self, status: str) -> None:
+        if status == "LIVE":
+            self.stats.refs_resolved += 1
+        else:
+            self.stats.refs_dangling += 1
+
     def associate(self, a_id: str, b_id: str, relation: str = "related") -> None:
-        """Add a directed graph edge ``a_id -> b_id``."""
-        try:
-            etype = EdgeType(relation)
-        except ValueError:
-            etype = EdgeType.RELATED
+        """Add a directed graph edge ``a_id -> b_id`` (ids may be unique prefixes)."""
+        etype = EdgeType(relation)  # raises on an unknown relation (no silent RELATED)
+        src = self._find(a_id)
+        if src is not None:
+            self._assert_writable(src)  # the edge mutates the source's neighborhood
+            a_id = src.id
+        dst = self._find(b_id)
+        if dst is not None:
+            b_id = dst.id
         self.store.add_edge(a_id, b_id, etype)
 
-    def reflect(self) -> ReflectionReport:
+    def reflect(self, *, trigger: str = "manual") -> ReflectionReport:
         """Run a consolidation pass synchronously (also callable manually)."""
+        self._emit(ReflectionStarted(trigger=trigger))
         report = self.reflection_engine.consolidate(
             reasoner=self._reasoner, reconciler=self._reconciler
         )
+        return self._finish_reflection(report, trigger=trigger)
+
+    def reflect_interruptible(
+        self, should_stop: Callable[[], bool], *, trigger: str = "idle"
+    ) -> ReflectionReport:
+        """A consolidation pass that stops within one item of ``should_stop``.
+
+        The idle-reflection entry point (executor-friendly, sync): per-item
+        commits make an interrupted pass safe, and the report says where the
+        stop was observed. Same bookkeeping as ``reflect()``.
+        """
+        self._emit(ReflectionStarted(trigger=trigger))
+        report = self.reflection_engine.consolidate_interruptible(
+            should_stop=should_stop, reasoner=self._reasoner, reconciler=self._reconciler
+        )
+        return self._finish_reflection(report, trigger=trigger)
+
+    def _finish_reflection(self, report: ReflectionReport, *, trigger: str) -> ReflectionReport:
         self.stats.reflections += 1
         self.stats.merged += report.merged
         self.stats.edges_added += report.edges_added
@@ -348,9 +558,14 @@ class MemoryManager:
                 rescored=report.rescored,
                 pruned=report.pruned,
                 created=report.created,
+                trigger=trigger,
+                interrupted=report.interrupted,
+                stopped_in=report.stopped_in or "",
+                duration_ms=report.duration_ms,
             )
         )
-        mem_logger.info("memory.reflect %s", report.model_dump())
+        self.store.log_maintenance("reflect", {"trigger": trigger, **report.model_dump()})
+        mem_logger.info("memory.reflect trigger=%s %s", trigger, report.model_dump())
         return report
 
     # ------------------------------------------------------------------
@@ -363,6 +578,27 @@ class MemoryManager:
         queries = derive_queries(self.agent, self.config.spontaneous)
         return self._format_recall(queries)
 
+    def _memory_lines(self, m: Memory) -> list[str]:
+        head = (m.title or m.content).replace("\n", " ").strip()
+        tag = f"{m.type.value}:{m.status}" if m.type is MemoryType.TODO else m.type.value
+        lines = [f"- [{tag}#{m.id[:8]}] {head}"]
+        # References resolve fresh against live state (pass-by-reference).
+        for ref in m.references[:4]:
+            resolved = resolve(self.agent, self.store, ref)
+            self._count_resolution(resolved.status)
+            lines.append(f"    {render(resolved)}")
+        return lines
+
+    def _open_todos(self, k: int) -> list[Memory]:
+        """Open todos by importance (desc) then age (oldest first), capped at k."""
+        todos = [
+            m
+            for m in self.store.all_memories(owner=self.role)
+            if m.type is MemoryType.TODO and m.status == "open"
+        ]
+        todos.sort(key=lambda m: (-m.importance, m.created_at))
+        return todos[:k]
+
     def _format_recall(self, queries: list[str]) -> str:
         if not queries:
             return ""
@@ -370,15 +606,34 @@ class MemoryManager:
         k = sp.top_k or self.config.retrieval.top_k
         seen: dict[str, Memory] = {}
         for q in queries:
-            for m in self.retrieval.recall(q, k=k, touch=False):
+            for m in self.retrieval.recall(q, k=k, touch=False, owner=self.role):
+                if sp.inject_open_todos == "off" and m.type is MemoryType.TODO:
+                    continue  # todos are reachable via explicit recall/search only
                 seen.setdefault(m.id, m)
-        if not seen:
+        shown = list(seen.values())[:k]
+        lines: list[str] = []
+        if shown:
+            lines.append("## Recalled memories (associative)")
+            for m in shown:
+                lines.extend(self._memory_lines(m))
+        extra: list[Memory] = []
+        if sp.inject_open_todos == "always":
+            listed = {m.id for m in shown}
+            extra = [t for t in self._open_todos(sp.open_todos_k) if t.id not in listed]
+            if extra:
+                lines.append("## Open todos")
+                for t in extra:
+                    lines.extend(self._memory_lines(t))
+        if not lines:
+            self._last_injected_ids = []
             return ""
-        lines = ["## Recalled memories (associative)"]
-        for m in list(seen.values())[:k]:
-            head = m.title or m.content
-            head = head.replace("\n", " ").strip()
-            lines.append(f"- [{m.type.value}] {head}")
+        injected = shown + extra
+        self._last_injected_ids = [m.id for m in injected]
+        if self.config.observability.log_injections:
+            # Logged WITHOUT touching: injection stays invisible to ACT-R.
+            for m in injected:
+                m.log_access(self._access("injected"), cap=self.config.observability.access_log_cap)
+                self.store.save(m)
         text = "\n".join(lines)
         if len(text) > sp.context_char_budget:
             text = text[: sp.context_char_budget].rstrip() + " …"
@@ -400,14 +655,22 @@ class MemoryManager:
         qhash = hash(tuple(queries))
         if sp.inject_cadence == "self_gated" and qhash == self._last_query_hash:
             return
+        t0 = time.perf_counter()
         text = self._format_recall(queries)
+        self.stats.injection_ms_total += (time.perf_counter() - t0) * 1000.0
         cm = self.agent.context_manager
         key = sp.context_block_key
         if text:
             cm.set_dynamic(key, value=text)
             self.stats.injections += 1
             self.stats.injected_chars += len(text)
-            self._emit(MemoryInjected(n_memories=text.count("\n- "), chars=len(text)))
+            self._emit(
+                MemoryInjected(
+                    n_memories=text.count("\n- "),
+                    chars=len(text),
+                    memory_ids=list(self._last_injected_ids),
+                )
+            )
             mem_logger.debug("memory.inject %d chars (%d memories)", len(text), text.count("\n- "))
         elif key in cm:
             del cm[key]
@@ -482,7 +745,7 @@ class MemoryManager:
         try:
             if self.config.write.write_episodic:
                 self._write_episode(ctx)
-            self.reflect()  # counts + emits + logs the consolidation
+            self.reflect(trigger="post_task")  # counts + emits + logs the consolidation
         except Exception:
             logger.warning("memory: reflection failed", exc_info=True)
         finally:
@@ -544,13 +807,21 @@ class MemoryToolsMixin:
         importance: str = "MEDIUM",
         tags: list[str] | None = None,
         title: str | None = None,
+        references: list[str] | None = None,
     ) -> str:
         """Write a NEW long-term memory you author: {content}
 
         Record durable, reusable knowledge (NOT raw transcripts), one item per call.
-        type: info | skill | episode | intent | reflection.
+        type: info | skill | episode | intent | todo | reflection.
+        A todo is a durable commitment tracked until you close it with
+        update_memory(id, status="DONE").
         importance: CRITICAL | HIGH | MEDIUM | LOW | TRIVIAL.
-        tags: salient keywords/entities for later retrieval. Returns the memory id.
+        tags: salient keywords/entities for later retrieval.
+        references: pointers to live state this memory is ABOUT, as "kind:key" —
+        var:<name> | context:<block> | file:<relative-path> | todo:<id> |
+        memory:<id>. Referenced values are re-read fresh at recall time, so
+        prefer a reference over pasting a value that may change.
+        Returns the memory id.
         """
         mem = self._tool_enabled("remember")
         return mem.remember(
@@ -559,6 +830,7 @@ class MemoryToolsMixin:
             importance=to_numeric("importance", importance),
             tags=tags,
             title=title,
+            references=references,
         )
 
     def update_memory(
@@ -569,10 +841,15 @@ class MemoryToolsMixin:
         importance: str | None = None,
         type: str | None = None,
         tags: list[str] | None = None,
+        status: str | None = None,
+        references: list[str] | None = None,
     ) -> bool:
         """Refine one of your existing memories {memory_id} (correct or sharpen it).
 
-        Pass only the fields to change. importance: CRITICAL | HIGH | MEDIUM | LOW | TRIVIAL.
+        Pass only the fields to change; {memory_id} may be the 8-char prefix shown
+        in recalled lines. importance: CRITICAL | HIGH | MEDIUM | LOW | TRIVIAL.
+        status (todo memories only): OPEN | DONE | DROPPED — close a todo with "DONE".
+        references: replaces the memory's "kind:key" pointers when given.
         Returns True if the memory was found.
         """
         mem = self._tool_enabled("update_memory")
@@ -582,6 +859,8 @@ class MemoryToolsMixin:
             importance=to_numeric("importance", importance) if importance is not None else None,
             type=self._as_type(type) if type else None,
             tags=tags,
+            status=status,
+            references=references,
         )
 
     def forget(self, memory_id: str) -> bool:
@@ -589,18 +868,41 @@ class MemoryToolsMixin:
         mem = self._tool_enabled("forget")
         return mem.forget(memory_id)
 
-    def recall(self, query: str, k: int = 5) -> list[Memory]:
-        """Recall memories associatively related to {query} (similarity + graph)."""
-        mem = self._tool_enabled("recall")
-        return mem.recall(query, k=k)
+    def recall(self, query: str, k: int = 5, owner: str | None = None) -> list[Memory]:
+        """Recall memories associatively related to {query} (similarity + graph).
 
-    def search(self, query: str, k: int = 5) -> list[Memory]:
-        """Search memories by keyword/term for {query} (deliberate recall)."""
+        owner: None = your own memories (+ shared); "*" = every agent sharing
+        this store; "<name>" = that specific agent's (read-only).
+        """
+        mem = self._tool_enabled("recall")
+        return mem.recall(query, k=k, owner=owner)
+
+    def search(self, query: str, k: int = 5, owner: str | None = None) -> list[Memory]:
+        """Term-focused recall for {query}: dense + keyword retrieval, graph spread disabled.
+
+        owner: None = your own memories (+ shared); "*" = every agent sharing
+        this store; "<name>" = that specific agent's (read-only).
+        """
         mem = self._tool_enabled("search")
         # term-focused recall: 0 hops, keyword + dense, no graph spread
-        return mem.recall(query, k=k, hops=0)
+        return mem.recall(query, k=k, hops=0, owner=owner, channel="searched")
+
+    def deref(self, ref: str) -> str:
+        """Read the CURRENT value behind a reference {ref} ("kind:key").
+
+        Kinds: var:<name> | context:<block> | file:<relative-path> | todo:<id>
+        | memory:<id>. Returns the live value, or the write-time snapshot
+        marked DANGLING when the target no longer resolves.
+        """
+        mem = self._tool_enabled("deref")
+        return mem.deref(ref)
 
     def associate(self, a_id: str, b_id: str, relation: str = "related") -> None:
-        """Link memory {a_id} to {b_id} with a directed {relation} edge."""
+        """Link memory {a_id} to {b_id} with a directed {relation} edge.
+
+        relation: related | supports | contradicts | refines | derived_from |
+        created_by | causes | precedes | part_of | triggers (unknown -> error).
+        Ids may be the 8-char prefixes shown in recalled memory lines.
+        """
         mem = self._tool_enabled("associate")
         mem.associate(a_id, b_id, relation)

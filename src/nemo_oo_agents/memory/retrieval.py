@@ -22,7 +22,14 @@ import numpy as np
 
 from nemo_oo_agents.memory.config import RetrievalConfig
 from nemo_oo_agents.memory.embeddings import _TOKEN_RE, Embedder
-from nemo_oo_agents.memory.schema import CAUSAL_EDGE_TYPES, Memory, _now
+from nemo_oo_agents.memory.schema import (
+    ACTR_CHANNELS,
+    CAUSAL_EDGE_TYPES,
+    AccessRecord,
+    Memory,
+    _now,
+    owner_matches,
+)
 from nemo_oo_agents.memory.store import MemoryStore
 
 
@@ -33,11 +40,17 @@ def _sigmoid(x: float) -> float:
     return z / (1.0 + z)
 
 
-def base_level_activation(access_log: list[float], now: float, d: float) -> float:
-    """ACT-R base-level: ln( sum_k (now - t_k)^-d ). Higher = more recent/frequent."""
+def base_level_activation(access_log: list[AccessRecord], now: float, d: float) -> float:
+    """ACT-R base-level: ln( sum_k (now - t_k)^-d ). Higher = more recent/frequent.
+
+    Only ACT-R channels contribute — an ``injected`` entry is observability
+    data, not reinforcement (spontaneous injection must not self-strengthen).
+    """
     total = 0.0
-    for t in access_log:
-        dt = max(now - t, 1.0)  # epsilon = 1s, avoids div-by-zero / future stamps
+    for entry in access_log:
+        if entry.channel not in ACTR_CHANNELS:
+            continue
+        dt = max(now - entry.ts, 1.0)  # epsilon = 1s, avoids div-by-zero / future stamps
         total += dt ** (-d)
     if total <= 0.0:
         return -10.0
@@ -63,37 +76,47 @@ def _jaccard(a: set[str], b: set[str]) -> float:
 class RetrievalEngine:
     """Recalls memories from a store given a text query."""
 
-    def __init__(self, store: MemoryStore, embedder: Embedder, config: RetrievalConfig) -> None:
+    def __init__(
+        self,
+        store: MemoryStore,
+        embedder: Embedder,
+        config: RetrievalConfig,
+        *,
+        access_log_cap: int = 64,
+    ) -> None:
         self.store = store
         self.embedder = embedder
         self.config = config
+        self.access_log_cap = access_log_cap
 
-    def recall(
+    def _pipeline(
         self,
         query: str,
         *,
-        k: int | None = None,
-        hops: int | None = None,
-        query_cues: set[str] | None = None,
-        touch: bool = True,
-    ) -> list[Memory]:
+        hops: int,
+        owner: str | None,
+        query_cues: set[str] | None,
+    ) -> tuple[list[tuple[str, float]], dict[str, Memory], dict[str, dict]]:
+        """Shared scoring pipeline: ranked (id, score), memories, per-id diagnostics."""
         cfg = self.config
-        k = cfg.top_k if k is None else k
-        hops = cfg.hops if hops is None else hops
         if self.store.count() == 0 or not query.strip():
-            return []
+            return [], {}, {}
 
         qvec = self.embedder.embed(query)
 
         # ---- stage 1: hybrid candidate pool (dense ∪ sparse) ----
-        dense = self.store.knn(qvec, cfg.n_dense)
+        dense = self.store.knn(qvec, cfg.n_dense, owner=owner)
         cos: dict[str, float] = {mid: c for mid, c in dense if c >= cfg.min_similarity}
-        for mid in self.store.keyword_search(query, cfg.n_sparse):
-            if mid not in cos:
+        source: dict[str, str] = dict.fromkeys(cos, "dense")
+        for mid in self.store.keyword_search(query, cfg.n_sparse, owner=owner):
+            if mid in cos:
+                source[mid] = "both"
+            else:
                 emb = self.store.get_embedding(mid)
                 cos[mid] = float(np.dot(emb, qvec)) if emb is not None else 0.0
+                source[mid] = "sparse"
         if not cos:
-            return []
+            return [], {}, {}
 
         memories = {mid: self.store.get(mid) for mid in cos}
         memories = {mid: m for mid, m in memories.items() if m is not None}
@@ -119,8 +142,9 @@ class RetrievalEngine:
 
         # ---- stage 3: associative spread over the graph ----
         activation = dict(s_base)
+        spread: dict[str, float] = {}
         if hops >= 1:
-            spread = self._spread(s_base, hops)
+            spread = self._spread(s_base, hops, owner=owner)
             for mid, extra in spread.items():
                 if mid not in memories:
                     m = self.store.get(mid)
@@ -129,21 +153,117 @@ class RetrievalEngine:
                     memories[mid] = m
                 activation[mid] = activation.get(mid, 0.0) + w.spread_gamma * extra
 
+        diagnostics = {
+            mid: {
+                "source": source.get(mid, "spread"),
+                "cos": round(cos.get(mid, 0.0), 4),
+                "rel": round(rel_n.get(mid, 0.0), 4),
+                "rec": round(rec_n.get(mid, 0.0), 4),
+                "imp": round(imp_n.get(mid, 0.0), 4),
+                "spread": round(w.spread_gamma * spread.get(mid, 0.0), 4),
+            }
+            for mid in memories
+        }
         ranked = sorted(activation.items(), key=lambda kv: kv[1], reverse=True)
+        return ranked, memories, diagnostics
+
+    def recall(
+        self,
+        query: str,
+        *,
+        k: int | None = None,
+        hops: int | None = None,
+        query_cues: set[str] | None = None,
+        touch: bool = True,
+        owner: str | None = None,
+        access: AccessRecord | None = None,
+    ) -> list[Memory]:
+        cfg = self.config
+        k = cfg.top_k if k is None else k
+        hops = cfg.hops if hops is None else hops
+        ranked, memories, diagnostics = self._pipeline(
+            query, hops=hops, owner=owner, query_cues=query_cues
+        )
+        now = _now()
+        template = access or AccessRecord(ts=now, channel="recalled")
         result: list[Memory] = []
-        for mid, _score in ranked[:k]:
+        for rank, (mid, score) in enumerate(ranked[:k]):
             m = memories.get(mid) or self.store.get(mid)
             if m is None:
                 continue
             if touch:
-                m.touch(when=now)
+                m.log_access(
+                    template.model_copy(
+                        update={
+                            "ts": now,
+                            "query": query[:200],
+                            "score": round(score, 4),
+                            "rank": rank,
+                            "components": diagnostics.get(mid),
+                        }
+                    ),
+                    cap=self.access_log_cap,
+                )
                 self.store.save(m)
             result.append(m)
         return result
 
-    def _spread(self, seed_activation: dict[str, float], hops: int) -> dict[str, float]:
-        """Propagate activation outward over edges, decaying ``per_hop_decay`` per hop."""
+    def explain(
+        self,
+        query: str,
+        *,
+        k: int = 10,
+        hops: int | None = None,
+        owner: str | None = None,
+    ) -> list[dict]:
+        """Dry-run recall: the scored candidate table, no touch, no logging.
+
+        Answers "why was/wasn't memory X recalled for this query" — the tool
+        for tuning ScoringWeights/RetrievalConfig.
+        """
+        hops = self.config.hops if hops is None else hops
+        ranked, memories, diagnostics = self._pipeline(
+            query, hops=hops, owner=owner, query_cues=None
+        )
+        rows: list[dict] = []
+        for rank, (mid, score) in enumerate(ranked[:k]):
+            m = memories.get(mid)
+            if m is None:
+                continue
+            head = (m.title or m.content).replace("\n", " ").strip()
+            rows.append(
+                {
+                    "rank": rank,
+                    "id": mid,
+                    "score": round(score, 4),
+                    **diagnostics[mid],
+                    "type": m.type.value,
+                    "owner": m.owner,
+                    "head": head[:120],
+                }
+            )
+        return rows
+
+    def _spread(
+        self, seed_activation: dict[str, float], hops: int, *, owner: str | None = None
+    ) -> dict[str, float]:
+        """Propagate activation outward over edges, decaying ``per_hop_decay`` per hop.
+
+        With ``owner``, spread is confined to visible memories (that owner +
+        unowned): an edge must not leak — or amplify through — another agent's
+        memory in an owner-scoped recall.
+        """
         cfg = self.config
+        visible_cache: dict[str, bool] = {}
+
+        def _visible(mid: str) -> bool:
+            if owner is None:
+                return True
+            if mid not in visible_cache:
+                mem_owner = self.store.owner_of(mid)
+                visible_cache[mid] = mem_owner is not None and owner_matches(mem_owner, owner)
+            return visible_cache[mid]
+
         spread: dict[str, float] = {}
         frontier = dict(seed_activation)
         for h in range(1, hops + 1):
@@ -153,6 +273,8 @@ class RetrievalEngine:
                 edges = self.store.neighbors(node)
                 edges.sort(key=lambda e: e.weight, reverse=True)
                 for e in edges[: cfg.per_hop_fanout]:
+                    if not _visible(e.target_id):
+                        continue
                     type_w = 1.0 if e.type in CAUSAL_EDGE_TYPES else 0.6
                     contrib = decay * act * e.weight * type_w
                     if contrib < cfg.activation_floor:

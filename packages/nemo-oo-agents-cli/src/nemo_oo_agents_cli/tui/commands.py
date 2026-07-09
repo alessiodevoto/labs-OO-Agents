@@ -1101,12 +1101,12 @@ class PythonCommand(Command):
 # ---------------------------------------------------------------------------
 
 
-def _set_agent_memory_config(agent: "Agent | None", value: str) -> Path:
-    """Persist per-agent memory preference to settings.yaml, not globally.
+def _set_agent_settings_preference(agent: "Agent | None", field: str, value: object) -> Path:
+    """Persist a per-agent preference under ``tui.<field>`` in settings.yaml.
 
-    Writes ``tui.memory_agents.<key>`` through the same settings.yaml writer
-    the rest of the TUI uses, so the preference survives the restart the
-    command prompts for. (``bootstrap.resolve_tui_memory_scope`` reads it back.)
+    Writes through the same settings.yaml writer the rest of the TUI uses, so
+    the preference survives restarts. (``bootstrap.resolve_tui_memory_scope`` /
+    ``resolve_tui_reflection`` read it back.)
     """
     from .settings import write_settings_updates
 
@@ -1115,8 +1115,13 @@ def _set_agent_memory_config(agent: "Agent | None", value: str) -> Path:
         key = f"{type(agent).__module__}:{type(agent).__qualname__}"
     if key is None:
         key = "default"
-    path, _data = write_settings_updates({("tui", "memory_agents", key): value})
+    path, _data = write_settings_updates({("tui", field, key): value})
     return path
+
+
+def _set_agent_memory_config(agent: "Agent | None", value: str) -> Path:
+    """Persist per-agent memory preference to settings.yaml, not globally."""
+    return _set_agent_settings_preference(agent, "memory_agents", value)
 
 
 class GoalModeCommand(Command):
@@ -1241,29 +1246,49 @@ class KeepGoingCommand(Command):
         return model or None
 
 
+# /memory mode word <-> internal scope literal (config.toml keeps the literals).
+_MEMORY_MODES = {"on": "project", "local": "session", "off": "off"}
+_SCOPE_LABELS = {
+    "project": "on (shared across sessions, project-wide)",
+    "session": "local (this session only)",
+    "off": "off",
+}
+
+
 class MemoryCommand(Command):
-    """Toggle session-scoped long-term memory for the current agent."""
+    """Toggle long-term memory for the current agent (on = project-wide, local = per-session)."""
 
     @property
     def name(self) -> str:
         return "memory"
 
     def help_text(self) -> dict[str, str]:  # type: ignore[override]
-        state = "on" if getattr(self.config, "memory", "off") == "session" else "off"
-        return {"/memory [on|off]": f"Toggle session memory for this agent (currently {state})"}
+        scope = getattr(self.config, "memory", "off")
+        label = _SCOPE_LABELS.get(scope, scope)
+        return {
+            "/memory [on|local|off]": (
+                f"Long-term memory: on = shared project store, local = this session "
+                f"(currently {label})"
+            )
+        }
 
     def validate_args(self, args: list[str]) -> tuple[bool, str | None]:
-        if args and args[0].lower() not in ("on", "off", "status"):
-            return False, f"Unknown argument `{args[0]}`. Use on or off."
+        if args and args[0].lower() not in (*_MEMORY_MODES, "status"):
+            return False, f"Unknown argument `{args[0]}`. Use on, local, or off."
         return True, None
 
     async def execute(self, args: list[str]) -> "CommandResult":
         if not args or args[0].lower() == "status":
-            state = "on" if getattr(self.config, "memory", "off") == "session" else "off"
-            return CommandResult.ok(TextOutput(f"Memory: {state}", "info"))
+            scope = getattr(self.config, "memory", "off")
+            line = f"Memory: {_SCOPE_LABELS.get(scope, scope)}"
+            skill = getattr(self.agent, "memory", None)  # host-optional surface
+            mgr = getattr(skill, "_mgr", None) if skill is not None else None
+            if mgr is not None:
+                line += f" — you are {mgr.owner} · store: {mgr.store.path}"
+            return CommandResult.ok(TextOutput(line, "info"))
 
         subcmd = args[0].lower()
-        scope = "session" if subcmd == "on" else "off"
+        scope = _MEMORY_MODES[subcmd]
         self.config.memory = scope
         key = getattr(self.agent, "_tui_memory_key", None)
         if key is None:
@@ -1296,9 +1321,124 @@ class MemoryCommand(Command):
         except Exception as exc:
             return CommandResult.err(f"Failed to configure memory: {exc}")
 
-        if scope == "session":
-            return CommandResult.ok(TextOutput("Session memory enabled for this agent.", "success"))
-        return CommandResult.ok(TextOutput("Memory disabled for this agent.", "success"))
+        if scope == "off":
+            return CommandResult.ok(TextOutput("Memory disabled for this agent.", "success"))
+        return CommandResult.ok(
+            TextOutput(f"Memory {_SCOPE_LABELS[scope]} enabled for this agent.", "success")
+        )
+
+
+class ReflectionCommand(Command):
+    """Toggle idle reflection: consolidate memory while the user isn't looking."""
+
+    required_capabilities: ClassVar[frozenset[str]] = frozenset({"memory"})
+
+    @property
+    def name(self) -> str:
+        return "reflection"
+
+    def help_text(self) -> dict[str, str]:  # type: ignore[override]
+        state = "on" if self._enabled() else "off"
+        return {
+            "/reflection [on|off|now]": (
+                f"Idle memory reflection (currently {state}); now = run immediately"
+            )
+        }
+
+    def validate_args(self, args: list[str]) -> tuple[bool, str | None]:
+        if args and args[0].lower() not in ("on", "off", "status", "now"):
+            return False, f"Unknown argument `{args[0]}`. Use on, off, or now."
+        return True, None
+
+    def _agent_key(self) -> str:
+        key = getattr(self.agent, "_tui_memory_key", None)
+        if key is None:
+            key = f"{type(self.agent).__module__}:{type(self.agent).__qualname__}"
+        return key
+
+    def _enabled(self) -> bool:
+        return bool(self.config.reflection_agents.get(self._agent_key(), self.config.reflection))
+
+    def _runner(self):
+        # Host-optional surface: present whenever TUI memory is configured.
+        return getattr(self.agent, "_tui_reflection_runner", None)
+
+    def _status_output(self) -> "TextOutput":
+        state = "on" if self._enabled() else "off"
+        runner = self._runner()
+        if runner is None:
+            return TextOutput(f"Idle reflection: {state} (memory is not attached)", "info")
+        line = f"Idle reflection: {state} | dirty: {runner.dirty}"
+        report = runner.last_report
+        if report is not None:
+            stopped = f"interrupted @ {report.stopped_in}, " if report.interrupted else ""
+            line += (
+                f" | last: merged {report.merged}, +{report.edges_added} edges, "
+                f"rescored {report.rescored}, pruned {report.pruned}, "
+                f"created {report.created} ({stopped}{report.duration_ms / 1000:.1f}s)"
+            )
+        return TextOutput(line, "info")
+
+    async def execute(self, args: list[str]) -> "CommandResult":
+        if not args or args[0].lower() == "status":
+            return CommandResult.ok(self._status_output())
+
+        if args[0].lower() == "now":
+            runner = self._runner()
+            if runner is None:
+                return CommandResult.err("Memory is not attached (see /memory).")
+            # run_now schedules on the agent loop (same home as on_response_done).
+            started = await self.agent_run_async(runner.run_now)
+            if not started:
+                return CommandResult.ok(TextOutput("A reflection run is already pending.", "info"))
+            return CommandResult.ok(
+                TextOutput(
+                    "Reflection started — watch the indicator; /reflection shows the report.",
+                    "success",
+                )
+            )
+
+        enabled = args[0].lower() == "on"
+        self.config.reflection = enabled
+        self.config.reflection_agents[self._agent_key()] = enabled
+        # Persist the real bool: reflection_agents is dict[str, bool] and the
+        # settings loader round-trips YAML values as-is ("off" would be truthy).
+        _set_agent_settings_preference(self.agent, "reflection_agents", enabled)
+
+        # /reflection off also cancels a run in progress — before the rebuild
+        # below tears the runner down, so the executor stops within one item.
+        runner = self._runner()
+        if runner is not None and not enabled:
+            await self.agent_run_async(runner.interrupt)
+
+        def _configure():
+            from .bootstrap import configure_tui_memory
+
+            root_config = getattr(self._registry, "_root_config", None)
+            if root_config is None:
+                root_config = type("_RootConfig", (), {"tui": self.config})()
+            session_manager = self.session_manager or getattr(
+                self._registry, "session_manager", None
+            )
+            if session_manager is None:
+                configure_tui_memory(self.agent, root_config, agent_db=None, session_id=None)
+            else:
+                configure_tui_memory(
+                    self.agent,
+                    root_config,
+                    agent_db=session_manager.agent_db_path,
+                    session_id=session_manager.session_id,
+                )
+
+        # Reinstall memory so the manager policy remaps (trigger="manual" while
+        # idle mode is on) and a fresh runner starts listening.
+        try:
+            self.agent_run(_configure)
+        except Exception as exc:
+            return CommandResult.err(f"Failed to configure reflection: {exc}")
+
+        state = "enabled" if enabled else "disabled"
+        return CommandResult.ok(TextOutput(f"Idle reflection {state} for this agent.", "success"))
 
 
 class ToolbarCommand(Command):
@@ -1768,6 +1908,40 @@ class JobsCommand(Command):
                 return CommandResult.err(f"Job explorer failed: {exc}")
             return CommandResult.ok(TextOutput("Job explorer closed.", "status"))
         return CommandResult.err("The job explorer requires the terminal TUI.")
+
+
+# ---------------------------------------------------------------------------
+# Memories command
+# ---------------------------------------------------------------------------
+
+
+class MemoriesCommand(Command):
+    """Open the memory explorer."""
+
+    required_capabilities: ClassVar[frozenset[str]] = frozenset({"memory"})
+
+    @property
+    def name(self) -> str:
+        return "memories"
+
+    @classmethod
+    def help_text(cls) -> dict[str, str]:
+        return {"/memories": "Open the memory explorer"}
+
+    def validate_args(self, args: list[str]) -> tuple[bool, str | None]:
+        if args:
+            return False, "Usage: /memories"
+        return True, None
+
+    async def execute(self, args: list[str]) -> "CommandResult":
+        open_explorer = getattr(self.frontend, "open_memory_explorer", None)
+        if callable(open_explorer):
+            try:
+                await open_explorer()
+            except Exception as exc:
+                return CommandResult.err(f"Memory explorer failed: {exc}")
+            return CommandResult.ok(TextOutput("Memory explorer closed.", "status"))
+        return CommandResult.err("The memory explorer requires the terminal TUI.")
 
 
 # ---------------------------------------------------------------------------
@@ -2515,6 +2689,8 @@ class CommandRegistry:
         "goal-mode": GoalModeCommand,
         "keep-going": KeepGoingCommand,
         "memory": MemoryCommand,
+        "memories": MemoriesCommand,
+        "reflection": ReflectionCommand,
         "session": SessionCommand,
         "jobs": JobsCommand,
         "show-last-python": ShowLastPythonCommand,

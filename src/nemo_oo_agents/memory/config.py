@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 class ScoringWeights(BaseModel, frozen=True):
@@ -50,6 +50,12 @@ class SpontaneousConfig(BaseModel, frozen=True):
     context_block_key: str = "recalled_memories"
     context_char_budget: int = 2000  # hard cap on the injected block string
     top_k: int = 5  # memories to inject (defaults to retrieval.top_k if 0)
+    # Open-todo surfacing: "relevant" = todos behave like ordinary memories
+    # (surface only on query similarity); "always" = additionally inject up to
+    # open_todos_k open todos every task (true prospective memory); "off" =
+    # never in the spontaneous block (explicit recall/search only).
+    inject_open_todos: Literal["always", "relevant", "off"] = "relevant"
+    open_todos_k: int = 5  # cap on the "always" open-todo section
 
 
 class EmbeddingConfig(BaseModel, frozen=True):
@@ -112,6 +118,9 @@ class ReflectionPolicy(BaseModel, frozen=True):
     # reconciler resolve outdated/contradicted values (keep the current one).
     recon_threshold: float = 0.6
     recon_max_cluster: int = 6
+    # LLM-cost ceiling: reconciler calls per run (leftover clusters wait for
+    # the next idle window — dirt-driven convergence instead of one big bill).
+    max_clusters_per_reflection: int = 10
 
 
 class ForgetPolicy(BaseModel, frozen=True):
@@ -126,11 +135,39 @@ class ForgetPolicy(BaseModel, frozen=True):
     protected_types: tuple[str, ...] = ("skill",)  # never auto-forgotten
 
 
+class ObservabilityConfig(BaseModel, frozen=True):
+    """Self-contained usage tracking on the records themselves."""
+
+    access_log_cap: int = 64  # structured-access ring size per memory
+    log_injections: bool = True  # record 'injected' accesses (saves shown rows per turn)
+
+
 class MemoryConfig(BaseModel, frozen=True):
     """Top-level memory configuration."""
 
     enabled: bool = False  # master on/off (additive guarantee when False)
     path: str | None = None  # SQLite file; None -> project memory dir
+    # Writer identity for shared stores: hierarchical ``role[@instance]``
+    # (e.g. "TUIAgent@04aaac87"). None -> the agent's class name; "" -> write
+    # to the unowned/shared namespace (visible to every owner).
+    owner: str | None = None
+
+    @field_validator("owner")
+    @classmethod
+    def _validate_owner(cls, value: str | None) -> str | None:
+        if not value:
+            return value
+        role, _sep, instance = value.partition("@")
+        if not role:
+            raise ValueError(f"owner {value!r} must start with a role name")
+        for part, label in ((role, "role"), (instance, "instance")):
+            if any(ch in part for ch in "@%_"):
+                raise ValueError(
+                    f"owner {label} {part!r} must not contain '@', '%', or '_' "
+                    "(hierarchical owner is role[@instance])"
+                )
+        return value
+
     tools: tuple[str, ...] = (
         "recall",
         "search",
@@ -138,10 +175,15 @@ class MemoryConfig(BaseModel, frozen=True):
         "update_memory",
         "forget",
         "associate",
+        "deref",
     )
     # Inject the schema + "you own and curate your memory" instruction into the
     # agent's context (the core difference: the AGENT authors its memories).
     instruct: bool = True
+    # How the agent reaches the tools in ITS namespace: "self." for the
+    # MemoryToolsMixin install, "self.memory." when mounted as the skill.
+    # Rendered into the injected guide so it never documents a missing method.
+    api_prefix: str = "self."
     instruct_block_key: str = "memory_system"
     chunk_size: int = 512
     chunk_overlap: int = 64
@@ -153,6 +195,7 @@ class MemoryConfig(BaseModel, frozen=True):
     write: WritePolicy = WritePolicy()
     reflection: ReflectionPolicy = ReflectionPolicy()
     forget: ForgetPolicy = ForgetPolicy()
+    observability: ObservabilityConfig = ObservabilityConfig()
 
     def merge_with(self, **overrides: object) -> MemoryConfig:
         """Return a copy with top-level fields overridden."""
