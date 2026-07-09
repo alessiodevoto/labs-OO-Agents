@@ -10,6 +10,7 @@ Usage:
     nemo-oo traces stats                           # Show trace file statistics
 """
 
+import os
 import re
 import sys
 from datetime import datetime, timedelta
@@ -38,52 +39,33 @@ EXCLUDE_DIRS = {
 # ---------------------------------------------------------------------------
 
 
-def _discover_trace_dirs(root: Path) -> list[Path]:
-    """Discover directories containing trace files."""
-    trace_dirs: set[Path] = set()
+def _discover_trace_dirs(root: Path | None = None) -> list[Path]:
+    """Discover configured file-backed trace directories without a recursive scan.
 
-    # Well-known locations
-    well_known = [
-        root / "traces",
-        root / "util" / "e2e_optimization" / "traces",
-        root / "util" / "prompt-optimization" / "traces",
+    The live trace viewer stores spans in SQLite via OTLP/Journal ingestion; JSONL
+    trace files are an explicit fallback/export path.  Keep this helper bounded to
+    locations NeMo OO itself can write: the project trace dir used by TUI
+    ``--trace``, the legacy ``./traces`` convention at the project root, and an
+    explicit ``TRACE_DIR`` override when present.
+    """
+    project_root = root.resolve() if root is not None else find_project_root().resolve()
+    candidates = [
+        _project_trace_dir(project_root),
+        project_root / "traces",
     ]
-    for d in well_known:
-        if d.exists():
-            trace_dirs.add(d)
 
-    # agents/*/traces/
-    agents_dir = root / "agents"
-    if agents_dir.exists():
-        for agent_dir in agents_dir.iterdir():
-            traces_dir = agent_dir / "traces"
-            if traces_dir.exists():
-                trace_dirs.add(traces_dir)
+    env_trace_dir = os.getenv("TRACE_DIR")
+    if env_trace_dir:
+        env_path = Path(env_trace_dir).expanduser()
+        candidates.append(env_path if env_path.is_absolute() else Path.cwd() / env_path)
 
-    # experiments/**/traces/
-    experiments_dir = root / "experiments"
-    if experiments_dir.exists():
-        for traces_dir in _walk_for(experiments_dir, "traces"):
-            trace_dirs.add(traces_dir)
-
-    return sorted(trace_dirs)
+    return sorted({path.resolve() for path in candidates if path.is_dir()})
 
 
-def _walk_for(root: Path, dirname: str) -> list[Path]:
-    """Walk directory tree looking for dirs named `dirname`, skipping excluded dirs."""
-    results: list[Path] = []
-    try:
-        for entry in root.iterdir():
-            if entry.is_dir():
-                if entry.name in EXCLUDE_DIRS:
-                    continue
-                if entry.name == dirname:
-                    results.append(entry)
-                else:
-                    results.extend(_walk_for(entry, dirname))
-    except PermissionError:
-        pass
-    return results
+def _project_trace_dir(root: Path | None = None) -> Path:
+    """Return the project-local JSONL trace directory used by TUI ``--trace``."""
+    project_root = root.resolve() if root is not None else find_project_root().resolve()
+    return project_root / ".nemo_oo" / "traces"
 
 
 def _find_trace_files(root: Path) -> list[Path]:
@@ -262,7 +244,7 @@ def list_dirs(root: str | None):
         nemo-oo traces list
         nemo-oo traces list --root /path/to/project
     """
-    project_root = Path(root) if root else find_project_root()
+    project_root = (Path(root) if root else find_project_root()).resolve()
     dirs = _discover_trace_dirs(project_root)
 
     if not dirs:
@@ -300,7 +282,7 @@ def stats(directory: str):
     \b
     Examples:
         nemo-oo traces stats
-        nemo-oo traces stats ./experiments
+        nemo-oo traces stats ./traces
     """
     root = Path(directory).resolve()
     trace_files = _find_trace_files(root)
