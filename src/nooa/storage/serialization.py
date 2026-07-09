@@ -59,6 +59,9 @@ _DATACLASS = "dataclass"
 _DICT_CLASS = "dict_class"
 _TUPLE = "tuple"
 _ENVELOPE_TYPES = frozenset({_PYDANTIC, _DATACLASS, _DICT_CLASS, _TUPLE})
+_LEGACY_CLASS_PREFIXES = {
+    "nemo_oo_agents.": "nooa.",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -280,16 +283,22 @@ def _import_class(fqn: str) -> type:
     Raises:
         DeserializationError: If the module or class cannot be found.
     """
-    parts = fqn.split(".")
-    if len(parts) < 2:
-        raise DeserializationError(f"Invalid fully qualified name: {fqn!r}")
-    for i in range(len(parts) - 1, 0, -1):
-        module_path = ".".join(parts[:i])
-        try:
-            obj = importlib.import_module(module_path)
-            for attr in parts[i:]:
-                obj = getattr(obj, attr)
-            return obj  # type: ignore[return-value]
-        except (ImportError, AttributeError):
-            continue
+    candidates = [fqn]
+    for old_prefix, new_prefix in _LEGACY_CLASS_PREFIXES.items():
+        if fqn.startswith(old_prefix):
+            candidates.append(new_prefix + fqn.removeprefix(old_prefix))
+
+    for candidate in candidates:
+        parts = candidate.split(".")
+        if len(parts) < 2:
+            raise DeserializationError(f"Invalid fully qualified name: {fqn!r}")
+        for i in range(len(parts) - 1, 0, -1):
+            module_path = ".".join(parts[:i])
+            try:
+                obj = importlib.import_module(module_path)
+                for attr in parts[i:]:
+                    obj = getattr(obj, attr)
+                return obj  # type: ignore[return-value]
+            except (ImportError, AttributeError):
+                continue
     raise DeserializationError(f"Cannot import class {fqn!r}: module or attribute not found")
