@@ -190,8 +190,8 @@ class TestPurePythonIntegration:
         assert fake_llm.call_count == 2
 
     @pytest.mark.asyncio
-    async def test_reasoning_and_message_builtins(self):
-        """Test that reasoning() and message() builtins work correctly."""
+    async def test_message_builtin(self):
+        """Test that the message() builtin works correctly."""
 
         class TestAgent(Agent, llm=_TEST_LLM):
             def __init__(self, **kwargs):
@@ -202,12 +202,10 @@ class TestPurePythonIntegration:
                 """Greet the user by name."""
                 ...
 
-        # Response uses reasoning() and message() builtins
+        # Response uses the message() builtin
         fake_llm = FakeLLMClient(
             scripted_responses=[
-                _resp(
-                    'reasoning("I need to greet the user politely")\nmessage("Generating greeting...")\nreturn f"Hello, {name}!"'
-                ),
+                _resp('message("Generating greeting...")\nreturn f"Hello, {name}!"'),
             ]
         )
 

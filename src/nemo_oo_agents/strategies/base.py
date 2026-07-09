@@ -97,7 +97,7 @@ class RuntimeServices(Protocol):
 
         Args:
             code: Python code to execute.
-            builtins: Strategy-provided functions (reasoning, message, etc.)
+            builtins: Strategy-provided functions (return_result, message, etc.)
             validate: Run planning language validation first.
             wrap_in_function: Wrap code in an async function for proper await support.
             timeout: Max seconds before aborting execution (None = no limit).

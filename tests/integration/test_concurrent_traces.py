@@ -29,7 +29,7 @@ class FakeLLM:
     """Fake LLM that returns a proper execute_python tool call.
 
     Text-only responses (content=..., tool_calls=None) are converted by
-    CodeActStrategy into synthetic reasoning() calls — they never execute
+    CodeActStrategy into synthetic comment calls — they never execute
     code. To actually terminate the CodeAct loop we must return a real
     LLMResponse with finish_reason="tool_calls" and an execute_python tool
     call whose body calls return_result().

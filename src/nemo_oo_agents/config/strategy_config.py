@@ -4,7 +4,7 @@
 
 from typing import TYPE_CHECKING, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from nemo_oo_agents.runtime.restrictions import RestrictionsConfig
 
@@ -42,10 +42,19 @@ class CodeActConfig(BaseModel):
     #   return type matches, the session terminates cleanly. If not, the LLM gets
     #   an actionable validation error to self-correct. (Recommended — breaks
     #   loops faster and often terminates successfully.)
-    # - "synthetic_reasoning": Convert to execute_python(reasoning(content)) — a
-    #   no-op synthetic call that preserves the text in traces. The LLM sees
-    #   "status: complete" and must still call return_result() explicitly.
-    text_only_stop_behavior: Literal["return_result", "synthetic_reasoning"] = "return_result"
+    # - "synthetic_comment": Convert to an execute_python call whose code is the
+    #   text as a `#` comment — a no-op synthetic call that preserves the text
+    #   in traces. The LLM sees "status: complete" and must still call
+    #   return_result() explicitly.
+    text_only_stop_behavior: Literal["return_result", "synthetic_comment"] = "return_result"
+
+    @field_validator("text_only_stop_behavior", mode="before")
+    @classmethod
+    def _migrate_synthetic_reasoning(cls, v: str) -> str:
+        if v == "synthetic_reasoning":
+            return "synthetic_comment"
+        return v
+
     cell_timeout: float | None = None
     max_tokens: int | None = None
     temperature: float | None = None

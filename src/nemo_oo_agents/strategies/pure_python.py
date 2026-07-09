@@ -35,7 +35,6 @@ from nemo_oo_agents.events import (
     Feedback,
     Message,
     PythonOutput,
-    Reasoning,
     Task,
 )
 from nemo_oo_agents.runtime.harness_metrics import get_harness_metrics
@@ -194,7 +193,6 @@ class PurePythonStrategy(CompositeStrategy):
         ```
 
         **Available**:
-        - `reasoning("...")` — your thinking (not shown to the user)
         - `message("...")` — message to the user
         - `print(...)` / `pprint(obj, ...)` — debug output returned to you next turn
         - `self` — the agent
@@ -561,9 +559,9 @@ class PurePythonStrategy(CompositeStrategy):
         """Generate code from the LLM.
 
         Returns:
-            (code, event_id): code ready for execution (with reasoning calls, without
-            fences/XML), and the event_id of the LLMOutput event so the caller can
-            remove it if empty (some APIs reject empty assistant messages).
+            (code, event_id): code ready for execution (without fences/XML),
+            and the event_id of the LLMOutput event so the caller can remove
+            it if empty (some APIs reject empty assistant messages).
         """
         logger.debug(
             f"[PURE_PYTHON] Loop iteration: iter={session.iteration}/{session.max_iterations}, "
@@ -592,21 +590,20 @@ class PurePythonStrategy(CompositeStrategy):
             runtime.event_manager.add(Error(content=f"**Format Error**: {e}"))
             raise
 
-        # Then strip reasoning calls for event storage
-        clean_code = self._strip_reasoning_calls(code)
-
-        # Store clean code in events so LLM learns to output plain Python
-        runtime.event_manager.update(event_id, content=clean_code)
+        # Store the unwrapped code in events so LLM learns to output plain Python.
+        # Note: legacy reasoning() calls are NOT rewritten — the builtin was
+        # removed, so they raise NameError and the model corrects itself from
+        # the error feedback.
+        runtime.event_manager.update(event_id, content=code)
 
         # Debug breadcrumbs: we keep these fairly high-signal so log output stays useful.
         logger.debug(
-            "[PURE_PYTHON] Generated code (raw_len=%s, clean_len=%s): %s",
+            "[PURE_PYTHON] Generated code (raw_len=%s, code_len=%s): %s",
             len(raw_code),
-            len(clean_code),
-            (clean_code[:200] + ("..." if len(clean_code) > 200 else "")),
+            len(code),
+            (code[:200] + ("..." if len(code) > 200 else "")),
         )
 
-        # Return code without fences/XML for execution (but with reasoning calls for processing)
         return code, event_id
 
     def _extract_function_body_if_wrapped(
@@ -916,21 +913,17 @@ class PurePythonStrategy(CompositeStrategy):
         {original_call.docstring}
 
         *Important*:
-        - If you are not just returning the result directly (using return <result>), explain using `reasoning()` why you cannot do that and then perform the task (in the same turn).
-        - If you don't want to make use of existing methods from self, briefly explain why they are not a good fit using `reasoning()`.
+        - If you are not just returning the result directly (using return <result>), explain in a `#` comment why you cannot do that and then perform the task (in the same turn).
+        - If you don't want to make use of existing methods from self, briefly explain in a `#` comment why they are not a good fit.
         - Use print(doc(self.sub_agent)) to see the documentation of sub agents or any other class attribute.
         """
         ...
 
     def _build_builtins(self, runtime: RuntimeServices, call: "CurrentCall") -> dict[str, Any]:
-        def reasoning(text: str) -> None:
-            runtime.event_manager.add(Reasoning(content=str(text)), record=False)
-
         def emit_message(text: str) -> None:
             runtime.event_manager.add(Message(content=str(text)), record=False)
 
         builtins: dict[str, Any] = {
-            "reasoning": reasoning,
             "message": emit_message,
         }
 
@@ -953,7 +946,7 @@ class PurePythonStrategy(CompositeStrategy):
 
     # ── Post-response cleanup (PurePython) ─────────────────────
     # Intercept point: strategy-specific response transforms.
-    # Handles nested wrapper stripping and reasoning call removal.
+    # Handles nested wrapper stripping.
     # Consider making extensible in the future.
 
     def _strip_wrappers(self, code: str) -> str:
@@ -1048,28 +1041,6 @@ class PurePythonStrategy(CompositeStrategy):
         )
 
         return inner_content
-
-    def _strip_reasoning_calls(self, code: str) -> str:
-        try:
-            tree = ast.parse(code)
-        except SyntaxError:
-            return code
-
-        new_body = []
-        stripped_count = 0
-        for node in tree.body:
-            if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call):
-                func = node.value.func
-                if isinstance(func, ast.Name) and func.id == "reasoning":
-                    stripped_count += 1
-                    continue
-            new_body.append(node)
-
-        if stripped_count > 0:
-            get_harness_metrics().reasoning_call_stripped(stripped_count)
-
-        tree.body = new_body
-        return ast.unparse(tree)
 
     def _format_error(self, error: Exception, code: str | None = None) -> str:
         """Format an error for LLM feedback.

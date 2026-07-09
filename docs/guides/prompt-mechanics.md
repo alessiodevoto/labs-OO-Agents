@@ -58,9 +58,8 @@ Please perform the task now.
 
 ## Reserved Parameter Names
 
-Two parameter names have special behavior:
+One parameter name has special behavior:
 
-- **`reasoning`** — If present in the method signature, the runtime adds chain-of-thought instructions.
 - **`message`** — Used for multi-turn communication. The `message()` function is available in CodeAct for the LLM to send messages back to the caller.
 
 ## Full Prompt Structure

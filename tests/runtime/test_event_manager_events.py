@@ -337,7 +337,7 @@ class TestPrefillCallId:
     """Tests that prefill code generation includes call_id."""
 
     def test_inspect_inputs_prefill_includes_call_signature(self):
-        """InspectInputsPrefill generates code with reasoning and call signature."""
+        """InspectInputsPrefill generates code with an inspection comment and call signature."""
         from nemo_oo_agents.strategies.current_call import CurrentCall
         from nemo_oo_agents.strategies.prefill import InspectInputsPrefill
 

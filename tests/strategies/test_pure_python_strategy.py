@@ -195,12 +195,10 @@ class TestPurePythonStrategyExecute:
                 """Add 10 to x and return the result."""
                 ...
 
-        # LLM generates code with reasoning, then actual solution
+        # LLM generates exploratory code, then the actual solution
         fake_llm = FakeLLMClient(
             scripted_responses=[
-                _resp(
-                    'reasoning("I need to add 10 to x")\nprint("calculating")'
-                ),  # First turn: reasoning + code
+                _resp('print("calculating")'),  # First turn: exploratory code
                 _resp("return x + 10"),  # Second turn: actual solution
             ]
         )
@@ -222,7 +220,7 @@ class TestPurePythonStrategyExecute:
         # Should have 2 assistant events (one per LLM call)
         assert len(assistant_events) >= 2
 
-        # First assistant message should contain the code (reasoning is stripped)
+        # First assistant message should contain the code
         first_msg = assistant_events[0].content
         assert first_msg, "First assistant message should not be empty"
         assert "print" in first_msg, "First message should contain the print statement"
@@ -402,7 +400,6 @@ return x + y
 
         # Real-world example with attributes on the XML tag
         wrapped_response = """<tool_code expr="self.calculate_single(a=a, b=b, calculation=calculation)" timestamp="2025-12-19T09:27:49.000380">
-reasoning("The user wants to perform a calculation.")
 result = a + b
 return result
 </tool_code>"""
@@ -534,7 +531,6 @@ return f"Hello, {name}!"
         # Real-world example: XML wrapping markdown fences
         wrapped_response = """<tool_code expr="self.calculate_single(a=a, b=b, calculation=calculation)" timestamp="2025-12-19T10:43:20.397120">
 ```python
-reasoning(f"Computing the result")
 result = a + b
 return result
 ```

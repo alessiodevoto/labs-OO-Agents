@@ -369,7 +369,7 @@ class SWEBenchTodoAgent(
     @strategy(
         CodeActStrategy(
             config=CodeActConfig(
-                max_iterations=300, max_retries=10, text_only_stop_behavior="synthetic_reasoning"
+                max_iterations=300, max_retries=10, text_only_stop_behavior="synthetic_comment"
             )
         )
     )

@@ -65,7 +65,6 @@ NeMo OO Agents is a single repository that ships as several lockstep packages:
 
 ### Reserved Parameters
 
-- **Add `reasoning` for chain-of-thought** — including a `reasoning` parameter is reserved and rejected by `_validate_reserved_parameters` for normal use; the runtime instead surfaces a `reasoning()` builtin/prefill so the model emits its thinking (`metaclass.py`, `strategies/prefill.py`).
 - **Use `message` for multi-turn replies** — the `message()` builtin lets a generation method send messages back to the caller; it is provided by `PurePythonStrategy` (`strategies/pure_python.py`), not the default CodeAct strategy.
 
 ### Compose and Nest Agents
@@ -107,7 +106,7 @@ NeMo OO Agents is a single repository that ships as several lockstep packages:
 ### Configuring Strategy Behavior
 
 - **Tune CodeAct via `CodeActConfig`** — pass `CodeActStrategy(config=CodeActConfig(...))` to set `max_iterations`, `max_retries`, `max_consecutive_text_only`, `cell_timeout`, `max_tokens`/`temperature`/`top_p`, `max_tool_calls`, and `translate_tool_calls`. **(opt-in)**
-- **Choose how text-only stops are handled** — `CodeActConfig.text_only_stop_behavior` (`"return_result"` default vs `"synthetic_reasoning"`) controls whether a plain-text `finish_reason="stop"` is routed through `return_result()` validation or preserved as a no-op `reasoning()` call. **(opt-in)**
+- **Choose how text-only stops are handled** — `CodeActConfig.text_only_stop_behavior` (`"return_result"` default vs `"synthetic_comment"`) controls whether a plain-text `finish_reason="stop"` is routed through `return_result()` validation or preserved in traces as a no-op `#` comment in a synthetic `execute_python()` call. **(opt-in)**
 - **Tune Predict via `PredictConfig`** — pass `PredictStrategy(config=PredictConfig(...))` to set `max_retries`, sampling params, `max_error_chars`, `max_param_chars` (parameter-size guard, `None` disables), and `output_serialization` (`"event"` vs `"tool_call"`). **(opt-in)**
 - **Restrict the code sandbox** — `CodeActConfig.restrictions` takes a `RestrictionsConfig` (`blocked_modules`, `blocked_calls`) that also filters which symbols appear in the execution-context block. **(opt-in)**
 - **Merge partial configs** — `CodeActConfig.merge_with()` / `PredictConfig.merge_with()` overlay only the explicitly-set fields of another config onto a base. **(opt-in)**
@@ -121,7 +120,6 @@ NeMo OO Agents is a single repository that ships as several lockstep packages:
 
 - **Run a Python cell** — the `execute_python(code)` tool runs code in a persistent Jupyter-style REPL with parameters preloaded as locals and state carried across cells.
 - **Submit the final answer** — `return_result(value)` (or keyword form) ends the session and validates against the return type; it is also callable from inside `execute_python()` to compute and return in one tool call.
-- **Record hidden reasoning** — the `reasoning(text)` builtin logs chain-of-thought into events without surfacing it to the caller.
 - **Auto-inspect inputs on turn one** — `InspectInputsPrefill` (the default `CodeActConfig.prefill`) emits prefill code that `pprint`s every parameter and `doc()`s the return type within truncation limits.
 - **Translate stray tool calls** — when `CodeActConfig.translate_tool_calls` is on, an unknown tool call the LLM emits is rewritten into equivalent `execute_python()` code instead of erroring.
 

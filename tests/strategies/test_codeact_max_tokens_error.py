@@ -75,7 +75,7 @@ class TestMaxTokensExhaustedError:
                 CodeActStrategy(
                     config=CodeActConfig(
                         max_retries=2,
-                        text_only_stop_behavior="synthetic_reasoning",
+                        text_only_stop_behavior="synthetic_comment",
                     )
                 )
             )

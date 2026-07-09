@@ -57,13 +57,10 @@ _active_unsubs: list = []
 
 
 def agent_pprint(agent):
-    """Install callbacks to pretty-print reasoning, code, and execution output."""
+    """Install callbacks to pretty-print code and execution output."""
     for unsub in _active_unsubs:
         unsub()
     _active_unsubs.clear()
-
-    def on_reasoning(event):
-        display(Markdown(f"**Reasoning:**\n\n{event.content}"))
 
     def on_tool_call(event):
         if event.name == "execute_python":
@@ -83,7 +80,6 @@ def agent_pprint(agent):
         if parts:
             display(Markdown("**Execution Output:**\n\n" + "\n\n".join(parts)))
 
-    _active_unsubs.append(agent.event_manager.on("Reasoning", on_reasoning))
     _active_unsubs.append(agent.event_manager.on("ToolCallEvent", on_tool_call))
     _active_unsubs.append(agent.event_manager.on("PythonOutput", on_python_output))
     print(f"Verbose output enabled for {type(agent).__name__}")

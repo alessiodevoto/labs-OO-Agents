@@ -10,7 +10,7 @@ Events flow through EventManager.add() for:
 Design: phase-2-strategy-middleware.md
 
 NeMo OO Agents events extend context-blocks EventBase and add specialized types
-for the code generation pipeline (task, error, feedback, reasoning).
+for the code generation pipeline (task, error, feedback).
 
 Rendering: Events are rendered using pformat(event). Fields with repr=False
 are excluded. Private fields (_field with PrivateAttr) are also excluded.
@@ -80,7 +80,11 @@ class Message(EventBase):  # type: ignore[misc]
 
 
 class Reasoning(EventBase):  # type: ignore[misc]
-    """Chain-of-thought from generated code via reasoning()."""
+    """Chain-of-thought from generated code via the removed reasoning() builtin.
+
+    Legacy: nothing emits this event anymore. The class is kept so stored
+    traces from before the builtin's removal still deserialize and render.
+    """
 
     _role: ClassVar[Role] = Role.ASSISTANT
 
@@ -139,7 +143,7 @@ class TextOnlyReply(EventBase):  # type: ignore[misc]
     ] = ""
     route: Annotated[
         str,
-        Field(description="Handling route: 'return_result' or 'synthetic_reasoning'"),
+        Field(description="Handling route: 'return_result' or 'synthetic_comment'"),
     ] = ""
     consecutive_text_only: Annotated[
         int, Field(description="Count of consecutive text-only turns including this one")

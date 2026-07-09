@@ -112,7 +112,6 @@ class HarnessMetrics(BaseModel):
     fence_removals: list[str] = Field(default_factory=list)
     xml_wrappers_stripped: list[str] = Field(default_factory=list)
     nested_wrapper_iterations: int = 0
-    reasoning_calls_stripped: int = 0
 
     # ── Import Handling ──
     imports_stripped: list[str] = Field(default_factory=list)
@@ -123,7 +122,7 @@ class HarnessMetrics(BaseModel):
     stop_to_return_result_count: int = 0
     stop_to_return_result_previews: list[str] = Field(default_factory=list)
     text_only_loop_aborts_count: int = 0
-    content_prepended_as_reasoning_count: int = 0
+    content_prepended_as_comment_count: int = 0
     empty_response_count: int = 0
     gpt4o_double_quote_fix_count: int = 0
     gpt4o_double_quote_fix_previews: list[str] = Field(default_factory=list)
@@ -222,9 +221,6 @@ class HarnessMetrics(BaseModel):
     def nested_wrapper_iteration(self, count: int) -> None:
         self.nested_wrapper_iterations = max(self.nested_wrapper_iterations, count)
 
-    def reasoning_call_stripped(self, count: int = 1) -> None:
-        self.reasoning_calls_stripped += count
-
     # Import Handling
     def import_stripped(self, detail: str) -> None:
         self._append(self.imports_stripped, detail)
@@ -244,8 +240,8 @@ class HarnessMetrics(BaseModel):
     def text_only_loop_abort(self) -> None:
         self.text_only_loop_aborts_count += 1
 
-    def content_prepended_as_reasoning(self) -> None:
-        self.content_prepended_as_reasoning_count += 1
+    def content_prepended_as_comment(self) -> None:
+        self.content_prepended_as_comment_count += 1
 
     def empty_response(self) -> None:
         self.empty_response_count += 1
@@ -552,12 +548,6 @@ _SPAN_SCHEMA: tuple[SchemaEntry, ...] = (
         "Code Sanitization",
         lambda m: m.nested_wrapper_iterations,
     ),
-    SchemaEntry(
-        "harness.reasoning_calls_stripped",
-        "Reasoning calls stripped",
-        "Code Sanitization",
-        lambda m: m.reasoning_calls_stripped,
-    ),
     # Import Handling
     SchemaEntry(
         "harness.imports_stripped.count",
@@ -588,7 +578,7 @@ _SPAN_SCHEMA: tuple[SchemaEntry, ...] = (
     # Response Format Fixups
     SchemaEntry(
         "harness.text_to_synthetic.count",
-        "Text-to-synthetic reasoning",
+        "Text-to-synthetic comment",
         "Response Format Fixups",
         lambda m: m.text_to_synthetic_count,
     ),
@@ -605,10 +595,10 @@ _SPAN_SCHEMA: tuple[SchemaEntry, ...] = (
         lambda m: m.text_only_loop_aborts_count,
     ),
     SchemaEntry(
-        "harness.content_prepended_as_reasoning.count",
-        "Content prepended as reasoning",
+        "harness.content_prepended_as_comment.count",
+        "Content prepended as comment",
         "Response Format Fixups",
-        lambda m: m.content_prepended_as_reasoning_count,
+        lambda m: m.content_prepended_as_comment_count,
     ),
     SchemaEntry(
         "harness.empty_response.count",

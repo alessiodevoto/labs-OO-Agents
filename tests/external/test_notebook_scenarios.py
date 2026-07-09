@@ -403,8 +403,8 @@ async def test_message_callback():
 
 
 @pytest.mark.asyncio
-async def test_reasoning_callback():
-    """Test reasoning callback receives reasoning from generated code via reasoning()."""
+async def test_no_reasoning_events_emitted():
+    """The reasoning() builtin was removed — generated code emits no Reasoning events."""
 
     reasoning_received = []
 
@@ -415,11 +415,8 @@ async def test_reasoning_callback():
     fake_llm = FakeLLMClient(
         scripted_responses=[
             _resp(
-                'reasoning("First, I\'ll set the message attribute")\n'
                 'self.message = "Hello from agent!"\n'
-                'reasoning("Next, I\'ll set count to 42")\n'
                 "self.count = 42\n"
-                'reasoning("Finally, I\'ll create the items list")\n'
                 'self.items = ["apple", "banana", "cherry"]\n'
                 'return "Task completed successfully"'
             )
@@ -430,14 +427,14 @@ async def test_reasoning_callback():
     agent = SimpleAgent(llm=fake_llm)
     agent.event_manager.on("Reasoning", capture_reasoning)
 
-    # Call method
-    await agent.perform_task()
+    result = await agent.perform_task()
 
-    # Verify callbacks were called
-    assert len(reasoning_received) == 3, f"Expected 3 reasoning, got {len(reasoning_received)}"
-    assert "First, I'll set the message attribute" in reasoning_received[0]
-    assert "Next, I'll set count to 42" in reasoning_received[1]
-    assert "Finally, I'll create the items list" in reasoning_received[2]
+    assert result == "Task completed successfully"
+    assert agent.message == "Hello from agent!"
+    assert agent.count == 42
+    assert agent.items == ["apple", "banana", "cherry"]
+    # No Reasoning events are emitted — the builtin no longer exists
+    assert reasoning_received == []
 
 
 # ============================================================================

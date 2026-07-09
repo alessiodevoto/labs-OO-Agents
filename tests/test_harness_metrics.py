@@ -62,11 +62,6 @@ class TestRecording:
         m.nested_wrapper_iteration(2)  # should keep max
         assert m.nested_wrapper_iterations == 3
 
-    def test_reasoning_call_stripped(self):
-        m = HarnessMetrics()
-        m.reasoning_call_stripped(5)
-        assert m.reasoning_calls_stripped == 5
-
     # Import Handling
     def test_import_stripped(self):
         m = HarnessMetrics()
@@ -87,10 +82,10 @@ class TestRecording:
         m.text_to_synthetic()
         assert m.text_to_synthetic_count == 2
 
-    def test_content_prepended_as_reasoning(self):
+    def test_content_prepended_as_comment(self):
         m = HarnessMetrics()
-        m.content_prepended_as_reasoning()
-        assert m.content_prepended_as_reasoning_count == 1
+        m.content_prepended_as_comment()
+        assert m.content_prepended_as_comment_count == 1
 
     def test_empty_response(self):
         m = HarnessMetrics()
@@ -375,11 +370,10 @@ def _populate_all_fields(m: HarnessMetrics) -> None:
     m.fence_removal("```")
     m.xml_wrapper_stripped("tag")
     m.nested_wrapper_iteration(2)
-    m.reasoning_call_stripped(1)
     m.import_stripped("import x")
     m.blocked_module_removed("os")
     m.text_to_synthetic()
-    m.content_prepended_as_reasoning()
+    m.content_prepended_as_comment()
     m.empty_response()
     m.gpt4o_double_quote_fix('"x\\n"')
     m.variable_ref_resolved("x")
