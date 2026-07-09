@@ -4,8 +4,8 @@
 
 from dataclasses import dataclass
 
-from nemo_oo_agents.agentdoc import doc, hidden
-from nemo_oo_agents.agentdoc._structured import extract_type_info
+from nooa.agentdoc import doc, hidden
+from nooa.agentdoc._structured import extract_type_info
 
 
 class TestDataclassPropertyRendering:

@@ -1,7 +1,7 @@
 # Memory Benchmark — long-horizon agentic CLI tasks
 
 A full-fledged example exercising the opt-in memory subsystem
-(`nemo_oo_agents.memory`) end to end: **both vector backends** (sqlite-vec and
+(`nooa.memory`) end to end: **both vector backends** (sqlite-vec and
 Chroma), the **real models** (gpt-5.4 + `text-embedding-3-large` on the NVIDIA
 gateway), a **long-horizon benchmark** modelled on
 [LongCLI-Bench](https://github.com/finyorko/longcli-bench), and **memory-usage
@@ -51,7 +51,7 @@ with the `llm` solver against gpt-5.4. (The oracle always solves, so its ON/OFF
 
 Uses the framework's existing observability (no core changes):
 
-- the `nemo_oo_agents.memory` logger (`--verbose` raises it to DEBUG for per-op traces);
+- the `nooa.memory` logger (`--verbose` raises it to DEBUG for per-op traces);
 - `MemoryWritten` / `MemoryRecalled` / `MemoryInjected` / `ReflectionCompleted` events
   emitted on the agent's `EventManager` with the `RUNTIME_EVENT` role (visible to
   any event/telemetry subscriber, never shown to the LLM);

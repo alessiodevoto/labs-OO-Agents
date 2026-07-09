@@ -6,10 +6,10 @@ Quick reference for paths, examples, commands, and configuration.
 
 | Path | What |
 |------|------|
-| `src/nemo_oo_agents/` | Core framework source (the `nemo-oo-agents` published package) |
-| `src/nemo_oo_agents/context_blocks/` | Context block rendering subpackage |
-| `src/nemo_oo_agents/unifiedllm/` | LLM client subpackage |
-| `packages/nemo-oo-agents-cli/` | CLI + TUI (separately-published `nemo-oo-agents-cli`) |
+| `src/nooa/` | Core framework source (the `nemo-oo-agents` published package) |
+| `src/nooa/context_blocks/` | Context block rendering subpackage |
+| `src/nooa/unifiedllm/` | LLM client subpackage |
+| `packages/nemo-labs-oo-agents-cli/` | CLI + TUI (separately-published `nemo-labs-oo-agents-cli`) |
 | `packages/nemo-oo-agents-benchmarks/` | Eval harness (separately-published `nemo-oo-agents-benchmarks`) |
 | `packages/nat_oo_agents/` | NeMo Agent Toolkit plugin (external; not published from this repo) |
 | `examples/` | Example agents (see below for details) |
@@ -76,41 +76,41 @@ When creating significant designs (architecture, API specs, data models), write 
 
 NeMo OO Agents uses Python's standard `logging` module throughout.  Every module
 creates a logger with `logging.getLogger(__name__)`, producing a hierarchy
-rooted at `nemo_oo_agents`.
+rooted at `nooa`.
 
 ### Quick start
 
 ```python
-from nemo_oo_agents import enable_logging
+from nooa import enable_logging
 
 enable_logging()                                     # everything at DEBUG
 enable_logging(level=logging.INFO)                   # calmer overview
-enable_logging(name="nemo_oo_agents.strategies")           # just strategies
-enable_logging(name="nemo_oo_agents.runtime.actor")        # just the executor
+enable_logging(name="nooa.strategies")           # just strategies
+enable_logging(name="nooa.runtime.actor")        # just the executor
 ```
 
 ### Logger hierarchy
 
 | Logger name | What it covers |
 |-------------|---------------|
-| `nemo_oo_agents` | Root — catches everything below |
-| `nemo_oo_agents.agent` | Agent lifecycle, configuration |
-| `nemo_oo_agents.runtime.actor` | Execution engine, code execution |
-| `nemo_oo_agents.runtime.hooks` | Hook dispatch |
-| `nemo_oo_agents.runtime.code_validator` | Code validation / safety checks |
-| `nemo_oo_agents.strategies.codeact` | CodeAct strategy |
-| `nemo_oo_agents.strategies.predict` | Predict strategy |
-| `nemo_oo_agents.strategies.pure_python` | PurePython strategy |
-| `nemo_oo_agents.strategies.reflexion` | Reflexion strategy |
-| `nemo_oo_agents.tools.*` | Individual tool modules |
-| `nemo_oo_agents.storage.*` | Storage backends |
-| `nemo_oo_agents.library_manager` | Library / skill loading |
-| `nemo_oo_agents.skill_manager` | Skill discovery |
+| `nooa` | Root — catches everything below |
+| `nooa.agent` | Agent lifecycle, configuration |
+| `nooa.runtime.actor` | Execution engine, code execution |
+| `nooa.runtime.hooks` | Hook dispatch |
+| `nooa.runtime.code_validator` | Code validation / safety checks |
+| `nooa.strategies.codeact` | CodeAct strategy |
+| `nooa.strategies.predict` | Predict strategy |
+| `nooa.strategies.pure_python` | PurePython strategy |
+| `nooa.strategies.reflexion` | Reflexion strategy |
+| `nooa.tools.*` | Individual tool modules |
+| `nooa.storage.*` | Storage backends |
+| `nooa.library_manager` | Library / skill loading |
+| `nooa.skill_manager` | Skill discovery |
 
 ### For application developers
 
 `enable_logging()` is a convenience for development.  In production, use
-`logging.config.dictConfig()` as usual — nemo_oo_agents loggers are standard
+`logging.config.dictConfig()` as usual — nooa loggers are standard
 `logging.Logger` instances.  The library adds only a `NullHandler` to the
 root logger, so no output appears unless you configure handlers.
 
@@ -126,7 +126,7 @@ uv sync --extra nemo-flow
 ```
 
 ```python
-from nemo_oo_agents.nemo_flow_middleware import nemo_flow_scope
+from nooa.nemo_flow_middleware import nemo_flow_scope
 
 async with nemo_flow_scope(agent, "my-agent") as handle:
     result = await agent.my_method(...)
@@ -137,7 +137,7 @@ async with nemo_flow_scope(agent, "my-agent") as handle:
 
 | File | Purpose |
 |------|---------|
-| `src/nemo_oo_agents/nemo_flow_middleware.py` | Middleware functions + `install_nemo_flow()` / `nemo_flow_scope()` |
+| `src/nooa/nemo_flow_middleware.py` | Middleware functions + `install_nemo_flow()` / `nemo_flow_scope()` |
 | `tests/test_nemo_flow_middleware.py` | Integration tests (requires `nemo_flow`) |
 | `examples/quickstart/13_nemo_flow.py` | Full quickstart: guardrails, intercepts, ATIF export |
 
@@ -154,22 +154,22 @@ The integration installs three middleware via `event_manager.intercept()`:
 ## Config files
 
 Three config files share one layout, one precedence chain, and one loader
-(`nemo_oo_agents.layered_config`). All are optional — absence means "use the
+(`nooa.layered_config`). All are optional — absence means "use the
 layer below."
 
 | File | What | Bundled defaults | Env-var override |
 |------|------|------------------|------------------|
-| `llm_config.yaml` | LLM model aliases | entry-point group `nemo_oo_agents.bundled_configs` | `NEMO_OO_LLM_CONFIG` |
+| `llm_config.yaml` | LLM model aliases | entry-point group `nooa.bundled_configs` | `NEMO_OO_LLM_CONFIG` |
 | `settings.yaml` | TUI settings (`tui:` / `agent:` sections, dataclass field names) | in-code defaults | `NEMO_OO_SETTINGS` |
 | `secrets.yaml` | API keys (`env:` name→value map, pushed into `os.environ` non-clobbering) | — | `NEMO_OO_SECRETS` |
 
 ```text
-~/.config/nemo_oo/           # user-global   (XDG_CONFIG_HOME aware; override base with NEMO_OO_USER_DIR)
+~/.config/nooa/           # user-global   (XDG_CONFIG_HOME aware; override base with NEMO_OO_USER_DIR)
 ├── settings.yaml
 ├── secrets.yaml             # chmod 600
 └── llm_config.yaml
 
-.nemo_oo/                    # project-local (override base with NEMO_OO_PROJECT_DIR)
+.nooa/                    # project-local (override base with NEMO_OO_PROJECT_DIR)
 ├── settings.yaml
 ├── secrets.yaml             # gitignore strongly recommended
 └── llm_config.yaml
@@ -178,7 +178,7 @@ layer below."
 Precedence (low → high, last wins): bundled defaults → user → project →
 env-var path(s). For `secrets.yaml`, an env var already set in the process
 always wins over a file value. `null` deletes a key inherited from a lower
-layer. Run `nemo-oo config show` to see which layers are loading (secret
+layer. Run `nooa config show` to see which layers are loading (secret
 values redacted).
 
 `secrets.yaml`:
@@ -208,14 +208,14 @@ All framework-owned env vars use the `NEMO_OO_` prefix:
 
 | Variable | What |
 |----------|------|
-| `NEMO_OO_USER_DIR` | Override the user config base (default `~/.config/nemo_oo`, XDG-aware) |
-| `NEMO_OO_PROJECT_DIR` | Override the project config dir (default `<root>/.nemo_oo`) |
+| `NEMO_OO_USER_DIR` | Override the user config base (default `~/.config/nooa`, XDG-aware) |
+| `NEMO_OO_PROJECT_DIR` | Override the project config dir (default `<root>/.nooa`) |
 | `NEMO_OO_LLM_CONFIG` | Comma-separated YAML path(s) — highest-priority `llm_config.yaml` layer |
 | `NEMO_OO_SETTINGS` | Comma-separated YAML path(s) — highest-priority `settings.yaml` layer |
 | `NEMO_OO_SECRETS` | Comma-separated YAML path(s) — highest-priority `secrets.yaml` layer |
-| `NEMO_OO_TRACE_VIEWER_PORT` | Port for the trace viewer (`nemo-oo start-dev`; default 5001) |
-| `NEMO_OO_TRACE_DB` | SQLite trace-store path for the viewer (default `~/.config/nemo_oo/traces.db`) |
-| `NEMO_OO_RICH_URL` | Rich-content POST endpoint, set by `nemo-oo term` for the web frontend (internal) |
+| `NEMO_OO_TRACE_VIEWER_PORT` | Port for the trace viewer (`nooa start-dev`; default 5001) |
+| `NEMO_OO_TRACE_DB` | SQLite trace-store path for the viewer (default `~/.config/nooa/traces.db`) |
+| `NEMO_OO_RICH_URL` | Rich-content POST endpoint, set by `nooa term` for the web frontend (internal) |
 
 Any var named under a `secrets.yaml` `env:` map (e.g. `NVIDIA_INTERNAL_API_KEY`)
 is pushed into the process env non-clobbering — an already-exported value always wins.

@@ -1,6 +1,6 @@
 """Tests for TruncationConfig."""
 
-from nemo_oo_agents.config.truncation_config import (
+from nooa.config.truncation_config import (
     DEFAULT_TRUNCATION_CONFIG,
     CaptureConfig,
     FormatConfig,

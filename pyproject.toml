@@ -1,5 +1,5 @@
 [project]
-name = "nemo-oo-agents"
+name = "nemo-labs-oo-agents"
 # Version is derived from git tags at build time by uv-dynamic-versioning
 # (see [build-system] and [tool.uv-dynamic-versioning] below). On a tag
 # `vX.Y.Z` the published wheel is `X.Y.Z`; between tags, dunamai produces
@@ -14,8 +14,8 @@ authors = [
 requires-python = ">=3.12"
 dependencies = [
     "pydantic>=2.5.0",
-    # context_blocks + unifiedllm now ship as nemo_oo_agents.context_blocks /
-    # nemo_oo_agents.unifiedllm subpackages — pull their formerly-external deps in.
+    # context_blocks + unifiedllm now ship as nooa.context_blocks /
+    # nooa.unifiedllm subpackages — pull their formerly-external deps in.
     # >=1.83.0 ensures we land on the post-supply-chain-incident clean line
     # (1.82.7 and 1.82.8 were yanked from PyPI after the March 2026 backdoor).
     "litellm>=1.83.0",
@@ -27,24 +27,24 @@ dependencies = [
 ]
 
 [project.scripts]
-trace-explorer = "nemo_oo_agents.trace_explorer:main"
+trace-explorer = "nooa.trace_explorer:main"
 
-[project.entry-points."nemo_oo_agents.skills"]
-"nemo.shell" = "nemo_oo_agents.tools.shell_tools:ShellTools"
-"nemo.todo" = "nemo_oo_agents.tools.todo:TodoManager"
-"nemo.context" = "nemo_oo_agents.runtime.context:ContextApi"
-"nemo.events" = "nemo_oo_agents.runtime.events:EventsApi"
-"nemo.producers" = "nemo_oo_agents.runtime.producers_skill:ProducersSkill"
-"nemo.web" = "nemo_oo_agents.tools.web_publisher:WebPublisher"
-"nemo.libwriting" = "nemo_oo_agents.tools.library_writing_lib:SkillWriting"
-"nemo.methodwriting" = "nemo_oo_agents.tools.method_writing_lib:MethodWriting"
-"nemo.memory" = "nemo_oo_agents.memory.memory_skill:MemorySkill"
+[project.entry-points."nooa.skills"]
+"nemo.shell" = "nooa.tools.shell_tools:ShellTools"
+"nemo.todo" = "nooa.tools.todo:TodoManager"
+"nemo.context" = "nooa.runtime.context:ContextApi"
+"nemo.events" = "nooa.runtime.events:EventsApi"
+"nemo.producers" = "nooa.runtime.producers_skill:ProducersSkill"
+"nemo.web" = "nooa.tools.web_publisher:WebPublisher"
+"nemo.libwriting" = "nooa.tools.library_writing_lib:SkillWriting"
+"nemo.methodwriting" = "nooa.tools.method_writing_lib:MethodWriting"
 
 [tool.uv.sources]
 eval_pipeline = { workspace = true }
 nemo-oo-agents-benchmarks = { workspace = true }
-nemo-oo-agents-cli = { workspace = true }
+nemo-labs-oo-agents-cli = { workspace = true }
 nemo-oo-agents-nvidia = { workspace = true }
+nooa-tui = { workspace = true }
 # nvidia-nat-nemo-oo-agents: external plugin, not in workspace
 
 [tool.uv]
@@ -60,8 +60,9 @@ environments = [
 members = [
     "util/eval_pipeline",
     "packages/nemo-oo-agents-benchmarks",
-    "packages/nemo-oo-agents-cli",
+    "packages/nooa-cli",
     "packages/nemo-oo-agents-nvidia",
+    "packages/nooa-tui",
 ]
 
 
@@ -80,11 +81,11 @@ viewer = [
     "python-multipart>=0.0.5",
     "pyyaml>=6.0",
 ]
-# trace_explorer is now nemo_oo_agents.trace_explorer (internal, no extra deps)
+# trace_explorer is now nooa.trace_explorer (internal, no extra deps)
 sandbox = [
     "openshell",
 ]
-# mcp lives at nemo_oo_agents.mcp; install with `uv sync --extra mcp`
+# mcp lives at nooa.mcp; install with `uv sync --extra mcp`
 # (kept optional so glibc<2.28 hosts can `uv sync` without pulling
 # pydantic-core wheels that only target manylinux_2_28). See issue 189.
 mcp = [
@@ -92,21 +93,19 @@ mcp = [
 ]
 # nemo-flow integration (guardrails, intercepts, ATIF export). Install with
 # `uv sync --extra nemo-flow`. See examples/quickstart/13_nemo_flow.py and
-# src/nemo_oo_agents/nemo_flow_middleware.py.
-nemo-flow = [
-    "nemo-flow>=0.1.0",
-]
+# src/nooa/nemo_flow_middleware.py.
+nemo-flow = []  # yanked; re-add as nemo-relay when available
 # Bundled NVIDIA-gateway model aliases (claude-haiku, nemotron3-nano-30b,
-# gpt-5.2, …). Registers via the nemo_oo_agents.bundled_configs
+# gpt-5.2, …). Registers via the nooa.bundled_configs
 # entry-point group; install to get the aliases, omit for an
 # OSS-only registry.
 nvidia = [
     "nemo-oo-agents-nvidia",
 ]
 
-# CLI/TUI ship as a separate package: `uv add nemo-oo-agents-cli`.
-# Data-science stack for the LLM REPL: `uv add nemo-oo-agents-cli[datascience]`.
-# Web-served TUI (`nemo-oo term`):     `uv add nemo-oo-agents-cli[web]`.
+# CLI/TUI ship as a separate package: `uv add nemo-labs-oo-agents-cli`.
+# Data-science stack for the LLM REPL: `uv add nemo-labs-oo-agents-cli[datascience]`.
+# Web-served TUI (`nooa term`):     `uv add nemo-labs-oo-agents-cli[web]`.
 
 [build-system]
 requires = ["hatchling>=1.26.0", "uv-dynamic-versioning>=0.14.0"]
@@ -131,7 +130,7 @@ metadata = false
 fallback-version = "0.2.0"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/nemo_oo_agents"]
+packages = ["src/nooa"]
 
 [dependency-groups]
 trace-viewer = [
@@ -155,7 +154,8 @@ dev = [
     "eval_pipeline",
     # Workspace packages — keep benchmarks + cli installed/editable in dev sync
     "nemo-oo-agents-benchmarks",
-    "nemo-oo-agents-cli",
+    "nemo-labs-oo-agents-cli",
+    "nooa-tui",
     "pre-commit>=4.5.0",
     "pyright>=1.1.408",
     "pytest-cov>=7.1.0",
@@ -174,14 +174,14 @@ testpaths = [
     "tests/tracing",
     "tests/test_mcp",
     "packages/nemo-oo-agents-benchmarks/tests",
-    "packages/nemo-oo-agents-cli/tests/cli",
-    "packages/nemo-oo-agents-cli/tests/integration",
+    "packages/nooa-cli/tests/cli",
+    "packages/nooa-cli/tests/integration",
     "tests/trace_explorer",
 ]
 pythonpath = [
     "src",
     "packages/nemo-oo-agents-benchmarks/src",
-    "packages/nemo-oo-agents-cli/src",
+    "packages/nooa-cli/src",
 ]
 addopts = "-v --tb=short --import-mode=importlib -m 'not integration and not stress'"
 markers = [
@@ -193,11 +193,11 @@ filterwarnings = [
     "ignore::DeprecationWarning:aiohttp.*",
     "ignore:coroutine.*was never awaited:RuntimeWarning",
     "ignore:Pydantic serializer warnings:UserWarning",
-    "ignore::FutureWarning:nemo_oo_agents.strategies",
+    "ignore::FutureWarning:nooa.strategies",
 ]
 
 [tool.coverage.run]
-source = ["src/nemo_oo_agents", "packages/nemo-oo-agents-cli/src/nemo_oo_agents_cli"]
+source = ["src/nooa", "packages/nooa-cli/src/nooa_cli"]
 omit = [
     "*/tests/*",
     "*/__pycache__/*",
@@ -255,7 +255,7 @@ ignore = [
 "tests/test_pure_functions_gl105.py" = ["UP007", "UP045", "UP046"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["nemo_oo_agents", "eval_pipeline", "evaluation", "agentdoc"]
+known-first-party = ["nooa", "eval_pipeline", "evaluation", "agentdoc"]
 
 [tool.pyright]
 pythonVersion = "3.12"
@@ -264,7 +264,7 @@ venv = ".venv"
 # Resolve workspace packages when IDE uses project root (same as pytest pythonpath)
 extraPaths = [
     "src",
-    "packages/nemo-oo-agents-cli/src",
+    "packages/nooa-cli/src",
 ]
 include = [
     "src",
@@ -277,7 +277,7 @@ include = [
 # - nat_oo_agents: external NAT plugin; imports nat.* which is not a dev dep.
 exclude = [
     "packages/nemo-oo-agents-benchmarks",
-    "packages/nemo-oo-agents-cli",
+    "packages/nooa-cli",
     "packages/nat_oo_agents",
 ]
 # Pydantic discriminated unions require narrowing event_type in subclasses

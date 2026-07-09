@@ -1,0 +1,48 @@
+[project]
+name = "nooa-tui"
+dynamic = ["version"]
+description = "Terminal UI for nooa agents (internal, not published)"
+license = {text = "Apache-2.0"}
+requires-python = ">=3.12"
+dependencies = [
+    "nemo-labs-oo-agents>=0.2.0",
+    "nemo-labs-oo-agents-cli>=0.2.0",
+    "click>=8.1.0",
+    "ipython>=9.12.0",
+    "prompt-toolkit>=3.0.41,<3.1.0",
+    "rich>=13.0.0",
+    "pydantic>=2.5.0",
+    "pyyaml>=6.0",
+    "mcp>=1.0.0",
+]
+
+[project.entry-points."nooa.skills"]
+"nemo.tui_config" = "nooa_tui.tui.tui_config_skill:TuiConfigurationSkill"
+"nemo.memory" = "nooa_tui.memory.memory_skill:MemorySkill"
+
+[project.entry-points."nooa_tui.skills_dirs"]
+sw_skills = "nooa_tui.tui:_get_sw_skills_dir"
+
+[project.entry-points."nooa_tui.libs_dirs"]
+py_libs = "nooa_tui.tui:_get_py_libs_dir"
+
+[tool.uv.sources]
+nemo-labs-oo-agents = { workspace = true }
+nemo-labs-oo-agents-cli = { workspace = true }
+
+[build-system]
+requires = ["hatchling>=1.26.0", "uv-dynamic-versioning"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "uv-dynamic-versioning"
+
+[tool.uv-dynamic-versioning]
+vcs = "git"
+style = "pep440"
+bump = true
+metadata = false
+fallback-version = "0.2.0"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/nooa_tui"]

@@ -6,11 +6,11 @@ The TUI becomes permanently unresponsive when the tracing hook's `truncating_pfo
 
 ## Reproduction
 
-1. Start a TUI session: `nemo-oo tui`
+1. Start a TUI session: `nooa tui`
 2. Have the agent generate code that creates `importlib.metadata` objects:
    ```python
    from importlib.metadata import entry_points
-   eps = entry_points(group="nemo_oo_agents.skills")
+   eps = entry_points(group="nooa.skills")
    print("Registered skill entry points:")
    for ep in eps:
        print(f"  {ep.name} → {ep.value}")
@@ -58,7 +58,7 @@ print(f"cr_await: {coro.cr_await}")       # None — no await point to cancel at
 
 Native thread stack trace (via `sys._current_frames()`):
 ```
-nemo_oo_agents/agentdoc/_pformat.py:1112  in _extract_instance_values
+nooa/agentdoc/_pformat.py:1112  in _extract_instance_values
 importlib_metadata/__init__.py:605        in files
 importlib_metadata/__init__.py:603        in skip_missing_files
     filter(lambda path: path.locate().exists(), package_paths)

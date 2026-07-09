@@ -6,7 +6,7 @@ when the LLM API returns a context-window error.
 
 import math
 
-from nemo_oo_agents.runtime.actor import _ARCHIVE_TARGET_UTILIZATION
+from nooa.runtime.actor import _ARCHIVE_TARGET_UTILIZATION
 
 
 class TestAdaptiveArchivalComputation:

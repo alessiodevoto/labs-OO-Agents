@@ -48,18 +48,18 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import locomo as L  # noqa: E402
 from llm import build_embedding_config, build_llm, has_llm_creds  # noqa: E402
-
-from nemo_oo_agents import Agent  # noqa: E402
-from nemo_oo_agents.config.strategy_config import CodeActConfig  # noqa: E402
-from nemo_oo_agents.decorators import strategy  # noqa: E402
-from nemo_oo_agents.memory import MemoryConfig, MemoryManager, MemoryToolsMixin  # noqa: E402
-from nemo_oo_agents.memory.config import (  # noqa: E402
+from nooa_tui.memory import MemoryConfig, MemoryManager, MemoryToolsMixin  # noqa: E402
+from nooa_tui.memory.config import (  # noqa: E402
     ReflectionPolicy,
     RetrievalConfig,
     SpontaneousConfig,
     VectorConfig,
 )
-from nemo_oo_agents.strategies import CodeActStrategy  # noqa: E402
+
+from nooa import Agent  # noqa: E402
+from nooa.config.strategy_config import CodeActConfig  # noqa: E402
+from nooa.decorators import strategy  # noqa: E402
+from nooa.strategies import CodeActStrategy  # noqa: E402
 
 log = logging.getLogger("locomo_scaling")
 
@@ -696,7 +696,7 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     logging.getLogger("LiteLLM").setLevel(logging.WARNING)
     if args.verbose:
-        logging.getLogger("nemo_oo_agents.memory").setLevel(logging.DEBUG)
+        logging.getLogger("nooa.memory").setLevel(logging.DEBUG)
 
     if not has_llm_creds():
         print(

@@ -6,7 +6,7 @@ import time
 
 import pytest
 
-from nemo_oo_agents.tools.bash_tool import BashTool
+from nooa.tools.bash_tool import BashTool
 
 
 @pytest.mark.asyncio

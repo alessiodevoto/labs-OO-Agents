@@ -15,10 +15,10 @@ import json
 
 import pytest
 
-from nemo_oo_agents import Agent, strategy
-from nemo_oo_agents.config import CodeActConfig
-from nemo_oo_agents.strategies.codeact import CodeActStrategy
-from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
+from nooa import Agent, strategy
+from nooa.config import CodeActConfig
+from nooa.strategies.codeact import CodeActStrategy
+from nooa.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
 
 
 def _resp(content: str = "", tool_calls: list | None = None) -> LLMResponse:

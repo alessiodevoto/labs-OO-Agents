@@ -9,7 +9,7 @@ import pytest
 from litellm.types.utils import ChatCompletionMessageToolCall, Function
 from pydantic import BaseModel
 
-from nemo_oo_agents.unifiedllm import CompletionClient, EmptyContentError, RetryConfig
+from nooa.unifiedllm import CompletionClient, EmptyContentError, RetryConfig
 
 
 def make_mock_response(
@@ -178,7 +178,7 @@ class TestCompletionClientEmptyContentRetry:
         """CompletionClient.call retries endpoint errors by default."""
         client = CompletionClient(model="test-model")
         with (
-            patch("nemo_oo_agents.unifiedllm.retry.time.sleep"),
+            patch("nooa.unifiedllm.retry.time.sleep"),
             patch(
                 "litellm.completion",
                 side_effect=[Exception("status 502 bad gateway"), make_mock_response(content="ok")],
@@ -211,7 +211,7 @@ class TestCompletionClientEmptyContentRetry:
             side_effect=[Exception("status 502 bad gateway"), make_mock_response(content="ok")]
         )
         with (
-            patch("nemo_oo_agents.unifiedllm.retry.asyncio.sleep", sleep),
+            patch("nooa.unifiedllm.retry.asyncio.sleep", sleep),
             patch("litellm.acompletion", mock_acompletion),
         ):
             response = await client.acall([{"role": "user", "content": "Hi"}])

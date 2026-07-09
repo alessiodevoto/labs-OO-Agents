@@ -21,10 +21,10 @@ from __future__ import annotations
 
 import pytest
 
-from nemo_oo_agents.context_blocks import ResultStatus, ToolCallEvent, ToolResult
-from nemo_oo_agents.context_blocks.events import AssistantEvent, UserEvent
-from nemo_oo_agents.context_blocks.models import Role
-from nemo_oo_agents.events import (
+from nooa.context_blocks import ResultStatus, ToolCallEvent, ToolResult
+from nooa.context_blocks.events import AssistantEvent, UserEvent
+from nooa.context_blocks.models import Role
+from nooa.events import (
     AfterTurn,
     BeforeTurn,
     Error,
@@ -36,8 +36,8 @@ from nemo_oo_agents.events import (
     Summary,
     Task,
 )
-from nemo_oo_agents.runtime.event_backend import InMemoryBackend
-from nemo_oo_agents.storage.sqlite import SQLiteEventBackend
+from nooa.runtime.event_backend import InMemoryBackend
+from nooa.storage.sqlite import SQLiteEventBackend
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -82,7 +82,7 @@ _ALL_EVENTS = [
         ToolCallEvent,
         Role.ASSISTANT,
     ),
-    # --- nemo_oo_agents types ---
+    # --- nooa types ---
     (
         "4",
         Task(prompt="Do the thing"),

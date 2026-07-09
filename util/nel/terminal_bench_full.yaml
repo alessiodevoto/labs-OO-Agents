@@ -9,7 +9,7 @@
 # (TB2 has many containers without Python, e.g. alexgshaw/gpt2-codegolf:20251031).
 #
 # Prerequisites:
-#   export NEMO_OO_AGENTS_GIT_URL="https://oauth2:<PAT>@gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents.git"
+#   export NEMO_OO_AGENTS_GIT_URL="https://oauth2:<PAT>@gitlab-master.nvidia.com/interactive-agents/nooa.git"
 #   export NVIDIA_INTERNAL_API_KEY="..."
 #
 # Submit:

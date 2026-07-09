@@ -11,7 +11,7 @@ import asyncio
 import pytest
 from opentelemetry.sdk.trace import TracerProvider
 
-from nemo_oo_agents.tracing._hooks_impl import OpenInferenceHooks
+from nooa.tracing._hooks_impl import OpenInferenceHooks
 
 
 class MockAgent:

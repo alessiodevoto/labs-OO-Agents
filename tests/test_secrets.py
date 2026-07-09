@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Tests for :func:`nemo_oo_agents.secrets.load_secrets_into_env`.
+"""Tests for :func:`nooa.secrets.load_secrets_into_env`.
 
 Secrets live in layered ``secrets.yaml`` (user → project →
 ``NEMO_OO_SECRETS``) with an ``env:`` mapping pushed into ``os.environ``
@@ -14,7 +14,7 @@ import os
 
 import pytest
 
-from nemo_oo_agents.secrets import load_secrets_into_env
+from nooa.secrets import load_secrets_into_env
 
 _KEY = "NEMO_TEST_SECRET_KEY"
 _KEY2 = "NEMO_TEST_SECRET_KEY2"
@@ -105,6 +105,6 @@ def test_env_var_override_layer(user_dir, project_dir, tmp_path, monkeypatch):
 
 def test_non_mapping_env_warns(user_dir, project_dir, caplog):
     _write(user_dir, "env:\n  - just\n  - a list\n")
-    with caplog.at_level(logging.WARNING, logger="nemo_oo_agents.secrets"):
+    with caplog.at_level(logging.WARNING, logger="nooa.secrets"):
         assert load_secrets_into_env() == []
     assert "not a mapping" in caplog.text

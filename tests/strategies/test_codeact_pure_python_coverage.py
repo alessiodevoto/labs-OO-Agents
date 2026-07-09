@@ -19,20 +19,20 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import BaseModel, ValidationError
 
-from nemo_oo_agents import Agent, strategy
-from nemo_oo_agents.config import CodeActConfig
-from nemo_oo_agents.errors import GenerationError, XMLFormatError
-from nemo_oo_agents.strategies.codeact import (
+from nooa import Agent, strategy
+from nooa.config import CodeActConfig
+from nooa.errors import GenerationError, XMLFormatError
+from nooa.strategies.codeact import (
     CodeActSession,
     CodeActStrategy,
     _iter_agent_attrs,
     _ReturnResultSignal,
 )
-from nemo_oo_agents.strategies.pure_python import (
+from nooa.strategies.pure_python import (
     GenerationSession,
     PurePythonStrategy,
 )
-from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
+from nooa.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
 
 # ---------------------------------------------------------------------------
 # Helpers shared across tests
@@ -221,7 +221,7 @@ class TestExecutionContext:
         rt.agent = TestAgent(llm=_TEST_LLM)
 
         # Patch inspect.getmodule to return None
-        with patch("nemo_oo_agents.strategies.codeact.inspect.getmodule", return_value=None):
+        with patch("nooa.strategies.codeact.inspect.getmodule", return_value=None):
             result = await strat.execution_context(rt)
 
         assert "Execution Context" in result
@@ -237,7 +237,7 @@ class TestSanitizeCode:
     """Tests for code fence stripping (now in shared response_cleanup module)."""
 
     def test_sanitize_removes_python_fence(self):
-        from nemo_oo_agents.runtime.response_cleanup import strip_code_fences
+        from nooa.runtime.response_cleanup import strip_code_fences
 
         code = "```python\nresult = 42\n```"
         cleaned, token = strip_code_fences(code)
@@ -245,14 +245,14 @@ class TestSanitizeCode:
         assert token == "```python"
 
     def test_sanitize_removes_plain_fence(self):
-        from nemo_oo_agents.runtime.response_cleanup import strip_code_fences
+        from nooa.runtime.response_cleanup import strip_code_fences
 
         code = "```\nresult = 42\n```"
         cleaned, token = strip_code_fences(code)
         assert cleaned == "result = 42"
 
     def test_sanitize_no_fence(self):
-        from nemo_oo_agents.runtime.response_cleanup import strip_code_fences
+        from nooa.runtime.response_cleanup import strip_code_fences
 
         code = "result = 42"
         cleaned, token = strip_code_fences(code)
@@ -265,7 +265,7 @@ class TestSanitizeCode:
         fenced code and failed silently, so helpers weren't pre-bound."""
         import ast
 
-        from nemo_oo_agents.runtime.response_cleanup import strip_code_fences
+        from nooa.runtime.response_cleanup import strip_code_fences
 
         fenced = "```python\nasync def helper(self, x):\n    return x * 2\n```"
         cleaned, token = strip_code_fences(fenced)
@@ -277,7 +277,7 @@ class TestSanitizeCode:
     def test_fenced_code_with_opening_line_code_preserved(self):
         """Regression: LLMs sometimes emit ```python CODE\n``` on one line.
         That code must not be silently deleted."""
-        from nemo_oo_agents.runtime.response_cleanup import strip_code_fences
+        from nooa.runtime.response_cleanup import strip_code_fences
 
         code = "```python print('hello')\n```"
         cleaned, token = strip_code_fences(code)
@@ -936,7 +936,7 @@ class TestBuildBuiltins:
         agent = TestAgent(llm=_TEST_LLM)
         strat = CodeActStrategy()
 
-        from nemo_oo_agents.strategies.current_call import CurrentCall
+        from nooa.strategies.current_call import CurrentCall
 
         call = CurrentCall(
             id="call_1",
@@ -950,7 +950,7 @@ class TestBuildBuiltins:
         rt = MagicMock()
         rt.agent = agent
         rt.event_manager = MagicMock()
-        with patch("nemo_oo_agents.strategies.codeact.inspect.getmodule", return_value=None):
+        with patch("nooa.strategies.codeact.inspect.getmodule", return_value=None):
             builtins = strat._build_builtins(rt, call)
         assert "x" in builtins
         assert builtins["x"] == 42
@@ -969,7 +969,7 @@ class TestBuildBuiltins:
         agent = TestAgent(llm=_TEST_LLM)
         strat = CodeActStrategy()
 
-        from nemo_oo_agents.strategies.current_call import CurrentCall
+        from nooa.strategies.current_call import CurrentCall
 
         call = CurrentCall(
             id="call_1",
@@ -983,7 +983,7 @@ class TestBuildBuiltins:
         rt = MagicMock()
         rt.agent = agent
         rt.event_manager = MagicMock()
-        with patch("nemo_oo_agents.strategies.codeact.inspect.getmodule", return_value=None):
+        with patch("nooa.strategies.codeact.inspect.getmodule", return_value=None):
             builtins = strat._build_builtins(rt, call)
         assert "x" in builtins
         assert builtins["x"] == 99
@@ -1433,7 +1433,7 @@ class TestPurePythonRunPrefill:
         session = GenerationSession(max_iterations=5, max_retries=3, target_method_name="test")
 
         # Make _execute_code return an error result
-        from nemo_oo_agents.events import ExecutionResult
+        from nooa.events import ExecutionResult
 
         error_result = ExecutionResult(
             stdout="", error=RuntimeError("execution failed"), defined_methods={}
@@ -1448,7 +1448,7 @@ class TestPurePythonRunPrefill:
     @pytest.mark.asyncio
     async def test_run_prefill_success_emits_python_output_not_feedback(self):
         """Successful prefill should emit PythonOutput (not Feedback)."""
-        from nemo_oo_agents.events import ExecutionResult, PythonOutput
+        from nooa.events import ExecutionResult, PythonOutput
 
         class SimplePrefill:
             def get_code(self, call, config=None):
@@ -1574,7 +1574,7 @@ class TestPurePythonIsTaskComplete:
         rt = MagicMock()
         rt.agent = agent
 
-        from nemo_oo_agents.strategies.current_call import CurrentCall
+        from nooa.strategies.current_call import CurrentCall
 
         call = CurrentCall(
             id="call_1",
@@ -1586,7 +1586,7 @@ class TestPurePythonIsTaskComplete:
             kwargs={},
         )
 
-        from nemo_oo_agents.events import ExecutionResult
+        from nooa.events import ExecutionResult
 
         result = ExecutionResult(stdout="", error=None, defined_methods={}, has_return=False)
         is_complete = strat._is_task_complete(result, rt, call)
@@ -1598,8 +1598,8 @@ class TestPurePythonIsTaskComplete:
         rt = MagicMock()
         rt.agent = MagicMock(spec=[])  # No attributes
 
-        from nemo_oo_agents.events import ExecutionResult
-        from nemo_oo_agents.strategies.current_call import CurrentCall
+        from nooa.events import ExecutionResult
+        from nooa.strategies.current_call import CurrentCall
 
         call = CurrentCall(
             id="call_1",
@@ -1641,8 +1641,8 @@ class TestPurePythonFinalizeSuccess:
         rt.agent = agent
         rt.event_manager = MagicMock()
 
-        from nemo_oo_agents.events import ExecutionResult
-        from nemo_oo_agents.strategies.current_call import CurrentCall
+        from nooa.events import ExecutionResult
+        from nooa.strategies.current_call import CurrentCall
 
         call = CurrentCall(
             id="call_1",
@@ -1682,9 +1682,9 @@ class TestPurePythonFinalizeSuccess:
         rt.agent = agent
         rt.event_manager = MagicMock()
 
-        from nemo_oo_agents.events import ExecutionResult
-        from nemo_oo_agents.strategies.current_call import CurrentCall
-        from nemo_oo_agents.strategies.generated_code import ReturnValueValidator
+        from nooa.events import ExecutionResult
+        from nooa.strategies.current_call import CurrentCall
+        from nooa.strategies.generated_code import ReturnValueValidator
 
         call = CurrentCall(
             id="call_1",
@@ -1722,9 +1722,9 @@ class TestPurePythonFinalizeSuccess:
         rt.event_manager = MagicMock()
         rt.truncation_config = MagicMock()
 
-        from nemo_oo_agents.events import ExecutionResult
-        from nemo_oo_agents.strategies.current_call import CurrentCall
-        from nemo_oo_agents.strategies.generated_code import ReturnValueValidator
+        from nooa.events import ExecutionResult
+        from nooa.strategies.current_call import CurrentCall
+        from nooa.strategies.generated_code import ReturnValueValidator
 
         call = CurrentCall(
             id="call_1",
@@ -1762,9 +1762,9 @@ class TestPurePythonFinalizeSuccess:
         rt.event_manager = MagicMock()
         rt.truncation_config = MagicMock()
 
-        from nemo_oo_agents.events import ExecutionResult
-        from nemo_oo_agents.strategies.current_call import CurrentCall
-        from nemo_oo_agents.strategies.generated_code import ReturnValueValidator
+        from nooa.events import ExecutionResult
+        from nooa.strategies.current_call import CurrentCall
+        from nooa.strategies.generated_code import ReturnValueValidator
 
         call = CurrentCall(
             id="call_1",
@@ -1848,7 +1848,7 @@ class TestFormatValidationErrorShared:
 
     def test_json_decode_error(self):
         """Should format JSONDecodeError."""
-        from nemo_oo_agents.strategies.codeact_errors import format_validation_error
+        from nooa.strategies.codeact_errors import format_validation_error
 
         try:
             json.loads("invalid json")
@@ -1858,7 +1858,7 @@ class TestFormatValidationErrorShared:
 
     def test_pydantic_validation_error(self):
         """Should format PydanticValidationError with field details."""
-        from nemo_oo_agents.strategies.codeact_errors import format_validation_error
+        from nooa.strategies.codeact_errors import format_validation_error
 
         class MyModel(BaseModel):
             x: int
@@ -1872,7 +1872,7 @@ class TestFormatValidationErrorShared:
 
     def test_generic_error(self):
         """Should format generic exception."""
-        from nemo_oo_agents.strategies.codeact_errors import format_validation_error
+        from nooa.strategies.codeact_errors import format_validation_error
 
         err = RuntimeError("something broke")
         result = format_validation_error(err, str)
@@ -1925,7 +1925,7 @@ class TestPurePythonSendExecutionError:
         rt.event_manager.add = MagicMock(return_value="evt1")
         strat.continuation_prompt = AsyncMock(return_value="Continue...")
 
-        from nemo_oo_agents.events import ExecutionResult
+        from nooa.events import ExecutionResult
 
         result = ExecutionResult(
             stdout="",
@@ -2363,7 +2363,7 @@ class TestExecutionContextBlockedModules:
         The is_from_blocked_module function is imported locally within execution_context,
         so we configure a CodeActConfig with explicitly blocked modules to trigger line 344.
         """
-        from nemo_oo_agents.runtime.restrictions import RestrictionsConfig
+        from nooa.runtime.restrictions import RestrictionsConfig
 
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(CodeActStrategy())
@@ -2393,7 +2393,7 @@ class TestExecutionContextWithSkillsSection:
     @pytest.mark.asyncio
     async def test_execution_context_shows_skills_section(self):
         """execution_context should include Skills section when agent has Skill attrs."""
-        from nemo_oo_agents.skill import Skill
+        from nooa.skill import Skill
 
         class TestAgent(Agent, llm=_TEST_LLM):
             my_skill = Skill(content="skill documentation")
@@ -2539,7 +2539,7 @@ class TestCodeActPreEllipsisCode:
     @pytest.mark.asyncio
     async def test_pre_ellipsis_code_is_executed_as_prefill(self):
         """Pre-ellipsis code should be executed as separate prefill step (lines 1698-1699)."""
-        from nemo_oo_agents.strategies.current_call import CurrentCall
+        from nooa.strategies.current_call import CurrentCall
 
         strat = CodeActStrategy()
         session = CodeActSession(
@@ -2565,7 +2565,7 @@ class TestCodeActPreEllipsisCode:
         rt.event_manager.update = MagicMock()
         rt.execute_code = AsyncMock()
 
-        from nemo_oo_agents.events import ExecutionResult
+        from nooa.events import ExecutionResult
 
         rt.execute_code.return_value = ExecutionResult(
             stdout="", error=None, defined_methods={}, captured_locals={"setup_var": 42}
@@ -2596,7 +2596,7 @@ class TestCodeActExecutePrefillStep:
     @pytest.mark.asyncio
     async def test_execute_prefill_step_merges_captured_locals(self):
         """Captured locals from prefill should be merged into session (lines 1773-1774)."""
-        from nemo_oo_agents.events import ExecutionResult
+        from nooa.events import ExecutionResult
 
         strat = CodeActStrategy()
         em = MagicMock()
@@ -2634,7 +2634,7 @@ class TestCodeActExecutePrefillStep:
     @pytest.mark.asyncio
     async def test_execute_prefill_step_with_error_logs_warning(self):
         """Prefill step with error should log but not raise (line 1806)."""
-        from nemo_oo_agents.events import ExecutionResult
+        from nooa.events import ExecutionResult
 
         strat = CodeActStrategy()
         em = MagicMock()
@@ -2678,7 +2678,7 @@ class TestCodeActExecuteCodeValidationErrors:
     @pytest.mark.asyncio
     async def test_execute_code_returns_error_result_on_validation_failure(self):
         """_execute_code should return ExecutionResult with error on validation failure."""
-        from nemo_oo_agents.strategies.generated_code import GeneratedCodeValidator
+        from nooa.strategies.generated_code import GeneratedCodeValidator
 
         strat = CodeActStrategy()
         em = MagicMock()
@@ -2721,7 +2721,7 @@ class TestCodeActExecuteCodeHelperBindingError:
     @pytest.mark.asyncio
     async def test_execute_code_returns_error_on_helper_binding_error(self):
         """_execute_code should return error result when helper fails to compile (lines 1871-1875)."""
-        from nemo_oo_agents.strategies.generated_code import (
+        from nooa.strategies.generated_code import (
             HelperApplyResult,
             HelperFunctionManager,
         )
@@ -2831,8 +2831,8 @@ class TestPurePythonIsTaskCompleteException:
         rt = MagicMock()
         rt.agent = agent
 
-        from nemo_oo_agents.events import ExecutionResult
-        from nemo_oo_agents.strategies.current_call import CurrentCall
+        from nooa.events import ExecutionResult
+        from nooa.strategies.current_call import CurrentCall
 
         call = CurrentCall(
             id="c1",
@@ -2846,7 +2846,7 @@ class TestPurePythonIsTaskCompleteException:
         result = ExecutionResult(stdout="", error=None, defined_methods={}, has_return=False)
 
         with patch(
-            "nemo_oo_agents.strategies.pure_python.get_type_hints",
+            "nooa.strategies.pure_python.get_type_hints",
             side_effect=NameError("unknown"),
         ):
             is_complete = strat._is_task_complete(result, rt, call)
@@ -2867,8 +2867,8 @@ class TestPurePythonIsTaskCompleteException:
         rt = MagicMock()
         rt.agent = agent
 
-        from nemo_oo_agents.events import ExecutionResult
-        from nemo_oo_agents.strategies.current_call import CurrentCall
+        from nooa.events import ExecutionResult
+        from nooa.strategies.current_call import CurrentCall
 
         call = CurrentCall(
             id="c1",
@@ -2882,11 +2882,11 @@ class TestPurePythonIsTaskCompleteException:
         result = ExecutionResult(stdout="", error=None, defined_methods={}, has_return=False)
 
         with patch(
-            "nemo_oo_agents.strategies.pure_python.get_type_hints",
+            "nooa.strategies.pure_python.get_type_hints",
             side_effect=NameError("unknown"),
         ):
             with patch(
-                "nemo_oo_agents.strategies.pure_python.inspect.signature",
+                "nooa.strategies.pure_python.inspect.signature",
                 side_effect=ValueError("no signature"),
             ):
                 is_complete = strat._is_task_complete(result, rt, call)
@@ -2917,7 +2917,7 @@ class TestPurePythonBuildBuiltins:
         rt.agent = agent
         rt.event_manager = MagicMock()
 
-        from nemo_oo_agents.strategies.current_call import CurrentCall
+        from nooa.strategies.current_call import CurrentCall
 
         call = CurrentCall(
             id="c1",
@@ -2930,7 +2930,7 @@ class TestPurePythonBuildBuiltins:
         )
 
         with patch(
-            "nemo_oo_agents.strategies.pure_python.inspect.signature",
+            "nooa.strategies.pure_python.inspect.signature",
             side_effect=ValueError("no sig"),
         ):
             builtins = strat._build_builtins(rt, call)
@@ -3077,7 +3077,7 @@ class TestHttpxImportFallback:
 
     def test_httpx_timeout_exceptions_defined(self):
         """_HTTPX_TIMEOUT_EXCEPTIONS should always be defined (lines 59-61)."""
-        from nemo_oo_agents.strategies.pure_python import _HTTPX_TIMEOUT_EXCEPTIONS
+        from nooa.strategies.pure_python import _HTTPX_TIMEOUT_EXCEPTIONS
 
         assert isinstance(_HTTPX_TIMEOUT_EXCEPTIONS, tuple)
         assert len(_HTTPX_TIMEOUT_EXCEPTIONS) > 0
@@ -3099,7 +3099,7 @@ class TestExecutionContextWithContext:
     @pytest.mark.asyncio
     async def test_execution_context_shows_pin_instructions_when_context_present(self):
         """Pin/unpin instructions shown when agent has context attr (lines 434-436)."""
-        from nemo_oo_agents.skill import Skill
+        from nooa.skill import Skill
 
         class TestAgentWithContext(Agent, llm=_TEST_LLM):
             my_skill = Skill(content="skill docs")
@@ -3335,7 +3335,7 @@ class TestBuildBuiltinsModuleContext:
         agent = TestAgent(llm=_TEST_LLM)
         strat = CodeActStrategy()
 
-        from nemo_oo_agents.strategies.current_call import CurrentCall
+        from nooa.strategies.current_call import CurrentCall
 
         call = CurrentCall(
             id="c1",
@@ -3456,8 +3456,8 @@ class TestCodeActHelperInstalledLogging:
     @pytest.mark.asyncio
     async def test_execute_code_with_helper_that_gets_installed(self):
         """When helper is installed, _execute_code should log it (lines 1877-1878)."""
-        from nemo_oo_agents.events import ExecutionResult
-        from nemo_oo_agents.strategies.generated_code import (
+        from nooa.events import ExecutionResult
+        from nooa.strategies.generated_code import (
             HelperApplyResult,
             HelperFunctionManager,
         )
@@ -3514,7 +3514,7 @@ class TestCodeActModuleContextBuilding:
         rt = MagicMock()
         rt.agent = agent
 
-        from nemo_oo_agents.strategies.current_call import CurrentCall
+        from nooa.strategies.current_call import CurrentCall
 
         call = CurrentCall(
             id="c1",
@@ -3546,7 +3546,7 @@ class TestCodeActModuleContextBuilding:
         rt.agent = agent
         rt.event_manager = MagicMock()
 
-        from nemo_oo_agents.strategies.current_call import CurrentCall
+        from nooa.strategies.current_call import CurrentCall
 
         call = CurrentCall(
             id="c1",
@@ -3560,7 +3560,7 @@ class TestCodeActModuleContextBuilding:
 
         # Patch inspect.signature to raise ValueError to exercise lines 2056-2057
         with patch(
-            "nemo_oo_agents.strategies.codeact.inspect.signature",
+            "nooa.strategies.codeact.inspect.signature",
             side_effect=ValueError("no signature"),
         ):
             builtins = strat._build_builtins(rt, call)
@@ -3651,7 +3651,7 @@ class TestBuiltinsLocalFunctionBodies:
 
     def test_message_not_in_builtins(self):
         """message() was removed from builtins; verify it is absent."""
-        from nemo_oo_agents.strategies.current_call import CurrentCall
+        from nooa.strategies.current_call import CurrentCall
 
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(CodeActStrategy(config=CodeActConfig()))
@@ -3853,7 +3853,7 @@ class TestPurePythonTimeoutError:
     @pytest.mark.asyncio
     async def test_timeout_error_in_generate_code_counts_as_error(self):
         """TimeoutError in _generate_code should count as error and retry (lines 274-288)."""
-        from nemo_oo_agents.strategies.pure_python import _HTTPX_TIMEOUT_EXCEPTIONS
+        from nooa.strategies.pure_python import _HTTPX_TIMEOUT_EXCEPTIONS
 
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(PurePythonStrategy(max_iterations=10, max_retries=3))
@@ -4068,7 +4068,7 @@ class TestPurePythonContinuationFeedbackStderr:
         rt.event_manager.add = MagicMock(return_value="evt1")
         strat.continuation_prompt = AsyncMock(return_value="Continue...")
 
-        from nemo_oo_agents.events import ExecutionResult
+        from nooa.events import ExecutionResult
 
         result = ExecutionResult(
             stdout="normal output",
@@ -4135,7 +4135,7 @@ class TestPurePythonContinuationFeedbackStdout:
         rt.event_manager.add = MagicMock(return_value="evt1")
         strat.continuation_prompt = AsyncMock(return_value="Continue...")
 
-        from nemo_oo_agents.events import ExecutionResult
+        from nooa.events import ExecutionResult
 
         # Result with both stdout and defined methods
         result = ExecutionResult(

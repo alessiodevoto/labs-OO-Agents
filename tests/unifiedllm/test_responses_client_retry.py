@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import litellm
 import pytest
 
-from nemo_oo_agents.unifiedllm import ResponsesClient, RetryConfig
+from nooa.unifiedllm import ResponsesClient, RetryConfig
 
 
 def make_mock_responses_response(content: str = "ok"):

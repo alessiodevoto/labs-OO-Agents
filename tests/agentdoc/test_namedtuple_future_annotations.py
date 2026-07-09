@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import NamedTuple
 
-from nemo_oo_agents.agentdoc._structured import extract_type_info
+from nooa.agentdoc._structured import extract_type_info
 
 
 class Point(NamedTuple):

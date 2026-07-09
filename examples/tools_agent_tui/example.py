@@ -14,7 +14,7 @@ The agent manages a simple in-memory note store.  Tools:
 
 Requires the CLI/TUI package alongside core::
 
-    pip install 'nemo-oo-agents-cli[datascience]'
+    pip install 'nemo-labs-oo-agents-cli[datascience]'
 
 Usage::
 
@@ -26,12 +26,12 @@ from __future__ import annotations
 import asyncio
 from collections import defaultdict
 
-from nemo_oo_agents_cli.tui.agent import RespondResult
-from nemo_oo_agents_cli.tui.config import DEFAULT_MODEL, Config
-from nemo_oo_agents_cli.tui.main import main
+from nooa_cli.tui.agent import RespondResult
+from nooa_cli.tui.config import DEFAULT_MODEL, Config
+from nooa_cli.tui.main import main
 
-from nemo_oo_agents import Agent
-from nemo_oo_agents.unifiedllm import FakeLLMClient, get_llm_client
+from nooa import Agent
+from nooa.unifiedllm import FakeLLMClient, get_llm_client
 
 # ---------------------------------------------------------------------------
 # LLM

@@ -1,10 +1,10 @@
 # Issue 208 — CachedRenderer must not mutate the trailing event message
 
-Issue: https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents/-/issues/208
+Issue: https://gitlab-master.nvidia.com/interactive-agents/nooa/-/issues/208
 
 ## Problem (recap)
 
-`CachedBlockFormatter.format` in `src/nemo_oo_agents/context_blocks/renderers/cached.py:125-147` has two emission branches for the dynamic `<context>...</context>` envelope:
+`CachedBlockFormatter.format` in `src/nooa/context_blocks/renderers/cached.py:125-147` has two emission branches for the dynamic `<context>...</context>` envelope:
 
 - **fast path** — when the trailing message is a plain user-event (no tool_call, no tool_call_id), merge the envelope **into that event's `content` and `parts`** (lines 125-147).
 - **fallback** — otherwise (assistant tool_call message, tool result, or no trailing event at all), append the envelope as a **new** `RenderedMessage(role=USER)` (lines 148-151).
@@ -44,7 +44,7 @@ Only the bottom row changes shape: the trailing user-event is now followed by a 
 
 ## Implementation steps
 
-1. In `src/nemo_oo_agents/context_blocks/renderers/cached.py`:
+1. In `src/nooa/context_blocks/renderers/cached.py`:
    - Delete lines 125-147 (the merge branch).
    - Replace the surrounding `if/else` with the unconditional `messages.append(RenderedMessage(role=Role.USER, content=suffix, parts=envelope_parts))`.
    - Update the module docstring (lines 7-11) and the class docstring (lines 70-72) to drop the "merged into the last event message if that is already user-role" claim. Replace with: "emitted as a trailing USER message — appended unconditionally to keep byte content of historical messages stable across consecutive renders, which is what enables provider-side prompt caching to hit on the full event tail."
@@ -62,7 +62,7 @@ Only the bottom row changes shape: the trailing user-event is now followed by a 
 3. Verification:
    - `uv run pytest tests/context_blocks/test_cached_renderer.py -x -q`
    - `uv run pytest -x -q`
-   - `uv run ruff check src/nemo_oo_agents/context_blocks/renderers/cached.py tests/context_blocks/test_cached_renderer.py`
+   - `uv run ruff check src/nooa/context_blocks/renderers/cached.py tests/context_blocks/test_cached_renderer.py`
 
 ## Acceptance criteria mapping
 

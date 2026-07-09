@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """OpenInference semantic-conventions conformance tests.
 
-Locks in that the spans nemo_oo_agents emits stay compatible with the published
+Locks in that the spans nooa emits stay compatible with the published
 OpenInference semantic conventions
 (https://arize-ai.github.io/openinference/spec/semantic_conventions.html).
 
@@ -37,9 +37,9 @@ from openinference.semconv.trace import (
 )
 from otlp_test_helpers import read_all_otlp_jsonl_spans
 
-from nemo_oo_agents import Agent
-from nemo_oo_agents.runtime.hooks import set_hooks
-from nemo_oo_agents.unifiedllm import LLMResponse, ToolCall
+from nooa import Agent
+from nooa.runtime.hooks import set_hooks
+from nooa.unifiedllm import LLMResponse, ToolCall
 
 # Set of all valid OpenInference span-kind string values (tracks upstream).
 VALID_SPAN_KINDS = {v.value for v in OpenInferenceSpanKindValues}
@@ -97,9 +97,9 @@ def framework_spans():
         InMemorySpanExporter,
     )
 
-    from nemo_oo_agents.tracing import NemoOOAgentsInstrumentor
-    from nemo_oo_agents.tracing._session import set_session
-    from nemo_oo_agents.tracing._session_processor import SessionSpanProcessor
+    from nooa.tracing import NemoOOAgentsInstrumentor
+    from nooa.tracing._session import set_session
+    from nooa.tracing._session_processor import SessionSpanProcessor
 
     exporter = InMemorySpanExporter()
     # OTel's global TracerProvider cannot be reset once set, so reuse it when present
@@ -149,7 +149,7 @@ def test_safe_json_value_preserves_dict_keys_on_overflow():
     """Even when the serialized input exceeds the cap, the top-level keys survive
     so readers can still extract ``args``/``kwargs``/``code`` by key (the value is
     application/json-tagged, so it must parse back to a dict)."""
-    from nemo_oo_agents.tracing._hooks_impl import OpenInferenceHooks
+    from nooa.tracing._hooks_impl import OpenInferenceHooks
 
     big = {"args": ["x" * 200_000], "kwargs": {"k": "y" * 200_000}}
     out = OpenInferenceHooks._safe_json_value(big, max_chars=50_000)
@@ -310,7 +310,7 @@ async def test_context_snapshot_is_chain_when_present(framework_spans):
         assert _attr(span, SpanAttributes.INPUT_VALUE) is not None
         assert _attr(span, SpanAttributes.INPUT_MIME_TYPE) == OpenInferenceMimeTypeValues.TEXT.value
         # native attr preserved alongside the alias.
-        assert _attr(span, "nemo_oo_agents.system_message") is not None
+        assert _attr(span, "nooa.system_message") is not None
 
 
 @pytest.mark.asyncio
@@ -345,7 +345,7 @@ async def test_llm_span_conformance():
     )
     import litellm
 
-    from nemo_oo_agents.tracing import enable_tracing, exporters, flush_traces, set_session
+    from nooa.tracing import enable_tracing, exporters, flush_traces, set_session
 
     with tempfile.TemporaryDirectory() as tmpdir:
         enable_tracing(exporters=[exporters.jsonl(tmpdir)])

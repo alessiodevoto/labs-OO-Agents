@@ -15,10 +15,10 @@ from typing import Any
 
 import pytest
 
-from nemo_oo_agents import strategy
-from nemo_oo_agents.events import LLMComplete
-from nemo_oo_agents.strategies import PredictStrategy
-from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
+from nooa import strategy
+from nooa.events import LLMComplete
+from nooa.strategies import PredictStrategy
+from nooa.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
 
 
 def _resp(
@@ -66,7 +66,7 @@ class TestLLMCompleteEvent:
         # Hook the standalone agent's event manager: we wrap the standalone
         # wrapper so we can install the handler on the fresh child agent
         # before generation runs.
-        from nemo_oo_agents.standalone import _atif_exporter_var
+        from nooa.standalone import _atif_exporter_var
 
         class _Capture:
             def _attach_child(self, em, child_agent_name: str = "") -> None:
@@ -109,7 +109,7 @@ class TestLLMCompleteEvent:
             """{prompt}"""
             ...
 
-        from nemo_oo_agents.standalone import _atif_exporter_var
+        from nooa.standalone import _atif_exporter_var
 
         class _Capture:
             def _attach_child(self, em, child_agent_name: str = "") -> None:
@@ -163,7 +163,7 @@ class TestLLMCompleteEvent:
             """Do something."""
             ...
 
-        from nemo_oo_agents.standalone import _atif_exporter_var
+        from nooa.standalone import _atif_exporter_var
 
         class _Capture:
             def _attach_child(self, em, child_agent_name: str = "") -> None:
@@ -202,7 +202,7 @@ class TestLLMCompleteEvent:
             """Do something."""
             ...
 
-        from nemo_oo_agents.standalone import _atif_exporter_var
+        from nooa.standalone import _atif_exporter_var
 
         class _Capture:
             def _attach_child(self, em, child_agent_name: str = "") -> None:
@@ -230,14 +230,14 @@ class TestAtifExporterContextVar:
 
     def test_default_value_is_none(self) -> None:
         """Outside an install_atif scope, the var resolves to None."""
-        from nemo_oo_agents.standalone import _atif_exporter_var
+        from nooa.standalone import _atif_exporter_var
 
         assert _atif_exporter_var.get() is None
 
     @pytest.mark.asyncio
     async def test_set_value_visible_to_standalone_wrapper(self) -> None:
         """Setting the var BEFORE a standalone call exposes it during wrapper exec."""
-        from nemo_oo_agents.standalone import _atif_exporter_var
+        from nooa.standalone import _atif_exporter_var
 
         seen_event_managers: list[Any] = []
 
@@ -271,7 +271,7 @@ class TestAtifExporterContextVar:
     @pytest.mark.asyncio
     async def test_reset_restores_to_none(self) -> None:
         """After reset/exit, the var is back to None and wrapper does not call attach."""
-        from nemo_oo_agents.standalone import _atif_exporter_var
+        from nooa.standalone import _atif_exporter_var
 
         attach_calls: list[Any] = []
 

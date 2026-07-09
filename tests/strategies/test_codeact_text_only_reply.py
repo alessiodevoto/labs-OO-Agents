@@ -13,11 +13,11 @@ import json
 
 import pytest
 
-from nemo_oo_agents import Agent, strategy
-from nemo_oo_agents.config import CodeActConfig
-from nemo_oo_agents.errors import GenerationError
-from nemo_oo_agents.strategies.codeact import CodeActStrategy
-from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
+from nooa import Agent, strategy
+from nooa.config import CodeActConfig
+from nooa.errors import GenerationError
+from nooa.strategies.codeact import CodeActStrategy
+from nooa.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
 
 _TEST_LLM = FakeLLMClient()
 
@@ -83,8 +83,8 @@ async def test_text_only_drift_recorded_and_recovers():
 @pytest.mark.asyncio
 async def test_text_only_drift_not_shown_to_model():
     """TextOnlyReply is Role.METADATA — recorded but never rendered into the prompt."""
-    from nemo_oo_agents.context_blocks.roles import Role
-    from nemo_oo_agents.events import TextOnlyReply
+    from nooa.context_blocks.roles import Role
+    from nooa.events import TextOnlyReply
 
     assert TextOnlyReply._role == Role.METADATA
 

@@ -15,11 +15,11 @@ from __future__ import annotations
 
 import pytest
 
-from nemo_oo_agents import Agent, strategy
-from nemo_oo_agents.context_blocks.roles import Role
-from nemo_oo_agents.events import AfterAgentCall, BeforeAgentCall
-from nemo_oo_agents.strategies import PredictStrategy
-from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse
+from nooa import Agent, strategy
+from nooa.context_blocks.roles import Role
+from nooa.events import AfterAgentCall, BeforeAgentCall
+from nooa.strategies import PredictStrategy
+from nooa.unifiedllm import FakeLLMClient, LLMResponse
 
 _DEFAULT = FakeLLMClient()
 

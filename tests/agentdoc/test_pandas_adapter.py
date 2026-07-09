@@ -8,8 +8,8 @@ import pytest
 
 pd = pytest.importorskip("pandas")
 
-from nemo_oo_agents.agentdoc import doc  # noqa: E402
-from nemo_oo_agents.agentdoc.adapters import register_all  # noqa: E402
+from nooa.agentdoc import doc  # noqa: E402
+from nooa.agentdoc.adapters import register_all  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -18,7 +18,7 @@ def _register():
     # cleared the registry (register_all() alone is a no-op once the module is imported).
     import importlib
 
-    import nemo_oo_agents.agentdoc.adapters.pandas as _pandas_adapter
+    import nooa.agentdoc.adapters.pandas as _pandas_adapter
 
     importlib.reload(_pandas_adapter)
 

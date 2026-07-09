@@ -4,8 +4,8 @@ import sqlite3
 
 import pytest
 
-from nemo_oo_agents.context_blocks import Metadata
-from nemo_oo_agents.storage.sqlite import SQLiteStorageManager
+from nooa.context_blocks import Metadata
+from nooa.storage.sqlite import SQLiteStorageManager
 
 
 @pytest.fixture

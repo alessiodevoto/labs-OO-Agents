@@ -1,9 +1,9 @@
 import inspect
 
-from nemo_oo_agents.runtime.context import ContextApi
-from nemo_oo_agents.runtime.events import EventsApi
-from nemo_oo_agents.skill import Skill
-from nemo_oo_agents.tools.method_writing_lib import MethodWriting
+from nooa.runtime.context import ContextApi
+from nooa.runtime.events import EventsApi
+from nooa.skill import Skill
+from nooa.tools.method_writing_lib import MethodWriting
 
 
 def _check_library_docstring(cls):
@@ -38,7 +38,7 @@ def test_builtin_libs_are_skills():
 
 
 def test_codeact_strategy_instructions_no_longer_has_decomposition():
-    from nemo_oo_agents.strategies.codeact import CodeActStrategy
+    from nooa.strategies.codeact import CodeActStrategy
 
     src = inspect.getsource(CodeActStrategy.strategy_instructions)
     assert "Task decomposition" not in src
@@ -48,7 +48,7 @@ def test_context_api_not_in_protected_blocks():
     """context_api and events_api should not be registered as protected blocks."""
     from unittest.mock import MagicMock
 
-    from nemo_oo_agents.agent import Agent
+    from nooa.agent import Agent
 
     agent = Agent(llm=MagicMock())
     assert "context_api" not in agent.context_manager.protected_keys
@@ -56,7 +56,7 @@ def test_context_api_not_in_protected_blocks():
 
 
 def test_codeact_block_order_no_api_keys():
-    from nemo_oo_agents.strategies.codeact import CodeActStrategy
+    from nooa.strategies.codeact import CodeActStrategy
 
     strategy = CodeActStrategy.__new__(CodeActStrategy)
     order = strategy.get_block_order() or []

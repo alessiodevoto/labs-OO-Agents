@@ -12,10 +12,10 @@ import json
 
 import pytest
 
-from nemo_oo_agents import Agent, strategy
-from nemo_oo_agents.config import CodeActConfig
-from nemo_oo_agents.strategies import CodeActStrategy
-from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
+from nooa import Agent, strategy
+from nooa.config import CodeActConfig
+from nooa.strategies import CodeActStrategy
+from nooa.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
 
 # Patterns that indicate an error or traceback leaked into prompt content.
 # Keep these specific enough to avoid false positives (e.g. "error" in "rounding error").

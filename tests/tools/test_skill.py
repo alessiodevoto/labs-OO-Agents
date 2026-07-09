@@ -4,7 +4,7 @@ import math
 
 import pytest
 
-from nemo_oo_agents.skill import Skill
+from nooa.skill import Skill
 
 
 class TestSkillAsBaseClass:

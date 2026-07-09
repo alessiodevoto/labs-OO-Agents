@@ -21,7 +21,7 @@ import asyncio
 
 import pytest
 
-from nemo_oo_agents.runtime.channels import Channel, QueueManager
+from nooa.runtime.channels import Channel, QueueManager
 
 # ---------------------------------------------------------------------------
 # Helpers

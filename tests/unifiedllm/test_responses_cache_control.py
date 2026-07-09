@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from nemo_oo_agents.unifiedllm import ResponsesClient
+from nooa.unifiedllm import ResponsesClient
 
 
 def make_mock_responses_response(content: str = "ok"):

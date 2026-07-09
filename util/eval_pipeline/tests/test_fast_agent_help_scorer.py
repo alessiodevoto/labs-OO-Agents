@@ -2,8 +2,8 @@
 
 from eval_pipeline.models import ScoringContext
 from eval_pipeline.scoring import FastAgentHelpScorer, ModeSelectionScorer, _get_code
-from nemo_oo_agents.trace_explorer import TraceExplorer
-from nemo_oo_agents.trace_explorer.explorer import AgentSession, ExecutionTurn, LLMTurn
+from nooa.trace_explorer import TraceExplorer
+from nooa.trace_explorer.explorer import AgentSession, ExecutionTurn, LLMTurn
 
 
 def _trace(*turns):

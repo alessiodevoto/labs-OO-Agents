@@ -24,8 +24,8 @@ class TestHooksRegisteredPerTask:
 
     def test_task1_has_hooks(self):
         """Sanity: the very first task always has hooks (first-time-setup path)."""
-        from nemo_oo_agents.runtime.hooks import get_hooks
-        from nemo_oo_agents.tracing import enable_tracing, exporters
+        from nooa.runtime.hooks import get_hooks
+        from nooa.tracing import enable_tracing, exporters
 
         result = {}
 
@@ -50,8 +50,8 @@ class TestHooksRegisteredPerTask:
         inherited the main thread's context (hooks=None), so get_hooks() returned
         None and no AGENT/GENERATION spans were emitted.
         """
-        from nemo_oo_agents.runtime.hooks import get_hooks
-        from nemo_oo_agents.tracing import enable_tracing, exporters
+        from nooa.runtime.hooks import get_hooks
+        from nooa.tracing import enable_tracing, exporters
 
         task_hooks = {}
 
@@ -80,8 +80,8 @@ class TestHooksRegisteredPerTask:
         Each Task's ContextVar mutation is local to that Task.  This test ensures
         the fix doesn't accidentally make hooks visible outside tasks.
         """
-        from nemo_oo_agents.runtime.hooks import get_hooks
-        from nemo_oo_agents.tracing import enable_tracing, exporters
+        from nooa.runtime.hooks import get_hooks
+        from nooa.tracing import enable_tracing, exporters
 
         # Main thread: hooks should be None before any Task runs
         assert get_hooks() is None

@@ -1,6 +1,6 @@
 # Issue 180 — TokenBudgetSummarizer blocked by `max_param_chars`
 
-Source: https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents/-/issues/180
+Source: https://gitlab-master.nvidia.com/interactive-agents/nooa/-/issues/180
 
 ## Problem
 
@@ -65,11 +65,11 @@ public API change. Only `SummarizationAgent.summarize()` is affected — every
 other `PredictStrategy` method in the framework keeps its default safety
 guards. `MethodSummarizer` inherits the override automatically.
 
-In `src/nemo_oo_agents/agents/summarization.py`:
+In `src/nooa/agents/summarization.py`:
 
 ```python
-from nemo_oo_agents.config.strategy_config import PredictConfig
-from nemo_oo_agents.config.truncation_config import FormatConfig, TruncationConfig
+from nooa.config.strategy_config import PredictConfig
+from nooa.config.truncation_config import FormatConfig, TruncationConfig
 
 # Effectively unbounded — the summarizer's contract is "accept arbitrarily-large
 # input and compress it." Real upper bound is the LLM's context window, not a
@@ -140,7 +140,7 @@ separate concern from the per-method overrides for the LLM call.
 
 ## Scope
 
-- Single source file changed: `src/nemo_oo_agents/agents/summarization.py` —
+- Single source file changed: `src/nooa/agents/summarization.py` —
   decorator on `SummarizationAgent.summarize()` plus a constant and
   module-level imports.
 - New test file: `tests/agents/test_summarization_large_input.py`.
@@ -172,7 +172,7 @@ Add `tests/agents/test_summarization_large_input.py` with:
    `PredictStrategy` with the same `PredictConfig` the decorator uses,
    build a `CurrentCall` with a 1 M-char `history_markdown` string, and
    call `_assert_param_sizes` directly — must not raise. Mirrors the
-   guard tests in `src/nemo_oo_agents/strategies/tests/test_predict_param_guard.py`.
+   guard tests in `src/nooa/strategies/tests/test_predict_param_guard.py`.
 
 4. **`test_method_summarizer_inherits_overrides`** — same introspection as
    tests (1)+(2) but on `MethodSummarizer.summarize` instead of
@@ -193,11 +193,11 @@ and end-to-end summarization is already exercised in
 
 - `uv run pytest tests/agents/test_summarization_agents.py
   tests/agents/test_summarization_large_input.py
-  src/nemo_oo_agents/strategies/tests/test_predict_param_guard.py -x`
+  src/nooa/strategies/tests/test_predict_param_guard.py -x`
 - `uv run pytest -x -k "summariz or predict"` for a wider sweep.
-- `uv run ruff check src/nemo_oo_agents/agents/summarization.py
+- `uv run ruff check src/nooa/agents/summarization.py
   tests/agents/test_summarization_large_input.py`
-- `uv run ruff format src/nemo_oo_agents/agents/summarization.py
+- `uv run ruff format src/nooa/agents/summarization.py
   tests/agents/test_summarization_large_input.py`
 
 ## Out of scope

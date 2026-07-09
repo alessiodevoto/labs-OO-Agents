@@ -6,7 +6,7 @@ Covers: head fill, tail roll, was_truncated, chars_written, getvalue format,
 empty writes, exact-limit writes, custom tail_chars, and re-export path.
 """
 
-from nemo_oo_agents.agentdoc._truncating_stream import TruncatingStringIO
+from nooa.agentdoc._truncating_stream import TruncatingStringIO
 
 
 class TestHeadFill:
@@ -145,7 +145,7 @@ class TestGetvalueFormat:
 
 class TestAgentdocPublicExport:
     def test_importable_from_agentdoc(self):
-        from nemo_oo_agents.agentdoc import TruncatingStringIO as T
+        from nooa.agentdoc import TruncatingStringIO as T
 
         assert T is TruncatingStringIO
 

@@ -60,7 +60,7 @@ agents:
     model_name: aws/anthropic/bedrock-claude-sonnet-4-5-v1
     kwargs:
       agent_type: baseline
-      # nemo_oo_agents_git_ref: "main"
+      # nooa_git_ref: "main"
 
 datasets:
   # MemBench tasks — generated from downloaded data (see Prerequisites above).

@@ -4,9 +4,9 @@ from typing import Annotated
 
 from pydantic import Field
 
-from nemo_oo_agents.config import CodeActConfig
-from nemo_oo_agents.strategies.codeact import CodeActStrategy
-from nemo_oo_agents.unifiedllm import CompletionClient, Tool
+from nooa.config import CodeActConfig
+from nooa.strategies.codeact import CodeActStrategy
+from nooa.unifiedllm import CompletionClient, Tool
 
 
 class FakeLLM(CompletionClient):

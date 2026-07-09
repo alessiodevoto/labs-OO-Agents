@@ -27,16 +27,16 @@ Skills are discovered from entry points:
 
 ```toml
 # In a PyPI package's pyproject.toml:
-[project.entry-points."nemo_oo_agents.skills"]
-"nemo.shell" = "nemo_oo_agents.tools.shell_tools:ShellTools"
-"nemo.repo" = "nemo_oo_agents.tools.repo_tools:RepoTools"
-"nemo.todo" = "nemo_oo_agents.tools.todo:TodoManager"
-"nemo.context" = "nemo_oo_agents.runtime.context:ContextApi"
-"nemo.events" = "nemo_oo_agents.runtime.events:EventsApi"
-"nemo.producers" = "nemo_oo_agents.runtime.producers_skill:ProducersSkill"
-"nemo.web" = "nemo_oo_agents.tools.web_publisher:WebPublisher"
-"nemo.libwriting" = "nemo_oo_agents.tools.library_writing_lib:SkillWriting"
-"nemo.methodwriting" = "nemo_oo_agents.tools.method_writing_lib:MethodWriting"
+[project.entry-points."nooa.skills"]
+"nemo.shell" = "nooa.tools.shell_tools:ShellTools"
+"nemo.repo" = "nooa.tools.repo_tools:RepoTools"
+"nemo.todo" = "nooa.tools.todo:TodoManager"
+"nemo.context" = "nooa.runtime.context:ContextApi"
+"nemo.events" = "nooa.runtime.events:EventsApi"
+"nemo.producers" = "nooa.runtime.producers_skill:ProducersSkill"
+"nemo.web" = "nooa.tools.web_publisher:WebPublisher"
+"nemo.libwriting" = "nooa.tools.library_writing_lib:SkillWriting"
+"nemo.methodwriting" = "nooa.tools.method_writing_lib:MethodWriting"
 ```
 
 Names use `category.skill_name` notation (dot-separated).
@@ -124,7 +124,7 @@ Hot-reload: use `self.skills.reload(name)`.
 ### Skill Class
 
 ```python
-from nemo_oo_agents.skill import Skill
+from nooa.skill import Skill
 
 class MySkill(Skill):
     \"\"\"My custom tool.\"\"\"

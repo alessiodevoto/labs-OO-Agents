@@ -9,9 +9,9 @@ Detailed reference for all NeMo OO Agents features with complete examples.
 The default strategy for all generation methods. Iteratively generates and executes Python code, calling methods on `self` as tools.
 
 ```python
-from nemo_oo_agents import Agent, strategy
-from nemo_oo_agents.strategies import CodeActStrategy
-from nemo_oo_agents.config import CodeActConfig
+from nooa import Agent, strategy
+from nooa.strategies import CodeActStrategy
+from nooa.config import CodeActConfig
 
 class ResearchAgent(Agent, llm=llm):
     bash = BashTool()  # External tool
@@ -40,7 +40,7 @@ Single-shot generation optimized for classification, extraction, and simple stru
 
 ```python
 from typing import Literal
-from nemo_oo_agents.strategies import PredictStrategy
+from nooa.strategies import PredictStrategy
 
 class Classifier(Agent, llm=llm):
     @strategy(PredictStrategy())
@@ -178,7 +178,7 @@ class InventoryAgent(Agent, llm=llm):
 ### External Tools as Class Attributes
 
 ```python
-from nemo_oo_agents.tools.bash_tool import BashTool
+from nooa.tools.bash_tool import BashTool
 
 class DevAgent(Agent, llm=llm):
     bash = BashTool()  # LLM can run shell commands
@@ -328,7 +328,7 @@ agent.context.remove("instructions")
 Temporarily override context for a specific call branch:
 
 ```python
-from nemo_oo_agents import ScopedContext, EventQuery
+from nooa import ScopedContext, EventQuery
 
 # Override system blocks for one call
 with ScopedContext({"focus": "Only answer about pricing"}):
@@ -348,7 +348,7 @@ Inner scopes inherit and override outer scopes.
 Hide methods from the LLM's view (they're still callable but won't appear as tools):
 
 ```python
-from nemo_oo_agents import hidden
+from nooa import hidden
 
 class MyAgent(Agent, llm=llm):
     @hidden
@@ -365,7 +365,7 @@ class MyAgent(Agent, llm=llm):
 
 ```python
 from typing import Annotated
-from nemo_oo_agents import hidden
+from nooa import hidden
 
 class MyAgent(Agent, llm=llm):
     # Hidden from LLM introspection
@@ -384,7 +384,7 @@ class ChildAgent(ParentAgent, llm=llm):
 For framework fields like `context` and `events`, use `spec()` in `__init__` to preserve other annotations:
 
 ```python
-from nemo_oo_agents.agentdoc import spec
+from nooa.agentdoc import spec
 
 class MyAgent(Agent, llm=llm):
     def __init__(self):
@@ -398,7 +398,7 @@ class MyAgent(Agent, llm=llm):
 Handle images, audio, video, and files in agent methods:
 
 ```python
-from nemo_oo_agents import Image, Audio, Video, File
+from nooa import Image, Audio, Video, File
 
 class MediaAgent(Agent, llm=llm):
     async def describe_image(self, img: Image) -> str:
@@ -434,7 +434,7 @@ Connect external tool servers via Model Context Protocol.
 ### Usage
 
 ```python
-from mcp_nemo_oo_agents import MCPManager
+from mcp_nooa import MCPManager
 
 class MyAgent(Agent, llm=llm):
     external = MCPManager.create_from_server("my-server")
@@ -448,10 +448,10 @@ class MyAgent(Agent, llm=llm):
 
 ### Auto-Tracing (Default)
 
-Tracing is **automatic** when the tracing package is installed. Every `Agent.__init__()` probes `localhost:5001` and, if the `nemo-oo start-dev` viewer is running, sends spans via OTLP with no code changes required.
+Tracing is **automatic** when the tracing package is installed. Every `Agent.__init__()` probes `localhost:5001` and, if the `nooa start-dev` viewer is running, sends spans via OTLP with no code changes required.
 
 ```bash
-nemo-oo start-dev              # Start viewer, then run your agent -- traces appear automatically
+nooa start-dev              # Start viewer, then run your agent -- traces appear automatically
 ```
 
 ### Explicit Setup (JSONL or Custom Endpoints)
@@ -459,7 +459,7 @@ nemo-oo start-dev              # Start viewer, then run your agent -- traces app
 Only call `enable_tracing()` explicitly when you need JSONL file output or a custom OTLP endpoint:
 
 ```python
-from nemo_oo_agents.tracing import enable_tracing, exporters
+from nooa.tracing import enable_tracing, exporters
 
 # JSONL file exporter -- `trace_dir` is a DIRECTORY, not a file path.
 # Files are written as `{trace_dir}/{session_id}.jsonl`, one per session.
@@ -490,7 +490,7 @@ Traces are saved as `.006trace.jsonl` files. Each line contains one OTLP span wr
 ### Development Server
 
 ```bash
-nemo-oo start-dev    # Launches viewer at http://localhost:5001
+nooa start-dev    # Launches viewer at http://localhost:5001
 ```
 
 ## Self-Extending Agents
@@ -511,7 +511,7 @@ The LLM might dynamically create `_parse_input()`, `_validate()`, `_format_outpu
 ### Querying Events
 
 ```python
-from nemo_oo_agents import EventQuery
+from nooa import EventQuery
 
 # Get recent events
 recent = agent.events.query(limit=20)
@@ -528,7 +528,7 @@ tagged = agent.events["5"]  # tag-lookup
 Control what history the LLM sees for a specific method:
 
 ```python
-from nemo_oo_agents import EventQuery
+from nooa import EventQuery
 
 class MyAgent(Agent, llm=llm):
     # Only sees events from the current call (no history leakage)
@@ -571,8 +571,8 @@ agent.event_manager.intercept("llm_call", retry_on_failure)
 For long-running agents, auto-compress history:
 
 ```python
-from nemo_oo_agents.agents import TokenBudgetSummarizer, MethodSummarizer
-from nemo_oo_agents.config import TokenBudgetConfig
+from nooa.agents import TokenBudgetSummarizer, MethodSummarizer
+from nooa.config import TokenBudgetConfig
 
 # Compress when token budget exceeded
 TokenBudgetSummarizer.install(agent, config=TokenBudgetConfig(max_tokens=2000))
@@ -581,7 +581,7 @@ TokenBudgetSummarizer.install(agent, config=TokenBudgetConfig(max_tokens=2000))
 MethodSummarizer.install(agent)
 
 # Size budget relative to the model's context window
-from nemo_oo_agents.config import context_budget
+from nooa.config import context_budget
 config = TokenBudgetConfig(max_tokens=context_budget(llm, percent=0.6))
 ```
 
@@ -592,7 +592,7 @@ config = TokenBudgetConfig(max_tokens=context_budget(llm, percent=0.6))
 Persist agent state to disk -- events, context blocks, LLM-defined methods, and user attributes are all serialized:
 
 ```python
-from nemo_oo_agents.storage import SQLiteStorageManager
+from nooa.storage import SQLiteStorageManager
 
 storage = SQLiteStorageManager("agent_state.db")
 
@@ -609,7 +609,7 @@ agent = MyAgent(storage=storage)  # restores full state
 For cross-process or cross-host transfer:
 
 ```python
-from nemo_oo_agents import snapshot_to_json
+from nooa import snapshot_to_json
 
 # Serialize
 data = snapshot_to_json(agent)
@@ -621,7 +621,7 @@ data = snapshot_to_json(agent)
 
 ```python
 from typing import Annotated
-from nemo_oo_agents import nosnapshot
+from nooa import nosnapshot
 
 class MyAgent(Agent, llm=llm):
     _cache: Annotated[dict, nosnapshot] = {}     # excluded from snapshots
@@ -633,7 +633,7 @@ class MyAgent(Agent, llm=llm):
 ### CodeActConfig
 
 ```python
-from nemo_oo_agents.config import CodeActConfig
+from nooa.config import CodeActConfig
 
 CodeActConfig(
     max_iterations=15,       # max code-execute cycles
@@ -651,7 +651,7 @@ CodeActConfig(
 Cap sizes to manage context window:
 
 ```python
-from nemo_oo_agents.config import TruncationConfig
+from nooa.config import TruncationConfig
 
 TruncationConfig(
     block_limit=2000,         # max chars per context block
@@ -666,7 +666,7 @@ TruncationConfig(
 ### ExecutionConfig
 
 ```python
-from nemo_oo_agents.config import ExecutionConfig
+from nooa.config import ExecutionConfig
 
 ExecutionConfig(
     max_nesting_depth=5,  # prevent runaway agent-in-agent chains
@@ -678,7 +678,7 @@ ExecutionConfig(
 Restrict what generated code can do:
 
 ```python
-from nemo_oo_agents.config import RestrictionsConfig
+from nooa.config import RestrictionsConfig
 
 RestrictionsConfig(
     denied_modules=["os", "subprocess"],             # block entire modules
@@ -691,8 +691,8 @@ RestrictionsConfig(
 Override the default strategy for the entire process (useful in eval pipelines):
 
 ```python
-from nemo_oo_agents import set_default_strategy
-from nemo_oo_agents.strategies import PredictStrategy
+from nooa import set_default_strategy
+from nooa.strategies import PredictStrategy
 
 set_default_strategy(PredictStrategy())  # all agents use PredictStrategy unless overridden
 ```
@@ -750,7 +750,7 @@ Module-level imports from your agent file are also inherited.
 Display images or files to the LLM during CodeAct:
 
 ```python
-from nemo_oo_agents import show, Image
+from nooa import show, Image
 
 # Inside generated code:
 show(Image.from_file("chart.png"))  # capped at 5 attachments per execution
@@ -795,7 +795,7 @@ print(fake.last_tools)     # what tools were available
 LLMs can use `doc()` to explore unknown objects at runtime:
 
 ```python
-from nemo_oo_agents.agentdoc import doc, spec
+from nooa.agentdoc import doc, spec
 
 class MyAgent(Agent, llm=llm):
     def __init__(self):
@@ -813,7 +813,7 @@ class MyAgent(Agent, llm=llm):
 Control how types render to the LLM without modifying source:
 
 ```python
-from nemo_oo_agents.agentdoc import spec
+from nooa.agentdoc import spec
 
 # Add description to a field (renders as inline comment)
 class MyAgent(Agent, llm=llm):

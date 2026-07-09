@@ -3,7 +3,7 @@
 import json  # noqa: F401 — for LLM exec_globals
 from typing import Annotated, Literal
 
-from nemo_oo_agents import Agent
+from nooa import Agent
 
 
 class JsonQAAgent(Agent):

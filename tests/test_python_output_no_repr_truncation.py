@@ -6,9 +6,9 @@ These fields are already truncated at capture time by TruncatingIO.
 Repr-level truncation double-truncates them, losing content the LLM needs to see.
 """
 
-from nemo_oo_agents.agentdoc import pformat
-from nemo_oo_agents.context_blocks import ResultStatus
-from nemo_oo_agents.events import PythonOutput
+from nooa.agentdoc import pformat
+from nooa.context_blocks import ResultStatus
+from nooa.events import PythonOutput
 
 
 def _make_event(stdout: str = "", stderr: str = "") -> PythonOutput:

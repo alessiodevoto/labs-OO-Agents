@@ -2,11 +2,11 @@
 
 import asyncio
 
-from nemo_oo_agents.agent import Agent
-from nemo_oo_agents.decorators import strategy
-from nemo_oo_agents.runtime.actor import ActorRuntime
-from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
-from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse
+from nooa.agent import Agent
+from nooa.decorators import strategy
+from nooa.runtime.actor import ActorRuntime
+from nooa.strategies.pure_python import PurePythonStrategy
+from nooa.unifiedllm import FakeLLMClient, LLMResponse
 
 
 def _resp(content: str) -> LLMResponse:

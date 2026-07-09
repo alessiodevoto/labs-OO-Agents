@@ -14,9 +14,9 @@ import json
 
 import pytest
 
-from nemo_oo_agents import Agent
-from nemo_oo_agents.runtime.hooks import set_hooks
-from nemo_oo_agents.unifiedllm import LLMResponse, ToolCall
+from nooa import Agent
+from nooa.runtime.hooks import set_hooks
+from nooa.unifiedllm import LLMResponse, ToolCall
 
 
 class _FakeLLM:
@@ -102,7 +102,7 @@ def in_memory_spans():
         InMemorySpanExporter,
     )
 
-    from nemo_oo_agents.tracing import NemoOOAgentsInstrumentor
+    from nooa.tracing import NemoOOAgentsInstrumentor
 
     exporter = InMemorySpanExporter()
     provider = trace.get_tracer_provider()

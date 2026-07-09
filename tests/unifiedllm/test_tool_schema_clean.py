@@ -7,7 +7,7 @@ from typing import Literal
 
 from pydantic import BaseModel, create_model
 
-from nemo_oo_agents.unifiedllm import Tool
+from nooa.unifiedllm import Tool
 
 
 class TestToolSchemaSimple:

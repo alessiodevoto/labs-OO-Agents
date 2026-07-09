@@ -1,8 +1,0 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
-"""Allow running trace_explorer as a module: python -m trace_explorer"""
-
-from nemo_oo_agents.trace_explorer import main
-
-if __name__ == "__main__":
-    main()

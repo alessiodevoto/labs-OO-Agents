@@ -1,9 +1,9 @@
 """Integration test for event management with Event-based API."""
 
-from nemo_oo_agents import Agent, strategy
-from nemo_oo_agents.events import LLMOutput, Task
-from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
-from nemo_oo_agents.unifiedllm import FakeLLMClient
+from nooa import Agent, strategy
+from nooa.events import LLMOutput, Task
+from nooa.strategies.pure_python import PurePythonStrategy
+from nooa.unifiedllm import FakeLLMClient
 
 
 def _format_events_for_test(events: list) -> list[dict]:

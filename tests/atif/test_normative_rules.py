@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from nemo_oo_agents.atif import (
+from nooa.atif import (
     AgentSchema,
     FinalMetricsSchema,
     MetricsSchema,

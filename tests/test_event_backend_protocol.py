@@ -18,18 +18,18 @@ These tests cover:
 
 import pytest
 
-from nemo_oo_agents.context_blocks import EventStatus
-from nemo_oo_agents.context_blocks.events import (
+from nooa.context_blocks import EventStatus
+from nooa.context_blocks.events import (
     AssistantEvent,
     ResultStatus,
     ToolCallEvent,
     ToolResult,
     UserEvent,
 )
-from nemo_oo_agents.context_blocks.models import Role
-from nemo_oo_agents.events import LLMOutput, Task
-from nemo_oo_agents.runtime.event_backend import InMemoryBackend
-from nemo_oo_agents.storage.sqlite import SQLiteEventBackend
+from nooa.context_blocks.models import Role
+from nooa.events import LLMOutput, Task
+from nooa.runtime.event_backend import InMemoryBackend
+from nooa.storage.sqlite import SQLiteEventBackend
 
 # ---------------------------------------------------------------------------
 # Backend fixture — add new backends here
@@ -369,7 +369,7 @@ def test_tool_call_with_result_type_preserved(backend):
 
 
 def test_nemo_event_type_preserved(backend):
-    """nemo_oo_agents event types (Task, LLMOutput, etc.) must also round-trip."""
+    """nooa event types (Task, LLMOutput, etc.) must also round-trip."""
     backend.store("1", Task(prompt="do the thing"))
     backend.store("2", LLMOutput(content="done"))
     events = list(backend.all_events())

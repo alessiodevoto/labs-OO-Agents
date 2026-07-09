@@ -17,7 +17,7 @@ The package viewer frontend is built with vanilla JS, plain HTML, and raw CSS �
 
 1. Migrate to a modern SPA stack while preserving all functional features.
 2. Keep the same FastAPI backend — only change how it serves the frontend.
-3. Maintain the `nemo_oo_agents start-dev` / `nemo_oo_agents viewers start` workflow unchanged.
+3. Maintain the `nooa start-dev` / `nooa viewers start` workflow unchanged.
 4. Enable component reuse (e.g. a shared trace table used in both `/traces` and eval summary).
 5. Remove dead code (Langfuse upload, eval-set management).
 
@@ -211,7 +211,7 @@ All API routes (`/api/*`, `/v1/traces`) remain unchanged.
 
 ### CLI Impact
 
-`nemo_oo_agents start-dev` and `nemo_oo_agents viewers start` continue to work identically — they import `nemo_oo_agents_viewer.main:app` and run it with uvicorn. The only difference is which static files the app serves.
+`nooa start-dev` and `nooa viewers start` continue to work identically — they import `nooa_viewer.main:app` and run it with uvicorn. The only difference is which static files the app serves.
 
 During development, the Vite dev server runs separately on its own port and proxies API requests to the FastAPI backend:
 

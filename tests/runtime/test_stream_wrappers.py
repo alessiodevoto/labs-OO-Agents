@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from nemo_oo_agents.runtime.stream_wrappers import (
+from nooa.runtime.stream_wrappers import (
     BlockedStdinWrapper,
     ContextVarStream,
     _block_stdin_var,

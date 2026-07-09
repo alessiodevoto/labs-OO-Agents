@@ -2,17 +2,17 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
-# nemo-oo TUI installer — designed for `curl ... | sh` one-liner UX.
+# nooa TUI installer — designed for `curl ... | sh` one-liner UX.
 #
 # What it does:
 #   1. Installs `uv` if not already present.
 #   2. Installs a managed Python interpreter (>=3.12).
-#   3. Installs `nemo-oo-agents-cli` as a `uv tool`, alongside
+#   3. Installs `nemo-labs-oo-agents-cli` as a `uv tool`, alongside
 #      `nemo-oo-agents` (core) and `nemo-oo-agents-nvidia` (NVIDIA-gateway
 #      model aliases registered via the
-#      `nemo_oo_agents.bundled_configs` entry-point group).
+#      `nooa.bundled_configs` entry-point group).
 #   4. Optionally prompts for `NVIDIA_INTERNAL_API_KEY` (via /dev/tty) and
-#      writes it to `~/.config/nemo_oo/secrets.yaml` (chmod 600). The CLI
+#      writes it to `~/.config/nooa/secrets.yaml` (chmod 600). The CLI
 #      loads this file into the process env automatically on every run —
 #      no shell-rc edit needed.
 #
@@ -27,9 +27,9 @@ set -eu
 # Configuration
 # ---------------------------------------------------------------------------
 
-REPO_URL="${NEMO_OO_INSTALL_REPO:-https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents.git}"
+REPO_URL="${NEMO_OO_INSTALL_REPO:-https://gitlab-master.nvidia.com/interactive-agents/nooa.git}"
 REPO_REF="${NEMO_OO_INSTALL_REF:-main}"
-SECRETS_FILE="${NEMO_OO_INSTALL_SECRETS_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/nemo_oo/secrets.yaml}"
+SECRETS_FILE="${NEMO_OO_INSTALL_SECRETS_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/nooa/secrets.yaml}"
 
 # ---------------------------------------------------------------------------
 # UI helpers
@@ -119,12 +119,12 @@ ensure_python() {
 }
 
 # ---------------------------------------------------------------------------
-# Step 3: nemo-oo-agents-cli (+ core + nvidia)
+# Step 3: nemo-labs-oo-agents-cli (+ core + nvidia)
 # ---------------------------------------------------------------------------
 
 install_tool() {
     if [ "${NEMO_OO_INSTALL_REINSTALL:-0}" = "1" ]; then
-        info "Force-reinstalling nemo-oo-agents-cli..."
+        info "Force-reinstalling nemo-labs-oo-agents-cli..."
         UV_INSTALL_FLAGS="--reinstall"
     else
         UV_INSTALL_FLAGS=""
@@ -141,9 +141,9 @@ install_tool() {
         UV_PYTHON_FLAGS=""
     fi
 
-    info "Installing nemo-oo-agents-cli (with core + NVIDIA aliases) as a uv tool..."
+    info "Installing nemo-labs-oo-agents-cli (with core + NVIDIA aliases) as a uv tool..."
     uv tool install $UV_INSTALL_FLAGS $UV_PYTHON_FLAGS \
-        "nemo-oo-agents-cli @ git+${REPO_URL}@${REPO_REF}#subdirectory=packages/nemo-oo-agents-cli" \
+        "nemo-labs-oo-agents-cli @ git+${REPO_URL}@${REPO_REF}#subdirectory=packages/nemo-labs-oo-agents-cli" \
         --with "nemo-oo-agents @ git+${REPO_URL}@${REPO_REF}" \
         --with "nemo-oo-agents-nvidia @ git+${REPO_URL}@${REPO_REF}#subdirectory=packages/nemo-oo-agents-nvidia"
 }
@@ -192,8 +192,8 @@ prompt_api_key() {
     # run (non-clobbering) — no shell-rc edit needed.
     tmp_file="${SECRETS_FILE}.tmp.$$"
     {
-        printf '# Written by nemo-oo install.sh on %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-        printf '# Loaded automatically by the nemo-oo CLI (non-clobbering — a\n'
+        printf '# Written by nooa install.sh on %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        printf '# Loaded automatically by the nooa CLI (non-clobbering — a\n'
         printf '# value already exported in your shell wins). Add more keys under env:.\n'
         printf 'env:\n'
         printf '  NVIDIA_INTERNAL_API_KEY: "%s"\n' "$escaped_key"
@@ -218,7 +218,7 @@ print_next_steps() {
         printf '  2. Run the TUI — your API key is loaded automatically from\n'
         printf '     %s:\n' "$SECRETS_FILE"
         printf '\n'
-        printf '       %s\n' "$(bold 'nemo-oo tui')"
+        printf '       %s\n' "$(bold 'nooa tui')"
         printf '\n'
     else
         printf '%s\n' "$(bold 'Next steps:')"
@@ -233,16 +233,16 @@ print_next_steps() {
         printf '\n'
         printf '  3. Run the TUI:\n'
         printf '\n'
-        printf '       %s\n' "$(bold 'nemo-oo tui')"
+        printf '       %s\n' "$(bold 'nooa tui')"
         printf '\n'
     fi
 
     printf '%s\n' "$(bold 'Inspect / customize the bundled LLM aliases:')"
-    printf '       nemo-oo config show     # which YAMLs are loading\n'
-    printf '       nemo-oo config eject    # local copy at ~/.config/nemo_oo/llm_config.yaml\n'
+    printf '       nooa config show     # which YAMLs are loading\n'
+    printf '       nooa config eject    # local copy at ~/.config/nooa/llm_config.yaml\n'
     printf '\n'
     printf '%s\n' "$(bold 'Upgrade later:')"
-    printf '       uv tool upgrade nemo-oo-agents-cli\n'
+    printf '       uv tool upgrade nemo-labs-oo-agents-cli\n'
     printf '\n'
 }
 
@@ -251,7 +251,7 @@ print_next_steps() {
 # ---------------------------------------------------------------------------
 
 main() {
-    info "nemo-oo TUI installer — ref=${REPO_REF}"
+    info "nooa TUI installer — ref=${REPO_REF}"
     require_prereqs
     ensure_uv
     ensure_python

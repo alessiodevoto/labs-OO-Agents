@@ -26,10 +26,10 @@ from typing import TypedDict
 
 import pytest
 
-from nemo_oo_agents import Agent
-from nemo_oo_agents.prompts import build_prompt_data
-from nemo_oo_agents.strategies.codeact import CodeActStrategy, _iter_agent_attrs
-from nemo_oo_agents.unifiedllm import FakeLLMClient
+from nooa import Agent
+from nooa.prompts import build_prompt_data
+from nooa.strategies.codeact import CodeActStrategy, _iter_agent_attrs
+from nooa.unifiedllm import FakeLLMClient
 
 _LLM = FakeLLMClient()
 
@@ -64,7 +64,7 @@ class _TestAgent(Agent, llm=_LLM):
 
 _MODULE_SOURCE = """\
 from typing import TypedDict
-from nemo_oo_agents import Agent
+from nooa import Agent
 
 class OrderResult(TypedDict):
     ok: bool
@@ -189,8 +189,8 @@ class TestExecutionContextRendering:
 
 _MODULE_WITH_FUNCS = """\
 from typing import Literal
-from nemo_oo_agents import Agent, hidden, strategy
-from nemo_oo_agents.strategies import PredictStrategy
+from nooa import Agent, hidden, strategy
+from nooa.strategies import PredictStrategy
 
 Label = Literal["a", "b"]
 
@@ -319,7 +319,7 @@ class TestModuleLevelFunctionSignatures:
         data = await build_prompt_data(agent.run)
         ec = TestExecutionContextRendering._extract_execution_context(data.system_prompt)
         # Dependencies render as runnable import statements, not a prose list.
-        assert "from nemo_oo_agents import" in ec
+        assert "from nooa import" in ec
         assert "Agent" in ec
 
     @pytest.mark.asyncio
@@ -338,7 +338,7 @@ class TestModuleLevelFunctionSignatures:
         def boom(*_a, **_k):
             raise RuntimeError("doc exploded")
 
-        with patch("nemo_oo_agents.agentdoc.doc", side_effect=boom):
+        with patch("nooa.agentdoc.doc", side_effect=boom):
             out = CodeActStrategy._render_function_specs(
                 [("beta", lambda: None), ("alpha", lambda: None)]
             )

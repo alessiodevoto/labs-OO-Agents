@@ -5,7 +5,7 @@ This module is importable by subprocess workers (unlike test files).
 
 
 class DummyAgent:
-    """Plain Python agent for testing — no LLM, no nemo_oo_agents."""
+    """Plain Python agent for testing — no LLM, no nooa."""
 
     def __init__(self, llm=None):
         pass
@@ -22,7 +22,7 @@ class DummyAgent:
 class SlowAgent:
     """Agent that sleeps longer than the timeout — for testing span flush on timeout.
 
-    Manually creates an OTel span to simulate what nemo_oo_agents hooks would do.
+    Manually creates an OTel span to simulate what nooa hooks would do.
     This lets us test that the span gets ended and exported even when the task times out.
     """
 
@@ -34,7 +34,7 @@ class SlowAgent:
 
         from opentelemetry import trace
 
-        from nemo_oo_agents.tracing._hooks_impl import _get_active_spans
+        from nooa.tracing._hooks_impl import _get_active_spans
 
         # Simulate what before_agent_call() does: start a span and track it
         tracer = trace.get_tracer("test-slow-agent")

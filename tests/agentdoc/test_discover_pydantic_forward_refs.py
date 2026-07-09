@@ -6,7 +6,7 @@ from typing import NewType
 
 from pydantic import BaseModel
 
-from nemo_oo_agents.agentdoc._discover import discover_referenced_types
+from nooa.agentdoc._discover import discover_referenced_types
 
 # ---------------------------------------------------------------------------
 # Bug 1: Forward-ref Pydantic fields not discovered
@@ -62,7 +62,7 @@ class ModelWithNewType(BaseModel):
 
 def test_newtype_field_format_shows_name():
     """NewType fields should render with their alias name, not the base type."""
-    from nemo_oo_agents.agentdoc._structured import extract_type_info
+    from nooa.agentdoc._structured import extract_type_info
 
     info = extract_type_info(ModelWithNewType)
     field = next(f for f in info.fields if f.name == "user_id")

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # TB1 Reliable Evaluation Monitor
-# Cron: */5 * * * * /localhome/local-rcabral/nemo_oo_agents/util/eval_pipeline/tb1_monitor.sh
+# Cron: */5 * * * * /localhome/local-rcabral/nooa/util/eval_pipeline/tb1_monitor.sh
 set -euo pipefail
 
 # ── Source environment ────────────────────────────────────────────────────────
 export PATH="$HOME/.local/bin:$PATH"
-REPO_ROOT="/localhome/local-rcabral/nemo_oo_agents"
+REPO_ROOT="/localhome/local-rcabral/nooa"
 # Source API keys from .env
 set -a
 source "$REPO_ROOT/.env"
@@ -50,7 +50,7 @@ else
 fi
 
 # ── Step 2: Ensure agent pre-cached ──────────────────────────────────────────
-AGENT_CACHE="$BOOTSTRAP_OVERLAY/installed-agent/nemo_oo_agents"
+AGENT_CACHE="$BOOTSTRAP_OVERLAY/installed-agent/nooa"
 if [ ! -d "$AGENT_CACHE/.git" ]; then
     log "Pre-caching agent..."
     mkdir -p "$(dirname "$AGENT_CACHE")"

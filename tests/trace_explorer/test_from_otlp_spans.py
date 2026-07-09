@@ -9,7 +9,7 @@ explorer routes used to be exposed to.
 
 import pytest
 
-from nemo_oo_agents.trace_explorer.explorer import (
+from nooa.trace_explorer.explorer import (
     TraceExplorer,
     get_quiet_mode,
     set_quiet_mode,

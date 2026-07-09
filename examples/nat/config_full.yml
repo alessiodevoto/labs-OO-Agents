@@ -15,7 +15,7 @@ functions:
     _type: current_datetime
 
 workflow:
-  _type: nemo_oo_agents_wrapper
+  _type: nooa_wrapper
   dependencies:
     - ../../src
   agent: example_agent.py:DemoAgent

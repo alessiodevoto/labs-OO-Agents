@@ -17,10 +17,10 @@ import asyncio
 
 import pytest
 
-from nemo_oo_agents import Agent
-from nemo_oo_agents.errors import DynamicMethodAdditionError
-from nemo_oo_agents.runtime.context_vars import _parent_agent_var
-from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse
+from nooa import Agent
+from nooa.errors import DynamicMethodAdditionError
+from nooa.runtime.context_vars import _parent_agent_var
+from nooa.unifiedllm import FakeLLMClient, LLMResponse
 
 
 def make_fake_llm() -> FakeLLMClient:
@@ -93,8 +93,8 @@ class TestGuardPreventsClassMutation:
 
     def test_validator_rejects_class_attribute_assignment(self):
         """AST-level: ClassAssignmentValidator catches the same patterns before exec."""
-        from nemo_oo_agents.errors import RestrictedCodeError
-        from nemo_oo_agents.runtime.code_validator import (
+        from nooa.errors import RestrictedCodeError
+        from nooa.runtime.code_validator import (
             UnifiedCodeValidator,
             ValidationContext,
         )

@@ -2,8 +2,8 @@
 
 import pytest
 
-from nemo_oo_agents.agent import Agent
-from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse
+from nooa.agent import Agent
+from nooa.unifiedllm import FakeLLMClient, LLMResponse
 
 _TEST_LLM = FakeLLMClient()
 
@@ -49,7 +49,7 @@ class TestLLMCallMiddlewareViaGenerate:
         em.intercept("llm_call", mw)
 
         # Drive generate() by setting up the required context vars
-        from nemo_oo_agents.runtime.actor import (
+        from nooa.runtime.actor import (
             _current_call_var,
             _current_llm_var,
             _current_method_var,
@@ -86,7 +86,7 @@ class TestLLMCallMiddlewareViaGenerate:
 
         agent.event_manager.intercept("llm_call", spy)
 
-        from nemo_oo_agents.runtime.actor import (
+        from nooa.runtime.actor import (
             _current_call_var,
             _current_llm_var,
             _current_method_var,
@@ -128,7 +128,7 @@ class TestLLMCallMiddlewareViaGenerate:
 
         agent.event_manager.intercept("llm_call", fake_response)
 
-        from nemo_oo_agents.runtime.actor import (
+        from nooa.runtime.actor import (
             _current_call_var,
             _current_llm_var,
             _current_method_var,
@@ -156,7 +156,7 @@ class TestLLMCallMiddlewareViaGenerate:
         """Without middleware, generate() still works (fast path)."""
         agent = _make_agent()
 
-        from nemo_oo_agents.runtime.actor import (
+        from nooa.runtime.actor import (
             _current_call_var,
             _current_llm_var,
             _current_method_var,
@@ -197,7 +197,7 @@ class TestLLMCallMiddlewareViaGenerate:
         agent.event_manager.intercept("llm_call", mw_a)
         agent.event_manager.intercept("llm_call", mw_b)
 
-        from nemo_oo_agents.runtime.actor import (
+        from nooa.runtime.actor import (
             _current_call_var,
             _current_llm_var,
             _current_method_var,
@@ -237,7 +237,7 @@ class TestLLMCallMiddlewareViaGenerate:
         class Dummy(BM):
             x: int = 1
 
-        from nemo_oo_agents.runtime.actor import (
+        from nooa.runtime.actor import (
             _current_call_var,
             _current_llm_var,
             _current_method_var,
@@ -313,7 +313,7 @@ class TestExecutePythonMiddleware:
     @pytest.mark.asyncio
     async def test_execute_python_middleware_short_circuit(self):
         """Middleware can return a fake result without executing code."""
-        from nemo_oo_agents.events import ExecutionResult
+        from nooa.events import ExecutionResult
 
         agent = _make_agent()
 
@@ -425,7 +425,7 @@ class TestCrossKindIsolation:
 
         agent.event_manager.intercept("execute_python", mw)
 
-        from nemo_oo_agents.runtime.actor import (
+        from nooa.runtime.actor import (
             _current_call_var,
             _current_llm_var,
             _current_method_var,
@@ -467,7 +467,7 @@ class TestContextFields:
 
         agent.event_manager.intercept("llm_call", spy)
 
-        from nemo_oo_agents.runtime.actor import (
+        from nooa.runtime.actor import (
             _current_call_var,
             _current_llm_var,
             _current_method_var,
@@ -527,7 +527,7 @@ class TestShortCircuitGuard:
 
         agent.event_manager.intercept("llm_call", bad_guardrail)
 
-        from nemo_oo_agents.runtime.actor import (
+        from nooa.runtime.actor import (
             _current_call_var,
             _current_llm_var,
             _current_method_var,
@@ -577,7 +577,7 @@ class TestNestedGenerationReentry:
         by the re-entry guard)."""
         import json
 
-        from nemo_oo_agents.unifiedllm import ToolCall
+        from nooa.unifiedllm import ToolCall
 
         exec_methods = []
 
@@ -685,8 +685,8 @@ class TestAgentCallMiddleware:
         """agent_call middleware fires when an agent method is called."""
         import json
 
-        from nemo_oo_agents.runtime.middleware import AgentCallContext
-        from nemo_oo_agents.unifiedllm import ToolCall
+        from nooa.runtime.middleware import AgentCallContext
+        from nooa.unifiedllm import ToolCall
 
         trail = []
 
@@ -728,8 +728,8 @@ class TestAgentCallMiddleware:
         """agent_call middleware can see method arguments."""
         import json
 
-        from nemo_oo_agents.runtime.middleware import AgentCallContext
-        from nemo_oo_agents.unifiedllm import ToolCall
+        from nooa.runtime.middleware import AgentCallContext
+        from nooa.unifiedllm import ToolCall
 
         captured = {}
 
@@ -773,8 +773,8 @@ class TestAgentCallMiddleware:
         """agent_call middleware can inspect the result on the way out."""
         import json
 
-        from nemo_oo_agents.runtime.middleware import AgentCallContext
-        from nemo_oo_agents.unifiedllm import ToolCall
+        from nooa.runtime.middleware import AgentCallContext
+        from nooa.unifiedllm import ToolCall
 
         seen_result = {}
 
@@ -816,7 +816,7 @@ class TestAgentCallMiddleware:
     @pytest.mark.asyncio
     async def test_agent_call_short_circuit(self):
         """agent_call middleware can short-circuit the entire method."""
-        from nemo_oo_agents.runtime.middleware import AgentCallContext
+        from nooa.runtime.middleware import AgentCallContext
 
         llm = FakeLLMClient()
 
@@ -839,7 +839,7 @@ class TestAgentCallMiddleware:
     @pytest.mark.asyncio
     async def test_agent_call_short_circuit_without_result_raises(self):
         """Middleware that short-circuits without setting ctx.result raises."""
-        from nemo_oo_agents.runtime.middleware import AgentCallContext
+        from nooa.runtime.middleware import AgentCallContext
 
         llm = FakeLLMClient()
 
@@ -862,7 +862,7 @@ class TestAgentCallMiddleware:
         """agent_call is outermost — llm_call and execute_python fire inside it."""
         import json
 
-        from nemo_oo_agents.unifiedllm import ToolCall
+        from nooa.unifiedllm import ToolCall
 
         order = []
 

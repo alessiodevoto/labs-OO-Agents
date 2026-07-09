@@ -6,8 +6,8 @@ uv run python examples/advanced/prefill.py
 from dataclasses import dataclass, field
 from datetime import date
 
-from nemo_oo_agents import Agent
-from nemo_oo_agents.util.quickstart import autorun, llm
+from nooa import Agent
+from nooa.util.quickstart import autorun, llm
 
 
 @dataclass

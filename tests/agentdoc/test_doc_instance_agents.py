@@ -16,7 +16,7 @@ import pytest
 # Ensure tests/capability/agents is importable
 sys.path.insert(0, str(Path(__file__).parents[2] / "tests"))
 
-from nemo_oo_agents.agentdoc import doc
+from nooa.agentdoc import doc
 
 # ---------------------------------------------------------------------------
 # Helpers

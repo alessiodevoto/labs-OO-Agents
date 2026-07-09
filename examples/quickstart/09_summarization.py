@@ -4,10 +4,10 @@
 uv run python examples/quickstart/09_summarization.py
 """
 
-from nemo_oo_agents.agentdoc import spec
-from nemo_oo_agents.agents import TokenBudgetSummarizer
-from nemo_oo_agents.config import TokenBudgetConfig
-from nemo_oo_agents.util.quickstart import *
+from nooa.agentdoc import spec
+from nooa.agents import TokenBudgetSummarizer
+from nooa.config import TokenBudgetConfig
+from nooa.util.quickstart import *
 
 
 class InterviewAgent(Agent, llm=llm):

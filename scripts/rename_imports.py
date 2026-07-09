@@ -6,14 +6,14 @@ Usage:
     python scripts/rename_imports.py --apply ROOT MAPPING_JSON
 
 MAPPING_JSON is a JSON object like:
-    '{"agentdoc": "nemo_oo_agents.agentdoc", "context_blocks": "nemo_oo_agents.context_blocks"}'
+    '{"agentdoc": "nooa.agentdoc", "context_blocks": "nooa.context_blocks"}'
 
 Examples:
     # Preview changes
-    python scripts/rename_imports.py --preview . '{"agentdoc": "nemo_oo_agents.agentdoc"}'
+    python scripts/rename_imports.py --preview . '{"agentdoc": "nooa.agentdoc"}'
 
     # Apply changes
-    python scripts/rename_imports.py --apply . '{"agentdoc": "nemo_oo_agents.agentdoc"}'
+    python scripts/rename_imports.py --apply . '{"agentdoc": "nooa.agentdoc"}'
 """
 
 import ast
@@ -30,7 +30,7 @@ EXCLUDE_DIRS = {
     ".ruff_cache",
     ".pytest_cache",
     "node_modules",
-    ".nemo_oo_agents",
+    ".nooa",
     "3p",
 }
 

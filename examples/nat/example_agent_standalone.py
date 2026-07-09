@@ -7,8 +7,8 @@ Usage:
     nat run --config_file config_standalone.yml --input "Hello!"
 """
 
-from nemo_oo_agents import Agent
-from nemo_oo_agents.unifiedllm import CompletionClient
+from nooa import Agent
+from nooa.unifiedllm import CompletionClient
 
 llm = CompletionClient(model="gpt-4o-mini")
 

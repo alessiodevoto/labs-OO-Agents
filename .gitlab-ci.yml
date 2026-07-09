@@ -77,7 +77,7 @@ check-frontend-build:
   before_script:
     - apt-get update -qq && apt-get install -y -qq git
   script:
-    - cd src/nemo_oo_agents/viewer/frontend-react
+    - cd src/nooa/viewer/frontend-react
     - npm ci --ignore-scripts
     - npm run build
     - |
@@ -94,9 +94,9 @@ check-frontend-build:
     # On MRs: only run when frontend source changes
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
-        - "src/nemo_oo_agents/viewer/frontend-react/src/**/*"
-        - "src/nemo_oo_agents/viewer/frontend-react/package*.json"
-        - "src/nemo_oo_agents/viewer/frontend-react/*.config.*"
+        - "src/nooa/viewer/frontend-react/src/**/*"
+        - "src/nooa/viewer/frontend-react/package*.json"
+        - "src/nooa/viewer/frontend-react/*.config.*"
       when: always
     - when: never
 
@@ -173,7 +173,7 @@ test-core:
       changes:
         - "src/**/*"
         - "tests/**/*"
-        - "packages/nemo-oo-agents-cli/**/*"
+        - "packages/nooa-cli/**/*"
         - "conftest.py"
         - "pyproject.toml"
         - "uv.lock"
@@ -198,7 +198,7 @@ test-agentdoc:
       when: always
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
-        - "src/nemo_oo_agents/agentdoc/**/*"
+        - "src/nooa/agentdoc/**/*"
         - "src/**/*"
         - "pyproject.toml"
         - "uv.lock"
@@ -222,7 +222,7 @@ test-viewer:
       when: always
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
-        - "src/nemo_oo_agents/viewer/**/*"
+        - "src/nooa/viewer/**/*"
         - "src/**/*"
         - "pyproject.toml"
         - "uv.lock"
@@ -246,7 +246,7 @@ test-context-blocks:
       when: always
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
-        - "src/nemo_oo_agents/context_blocks/**/*"
+        - "src/nooa/context_blocks/**/*"
         - "tests/context_blocks/**/*"
         - "src/**/*"
         - "pyproject.toml"
@@ -271,7 +271,7 @@ test-unifiedllm:
       when: always
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
-        - "src/nemo_oo_agents/unifiedllm/**/*"
+        - "src/nooa/unifiedllm/**/*"
         - "tests/unifiedllm/**/*"
         - "src/**/*"
         - "pyproject.toml"
@@ -296,7 +296,7 @@ test-instrumentation:
       when: always
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
-        - "src/nemo_oo_agents/tracing/**/*"
+        - "src/nooa/tracing/**/*"
         - "src/**/*"
         - "pyproject.toml"
         - "uv.lock"
@@ -320,7 +320,7 @@ test-mcp:
       when: always
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
-        - "src/nemo_oo_agents/mcp/**/*"
+        - "src/nooa/mcp/**/*"
         - "src/**/*"
         - "pyproject.toml"
         - "uv.lock"
@@ -355,7 +355,7 @@ test-benchmarks:
 test-cli:
   extends: .test-base
   script:
-    - uv run pytest packages/nemo-oo-agents-cli/tests --junitxml=test-results-cli.xml
+    - uv run pytest packages/nooa-cli/tests --junitxml=test-results-cli.xml
     - uv cache prune --ci
   artifacts:
     reports:
@@ -368,7 +368,32 @@ test-cli:
       when: always
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
-        - "packages/nemo-oo-agents-cli/**/*"
+        - "packages/nooa-cli/**/*"
+        - "src/**/*"
+        - "pyproject.toml"
+        - "uv.lock"
+        - "conftest.py"
+      when: always
+    - when: never
+
+test-tui:
+  extends: .test-base
+  script:
+    - uv run pytest packages/nooa-tui/tests --junitxml=test-results-tui.xml
+    - uv cache prune --ci
+  artifacts:
+    reports:
+      junit: test-results-tui.xml
+    expire_in: 1 day
+    when: always
+  rules:
+    - *no-schedule
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: always
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - "packages/nooa-tui/**/*"
+        - "examples/memory_bench/**/*"
         - "src/**/*"
         - "pyproject.toml"
         - "uv.lock"
@@ -392,7 +417,7 @@ test-trace-explorer:
       when: always
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
-        - "src/nemo_oo_agents/trace_explorer/**/*"
+        - "src/nooa/trace_explorer/**/*"
         - "src/**/*"
         - "pyproject.toml"
         - "uv.lock"
@@ -709,7 +734,7 @@ build-package-benchmarks:
 build-package-cli:
   extends: .build-package-base
   script:
-    - uv build --package nemo-oo-agents-cli --out-dir dist-cli
+    - uv build --package nemo-labs-oo-agents-cli --out-dir dist-cli
     - uv cache prune --ci
   artifacts:
     paths:

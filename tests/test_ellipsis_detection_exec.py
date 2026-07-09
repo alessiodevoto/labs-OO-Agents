@@ -4,10 +4,10 @@ This tests the critical path where PurePythonStrategy generates code with
 @strategy decorators that need to be detected as needing generation.
 """
 
-from nemo_oo_agents.decorators import strategy
-from nemo_oo_agents.ellipsis_detection import has_ellipsis_body
-from nemo_oo_agents.strategies import PredictStrategy
-from nemo_oo_agents.strategies.generated_code import HelperFunctionManager
+from nooa.decorators import strategy
+from nooa.ellipsis_detection import has_ellipsis_body
+from nooa.strategies import PredictStrategy
+from nooa.strategies.generated_code import HelperFunctionManager
 
 
 class TestHasEllipsisBodyExec:

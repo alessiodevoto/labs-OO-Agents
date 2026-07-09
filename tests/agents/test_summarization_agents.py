@@ -10,12 +10,12 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from nemo_oo_agents import Agent
-from nemo_oo_agents.agents import MethodSummarizer, SummarizationAgent, TokenBudgetSummarizer
-from nemo_oo_agents.config.summarizer_config import MethodSummarizerConfig, TokenBudgetConfig
-from nemo_oo_agents.config.truncation_config import FormatConfig, TruncationConfig
-from nemo_oo_agents.events import AfterTurn, Message
-from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse
+from nooa import Agent
+from nooa.agents import MethodSummarizer, SummarizationAgent, TokenBudgetSummarizer
+from nooa.config.summarizer_config import MethodSummarizerConfig, TokenBudgetConfig
+from nooa.config.truncation_config import FormatConfig, TruncationConfig
+from nooa.events import AfterTurn, Message
+from nooa.unifiedllm import FakeLLMClient, LLMResponse
 
 
 def _resp(content: str) -> LLMResponse:
@@ -212,7 +212,7 @@ class TestTokenBudgetSummarizer:
 
     def test_should_not_summarize_from_estimate_when_actual_under_budget(self, test_agent):
         """A local estimate alone does not trigger summarization; actual usage is authoritative."""
-        from nemo_oo_agents import ContextWindowStats
+        from nooa import ContextWindowStats
 
         test_agent.runtime._last_prompt_tokens_actual = 600
         test_agent.runtime._last_context_stats = ContextWindowStats(
@@ -236,7 +236,7 @@ class TestTokenBudgetSummarizer:
 
     def test_should_not_summarize_without_provider_actual(self, test_agent):
         """No provider actual means no token-budget summarization trigger."""
-        from nemo_oo_agents import ContextWindowStats
+        from nooa import ContextWindowStats
 
         test_agent.runtime._last_prompt_tokens_actual = None
         test_agent.runtime._last_context_stats = ContextWindowStats(
@@ -788,7 +788,7 @@ class TestSummarizationAsyncIntegration:
         await summarizer._pending_task
 
         # Create before_turn event
-        from nemo_oo_agents.events import BeforeTurn
+        from nooa.events import BeforeTurn
 
         event = BeforeTurn(
             method_name="test",
@@ -967,7 +967,7 @@ class TestSummarizationAsyncIntegration:
         would overwrite ``_pending_summary`` and the already-computed
         summary would be lost.
         """
-        from nemo_oo_agents import ContextWindowStats
+        from nooa import ContextWindowStats
 
         for _ in range(20):
             test_agent.event_manager.add(Message(content="x" * 100))
@@ -1019,8 +1019,8 @@ class TestSummarizationAsyncIntegration:
         guarantees ``_should_summarize`` on the next AfterTurn reads
         post-collapse stats.
         """
-        from nemo_oo_agents import ContextWindowStats
-        from nemo_oo_agents.events import BeforeTurn
+        from nooa import ContextWindowStats
+        from nooa.events import BeforeTurn
 
         for _ in range(20):
             test_agent.event_manager.add(Message(content="x" * 100))
@@ -1115,7 +1115,7 @@ class TestSummarizationAsyncIntegration:
 class TestSummarizerNoTrace:
     """Regression test: @hidden summarizer helpers must opt out of tracing.
 
-    See https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents/-/issues/192.
+    See https://gitlab-master.nvidia.com/interactive-agents/nooa/-/issues/192.
     Private helpers fire on every turn and used to drown out useful spans.
     The fix decorates them with @no_trace so only ``summarize()`` produces a span.
     """
@@ -1125,7 +1125,7 @@ class TestSummarizerNoTrace:
         """Every @hidden method on a summarizer class must also be @no_trace."""
         import inspect
 
-        from nemo_oo_agents.agentdoc._visibility import is_hidden_method
+        from nooa.agentdoc._visibility import is_hidden_method
 
         hidden_methods = [
             (name, attr)

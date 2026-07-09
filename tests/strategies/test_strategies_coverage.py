@@ -15,11 +15,11 @@ from unittest.mock import MagicMock
 import pytest
 from pydantic import BaseModel, ValidationError
 
-from nemo_oo_agents import Agent, strategy
-from nemo_oo_agents.config import CodeActConfig
-from nemo_oo_agents.config.strategy_config import PredictConfig
-from nemo_oo_agents.errors import GenerationError
-from nemo_oo_agents.events import (
+from nooa import Agent, strategy
+from nooa.config import CodeActConfig
+from nooa.config.strategy_config import PredictConfig
+from nooa.errors import GenerationError
+from nooa.events import (
     Error,
     Feedback,
     Message,
@@ -27,8 +27,8 @@ from nemo_oo_agents.events import (
     ResultStatus,
     Task,
 )
-from nemo_oo_agents.strategies.base import GenerationStrategy
-from nemo_oo_agents.strategies.codeact_errors import (
+from nooa.strategies.base import GenerationStrategy
+from nooa.strategies.codeact_errors import (
     _format_actual_value,
     _format_error_path,
     _format_expected_schema,
@@ -40,14 +40,14 @@ from nemo_oo_agents.strategies.codeact_errors import (
     get_type_example,
     get_type_hint_str,
 )
-from nemo_oo_agents.strategies.codeact_lite import (
+from nooa.strategies.codeact_lite import (
     CodeActLiteStrategy,
     PlainProviderFormatter,
     plain_event_content,
 )
-from nemo_oo_agents.strategies.current_call import CurrentCall
-from nemo_oo_agents.strategies.predict import PredictStrategy
-from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
+from nooa.strategies.current_call import CurrentCall
+from nooa.strategies.predict import PredictStrategy
+from nooa.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -755,7 +755,7 @@ class TestCallWithInstrumentation:
         async def raising_fn():
             raise TypeError("test error")
 
-        with patch("nemo_oo_agents.runtime.hooks.call_after_hook") as mock_after:
+        with patch("nooa.runtime.hooks.call_after_hook") as mock_after:
             with pytest.raises(TypeError):
                 await strat.call_with_instrumentation(
                     raising_fn, (), {}, runtime=runtime, method_name="test"
@@ -1404,7 +1404,7 @@ class TestPredictStrategyCreateResponseModel:
     def test_pydantic_model_with_hidden_creates_public_subset(self):
         from typing import Annotated
 
-        from nemo_oo_agents.agentdoc import hidden
+        from nooa.agentdoc import hidden
 
         class M(BaseModel):
             public: str
@@ -1460,7 +1460,7 @@ class TestPredictStrategyValidateResponse:
         """When model has hidden fields, validate_response returns original type."""
         from typing import Annotated
 
-        from nemo_oo_agents.agentdoc import hidden
+        from nooa.agentdoc import hidden
 
         class M(BaseModel):
             public: str
@@ -1621,8 +1621,8 @@ class TestPlainProviderFormatterFormat:
     """Tests for PlainCodeActBlockFormatter.format() covering key branches."""
 
     def test_runtime_event_skipped(self):
-        from nemo_oo_agents.context_blocks import ResolvedBlock
-        from nemo_oo_agents.context_blocks.models import Role
+        from nooa.context_blocks import ResolvedBlock
+        from nooa.context_blocks.models import Role
 
         formatter = PlainProviderFormatter()
         rb = ResolvedBlock(key="runtime", content="", role=Role.RUNTIME_EVENT, event=None)
@@ -1632,8 +1632,8 @@ class TestPlainProviderFormatterFormat:
         assert messages[0].role == Role.SYSTEM
 
     def test_tool_call_event_with_result_no_python_output(self):
-        from nemo_oo_agents.context_blocks import ResolvedBlock, ToolCallEvent, ToolResult
-        from nemo_oo_agents.context_blocks.models import Role
+        from nooa.context_blocks import ResolvedBlock, ToolCallEvent, ToolResult
+        from nooa.context_blocks.models import Role
 
         formatter = PlainProviderFormatter()
         tce = ToolCallEvent(
@@ -1649,8 +1649,8 @@ class TestPlainProviderFormatterFormat:
         assert tool_msgs[0].content == "direct result"
 
     def test_tool_call_event_with_no_result_and_no_python_output(self):
-        from nemo_oo_agents.context_blocks import ResolvedBlock, ToolCallEvent
-        from nemo_oo_agents.context_blocks.models import Role
+        from nooa.context_blocks import ResolvedBlock, ToolCallEvent
+        from nooa.context_blocks.models import Role
 
         formatter = PlainProviderFormatter()
         tce = ToolCallEvent(tool_call_id="tc2", name="some_tool", arguments={}, result=None)
@@ -1661,8 +1661,8 @@ class TestPlainProviderFormatterFormat:
         assert tool_msgs[0].content == ""
 
     def test_block_with_no_event_uses_content(self):
-        from nemo_oo_agents.context_blocks import ResolvedBlock
-        from nemo_oo_agents.context_blocks.models import Role
+        from nooa.context_blocks import ResolvedBlock
+        from nooa.context_blocks.models import Role
 
         formatter = PlainProviderFormatter()
         rb = ResolvedBlock(key="text", content="block content text", role=Role.USER, event=None)
@@ -1672,8 +1672,8 @@ class TestPlainProviderFormatterFormat:
         assert user_msgs[0].content == "block content text"
 
     def test_block_with_no_event_and_no_content(self):
-        from nemo_oo_agents.context_blocks import ResolvedBlock
-        from nemo_oo_agents.context_blocks.models import Role
+        from nooa.context_blocks import ResolvedBlock
+        from nooa.context_blocks.models import Role
 
         formatter = PlainProviderFormatter()
         rb = ResolvedBlock(key="empty", content="", role=Role.USER, event=None)
@@ -1683,8 +1683,8 @@ class TestPlainProviderFormatterFormat:
         assert user_msgs[0].content == ""
 
     def test_tool_call_with_python_output_uses_plain_content(self):
-        from nemo_oo_agents.context_blocks import ResolvedBlock, ToolCallEvent
-        from nemo_oo_agents.context_blocks.models import Role
+        from nooa.context_blocks import ResolvedBlock, ToolCallEvent
+        from nooa.context_blocks.models import Role
 
         formatter = PlainProviderFormatter()
         po = PythonOutput(
@@ -1708,8 +1708,8 @@ class TestPlainProviderFormatterFormat:
         assert tool_msgs[0].content == "python result"
 
     def test_tool_call_with_python_output_prefers_pre_serialized_content(self):
-        from nemo_oo_agents.context_blocks import ResolvedBlock, ToolCallEvent
-        from nemo_oo_agents.context_blocks.models import Role
+        from nooa.context_blocks import ResolvedBlock, ToolCallEvent
+        from nooa.context_blocks.models import Role
 
         formatter = PlainProviderFormatter()
         po = PythonOutput(
@@ -1739,8 +1739,8 @@ class TestPlainProviderFormatterFormat:
         assert "str(len=2000" not in tool_msgs[0].content
 
     def test_non_tool_event_prefers_pre_serialized_content(self):
-        from nemo_oo_agents.context_blocks import ResolvedBlock
-        from nemo_oo_agents.context_blocks.models import Role
+        from nooa.context_blocks import ResolvedBlock
+        from nooa.context_blocks.models import Role
 
         formatter = PlainProviderFormatter()
         event = Error(content="X" * 2000)

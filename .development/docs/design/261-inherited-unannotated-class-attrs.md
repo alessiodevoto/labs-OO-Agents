@@ -9,7 +9,7 @@ declared on a base agent are missing from the child's `<self>` API listing.
 
 ### Root cause
 
-`src/nemo_oo_agents/agentdoc/_structured.py`, `_extract_plain_class_fields`, **step 2**
+`src/nooa/agentdoc/_structured.py`, `_extract_plain_class_fields`, **step 2**
 (lines ~1013–1045) scans only the leaf class's own `__dict__`:
 
 ```python
@@ -58,7 +58,7 @@ The only way to hide an **un-annotated** class attribute is the imperative
 `_agentdoc_fields_docs`) — it does **not** walk the MRO. So `spec(Parent, "secret", hidden=True)`
 is ignored on `Child`, and the inherited bare attr would leak (verified).
 
-Fix `is_hidden_field` (`src/nemo_oo_agents/agentdoc/_visibility.py`): replace the single
+Fix `is_hidden_field` (`src/nooa/agentdoc/_visibility.py`): replace the single
 `get_field_metadata(cls, name)` imperative check with an MRO walk (leaf → base), returning the
 first class that declares a `hidden` bool. Leaf wins, matching the rest of the resolution order.
 `get_field_metadata` keeps its own-dict-only semantics (other callers rely on it); only
@@ -108,7 +108,7 @@ Add to `tests/agentdoc/test_inherited_fields.py` (new `TestInheritedUnannotatedA
    tool attr (`shell = ShellTools()` style) + subclass → attr present in child `doc()`, and no
    framework internals (`_enable_tracing`, `runtime`, …) leaked.
 
-Run: `uv run pytest tests/agentdoc/ -q` and `uv run ruff check src/nemo_oo_agents/agentdoc/_structured.py src/nemo_oo_agents/agentdoc/_visibility.py`.
+Run: `uv run pytest tests/agentdoc/ -q` and `uv run ruff check src/nooa/agentdoc/_structured.py src/nooa/agentdoc/_visibility.py`.
 
 ## Acceptance criteria (from issue)
 

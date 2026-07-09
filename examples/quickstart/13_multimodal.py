@@ -20,8 +20,8 @@ warnings.filterwarnings(
     "ignore", message=".*coroutine.*was never awaited.*", category=RuntimeWarning
 )
 
-from nemo_oo_agents.media import Image
-from nemo_oo_agents.util.quickstart import *
+from nooa.media import Image
+from nooa.util.quickstart import *
 
 ASSETS = Path(__file__).parent.parent / "assets"
 

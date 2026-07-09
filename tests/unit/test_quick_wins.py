@@ -1,11 +1,11 @@
 """Targeted unit tests for previously uncovered modules.
 
 Covers:
-- nemo_oo_agents.experimental (factory functions with FutureWarning)
-- nemo_oo_agents.strategies.experimental (backward-compat re-export)
-- nemo_oo_agents._visible (_Visible context manager)
-- nemo_oo_agents_cli.commands._template (Click command)
-- nemo_oo_agents.nemo_flow_middleware (install_nemo_flow, nemo_flow_scope, middleware)
+- nooa.experimental (factory functions with FutureWarning)
+- nooa.strategies.experimental (backward-compat re-export)
+- nooa._visible (_Visible context manager)
+- nooa_cli.commands._template (Click command)
+- nooa.nemo_flow_middleware (install_nemo_flow, nemo_flow_scope, middleware)
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ import pytest
 from click.testing import CliRunner
 
 # ---------------------------------------------------------------------------
-# nemo_oo_agents.experimental (canonical path)
+# nooa.experimental (canonical path)
 # ---------------------------------------------------------------------------
 
 
@@ -27,49 +27,49 @@ class TestExperimentalStrategies:
     """Factory functions for experimental strategies emit FutureWarning."""
 
     def test_pure_python_strategy_warns(self):
-        from nemo_oo_agents.experimental import PurePythonStrategy
+        from nooa.experimental import PurePythonStrategy
 
         with pytest.warns(FutureWarning, match="experimental"):
             strategy = PurePythonStrategy()
 
-        from nemo_oo_agents.strategies.pure_python import (
+        from nooa.strategies.pure_python import (
             PurePythonStrategy as _Real,
         )
 
         assert isinstance(strategy, _Real)
 
     def test_codeact_lite_strategy_warns(self):
-        from nemo_oo_agents.experimental import CodeActLiteStrategy
+        from nooa.experimental import CodeActLiteStrategy
 
         with pytest.warns(FutureWarning, match="experimental"):
             strategy = CodeActLiteStrategy()
 
-        from nemo_oo_agents.strategies.codeact_lite import (
+        from nooa.strategies.codeact_lite import (
             CodeActLiteStrategy as _Real,
         )
 
         assert isinstance(strategy, _Real)
 
     def test_reflexion_strategy_warns(self):
-        from nemo_oo_agents.experimental import ReflexionStrategy
+        from nooa.experimental import ReflexionStrategy
 
         with pytest.warns(FutureWarning, match="experimental"):
             strategy = ReflexionStrategy()
 
-        from nemo_oo_agents.strategies.reflexion import (
+        from nooa.strategies.reflexion import (
             ReflexionStrategy as _Real,
         )
 
         assert isinstance(strategy, _Real)
 
     def test_warning_message_contains_alternatives(self):
-        from nemo_oo_agents.experimental import PurePythonStrategy
+        from nooa.experimental import PurePythonStrategy
 
         with pytest.warns(FutureWarning, match="CodeActStrategy"):
             PurePythonStrategy()
 
     def test_pure_python_strategy_kwargs_forwarded(self):
-        from nemo_oo_agents.experimental import PurePythonStrategy
+        from nooa.experimental import PurePythonStrategy
 
         with pytest.warns(FutureWarning):
             strategy = PurePythonStrategy(max_iterations=5)
@@ -77,26 +77,26 @@ class TestExperimentalStrategies:
         assert strategy.max_iterations == 5
 
     def test_all_exports(self):
-        import nemo_oo_agents.experimental as exp
+        import nooa.experimental as exp
 
         assert "PurePythonStrategy" in exp.__all__
         assert "CodeActLiteStrategy" in exp.__all__
         assert "ReflexionStrategy" in exp.__all__
 
     def test_strategies_experimental_still_works(self):
-        """nemo_oo_agents.strategies.experimental is a backward-compat re-export."""
-        from nemo_oo_agents.strategies.experimental import PurePythonStrategy
+        """nooa.strategies.experimental is a backward-compat re-export."""
+        from nooa.strategies.experimental import PurePythonStrategy
 
         with pytest.warns(FutureWarning, match="experimental"):
             strategy = PurePythonStrategy()
 
-        from nemo_oo_agents.strategies.pure_python import PurePythonStrategy as _Real
+        from nooa.strategies.pure_python import PurePythonStrategy as _Real
 
         assert isinstance(strategy, _Real)
 
 
 # ---------------------------------------------------------------------------
-# nemo_oo_agents._visible
+# nooa._visible
 # ---------------------------------------------------------------------------
 
 
@@ -104,30 +104,30 @@ class TestVisible:
     """_Visible is a no-op context manager."""
 
     def test_visible_is_singleton(self):
-        from nemo_oo_agents._visible import visible
+        from nooa._visible import visible
 
         assert visible is not None
 
     def test_context_manager_enter_returns_self(self):
-        from nemo_oo_agents._visible import visible
+        from nooa._visible import visible
 
         with visible as v:
             assert v is visible
 
     def test_context_manager_exit_returns_false(self):
-        from nemo_oo_agents._visible import _Visible
+        from nooa._visible import _Visible
 
         instance = _Visible()
         result = instance.__exit__(None, None, None)
         assert result is False
 
     def test_repr(self):
-        from nemo_oo_agents._visible import visible
+        from nooa._visible import visible
 
         assert repr(visible) == "visible"
 
     def test_no_op_nested(self):
-        from nemo_oo_agents._visible import visible
+        from nooa._visible import visible
 
         # Nested use is fine — should not raise
         with visible:
@@ -135,7 +135,7 @@ class TestVisible:
                 pass
 
     def test_exit_with_exception_does_not_suppress(self):
-        from nemo_oo_agents._visible import _Visible
+        from nooa._visible import _Visible
 
         instance = _Visible()
         # __exit__ returning False means exceptions propagate
@@ -143,7 +143,7 @@ class TestVisible:
 
 
 # ---------------------------------------------------------------------------
-# nemo_oo_agents_cli.commands._template
+# nooa_cli.commands._template
 # ---------------------------------------------------------------------------
 
 
@@ -151,7 +151,7 @@ class TestTemplateCommand:
     """Click _template command exercises basic hello-world logic."""
 
     def _get_command(self):
-        from nemo_oo_agents_cli.commands._template import command
+        from nooa_cli.commands._template import command
 
         return command
 
@@ -194,7 +194,7 @@ class TestTemplateCommand:
 
 
 # ---------------------------------------------------------------------------
-# nemo_oo_agents.nemo_flow_middleware
+# nooa.nemo_flow_middleware
 # ---------------------------------------------------------------------------
 
 
@@ -217,7 +217,7 @@ def _nemo_flow_patched():
     fake_llm_request = MagicMock()
 
     # Ensure the module is imported before patching (KeyError if not in sys.modules)
-    import nemo_oo_agents.nemo_flow_middleware as _nm_ensure  # noqa: F811, F401
+    import nooa.nemo_flow_middleware as _nm_ensure  # noqa: F811, F401
 
     with patch.dict(
         sys.modules,
@@ -226,7 +226,7 @@ def _nemo_flow_patched():
             "nemo_flow.LLMRequest": fake_llm_request,
         },
     ):
-        nm = sys.modules["nemo_oo_agents.nemo_flow_middleware"]
+        nm = sys.modules["nooa.nemo_flow_middleware"]
         importlib.reload(nm)
         try:
             yield nm, fake_nemo_flow
@@ -241,14 +241,14 @@ class TestNemoFlowMiddlewareWithoutNemoFlow:
     """When nemo_flow is not installed, install_nemo_flow and nemo_flow_scope raise ImportError."""
 
     def test_install_nemo_flow_raises_import_error(self, monkeypatch):
-        import nemo_oo_agents.nemo_flow_middleware as nm
+        import nooa.nemo_flow_middleware as nm
 
         monkeypatch.setattr(nm, "_HAS_NEMO_FLOW", False)
         with pytest.raises(ImportError, match="nemo_flow"):
             nm.install_nemo_flow(MagicMock())
 
     async def test_nemo_flow_scope_raises_import_error(self, monkeypatch):
-        import nemo_oo_agents.nemo_flow_middleware as nm
+        import nooa.nemo_flow_middleware as nm
 
         monkeypatch.setattr(nm, "_HAS_NEMO_FLOW", False)
         with pytest.raises(ImportError, match="nemo_flow"):
@@ -305,14 +305,14 @@ class TestNemoFlowMiddlewareWithFakeNemoFlow:
             assert unsub.call_count == 3
 
     def test_sensitive_keys_constant(self):
-        import nemo_oo_agents.nemo_flow_middleware as nm
+        import nooa.nemo_flow_middleware as nm
 
         assert "api_key" in nm._SENSITIVE_KEYS
         assert "api_base" in nm._SENSITIVE_KEYS
         assert "base_url" in nm._SENSITIVE_KEYS
 
     def test_non_serializable_keys_constant(self):
-        import nemo_oo_agents.nemo_flow_middleware as nm
+        import nooa.nemo_flow_middleware as nm
 
         assert "tools" in nm._NON_SERIALIZABLE_KEYS
         assert "output_model" in nm._NON_SERIALIZABLE_KEYS

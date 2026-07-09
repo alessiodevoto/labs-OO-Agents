@@ -26,7 +26,7 @@ import urllib.request
 import pytest
 from otlp_test_helpers import read_all_otlp_jsonl_spans
 
-from nemo_oo_agents.tracing import enable_tracing, exporters, set_session
+from nooa.tracing import enable_tracing, exporters, set_session
 
 
 def _gather_otlp_from_jsonl(text: str) -> dict[str, dict]:
@@ -86,7 +86,7 @@ async def test_file_save_equals_viewer_download(live_viewer, monkeypatch):
     import litellm
     from opentelemetry import trace as otel_trace
 
-    from nemo_oo_agents.tracing._litellm_journal import MessageJournalCallback
+    from nooa.tracing._litellm_journal import MessageJournalCallback
 
     with tempfile.TemporaryDirectory() as tmpdir:
         # Both sinks active simultaneously: file + journal-to-viewer.
@@ -153,7 +153,7 @@ async def test_file_save_equals_viewer_download(live_viewer, monkeypatch):
                         end_time=1.0,
                     )
 
-        from nemo_oo_agents.tracing import _provider
+        from nooa.tracing import _provider
 
         assert _provider is not None
         _provider.force_flush()

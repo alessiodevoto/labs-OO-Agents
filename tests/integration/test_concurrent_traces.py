@@ -12,17 +12,17 @@ from unittest.mock import patch
 
 import pytest
 
-from nemo_oo_agents import Agent
-from nemo_oo_agents.runtime.hooks import get_hooks, set_hooks
-from nemo_oo_agents.tracing import (
+from nooa import Agent
+from nooa.runtime.hooks import get_hooks, set_hooks
+from nooa.tracing import (
     get_session,
     set_session,
 )
-from nemo_oo_agents.tracing._hooks_impl import (
+from nooa.tracing._hooks_impl import (
     OpenInferenceHooks,
     _get_active_spans,
 )
-from nemo_oo_agents.unifiedllm import LLMResponse, ToolCall
+from nooa.unifiedllm import LLMResponse, ToolCall
 
 
 class FakeLLM:
@@ -102,11 +102,11 @@ def setup_tracing(temp_trace_dir):
     from opentelemetry.sdk.trace import TracerProvider
     from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 
-    from nemo_oo_agents.tracing import NemoOOAgentsInstrumentor
-    from nemo_oo_agents.tracing._otlp_file_exporter import (
+    from nooa.tracing import NemoOOAgentsInstrumentor
+    from nooa.tracing._otlp_file_exporter import (
         OtlpJsonFileExporter,
     )
-    from nemo_oo_agents.tracing._session_processor import SessionSpanProcessor
+    from nooa.tracing._session_processor import SessionSpanProcessor
 
     # Create a fresh exporter for this test's temp directory
     exporter = OtlpJsonFileExporter(temp_trace_dir)
@@ -123,7 +123,7 @@ def setup_tracing(temp_trace_dir):
     tracer_provider.add_span_processor(SessionSpanProcessor())
     tracer_provider.add_span_processor(SimpleSpanProcessor(exporter))
 
-    # Instrument nemo_oo_agents - this sets hooks
+    # Instrument nooa - this sets hooks
     NemoOOAgentsInstrumentor().instrument(tracer_provider=tracer_provider)
 
     # Return hooks for tests that need to propagate to child tasks

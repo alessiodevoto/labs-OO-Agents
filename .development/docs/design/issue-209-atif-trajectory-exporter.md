@@ -1,6 +1,6 @@
 # Issue 209 — Native ATIF v1.7 trajectory SpanExporter
 
-Issue: https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents/-/issues/209
+Issue: https://gitlab-master.nvidia.com/interactive-agents/nooa/-/issues/209
 
 ## Goal
 
@@ -44,14 +44,14 @@ All four are already downloaded to `/tmp/issue209/` for the implementer.
 
 ### Files to add (exact drop-in of the attachments)
 
-- `src/nemo_oo_agents/tracing/_atif_builder.py` — from
+- `src/nooa/tracing/_atif_builder.py` — from
   `/tmp/issue209/_atif_builder.py`. Keep the SPDX header (already present).
-- `src/nemo_oo_agents/tracing/_atif_exporter.py` — from
+- `src/nooa/tracing/_atif_exporter.py` — from
   `/tmp/issue209/_atif_exporter.py`. Keep the SPDX header.
 
 ### Files to modify
 
-- `src/nemo_oo_agents/tracing/exporters.py` — append the new `atif()`
+- `src/nooa/tracing/exporters.py` — append the new `atif()`
   factory at the end of the file (after `console()`, before
   `_auto_detect_trace_dir()`). The factory body and docstring come from
   `/tmp/issue209/exporters_patch.py`. Imports needed at the top of
@@ -65,7 +65,7 @@ All four are already downloaded to `/tmp/issue209/` for the implementer.
   The `AtifTrajectoryExporter` import stays inside the function body
   (lazy), matching `jsonl()` / `journal()` / `otlp()` style.
 
-- `src/nemo_oo_agents/tracing/__init__.py`:
+- `src/nooa/tracing/__init__.py`:
   - **Add `AtifTrajectoryExporter` to `_LOCAL_EXPORTER_TYPES`** (the
     tuple at lines 117–125). The exporter does pure local file I/O
     (`mkdir` + atomic `tmp.write_text` + `replace`); it must use
@@ -78,7 +78,7 @@ All four are already downloaded to `/tmp/issue209/` for the implementer.
       concurrent `force_flush()` / `shutdown()` from the agent's
       thread could race.
     Import path: deferred import inside the file (or top-of-file with
-    the other `from nemo_oo_agents.tracing._...` lines — check current
+    the other `from nooa.tracing._...` lines — check current
     convention).
   - **Re-export `AtifTrajectoryExporter` in `__all__`** for symmetry
     with the existing `OtlpJsonFileExporter` / `OtlpJsonHttpExporter`
@@ -144,7 +144,7 @@ in the test file itself and may grow as reviewer feedback is folded in.
    JSON.
 
 10. **`test_atif_exporter_in_local_exporter_types`** — import
-    `_LOCAL_EXPORTER_TYPES` from `nemo_oo_agents.tracing` and assert
+    `_LOCAL_EXPORTER_TYPES` from `nooa.tracing` and assert
     `AtifTrajectoryExporter` is a member. Regression guard for the
     `__init__.py` wiring change above.
 
@@ -285,10 +285,10 @@ blockers but they shape the test set:
 - Run `uv run pytest tests/tracing/ -v` — full tracing suite still
   green; no regressions in `test_exporters.py`,
   `test_tracing_integration.py`.
-- Run `uv run ruff check src/nemo_oo_agents/tracing/_atif_builder.py
-  src/nemo_oo_agents/tracing/_atif_exporter.py
-  src/nemo_oo_agents/tracing/exporters.py` — clean.
-- Smoke: import `from nemo_oo_agents.tracing import exporters;
+- Run `uv run ruff check src/nooa/tracing/_atif_builder.py
+  src/nooa/tracing/_atif_exporter.py
+  src/nooa/tracing/exporters.py` — clean.
+- Smoke: import `from nooa.tracing import exporters;
   exporters.atif("/tmp/x.json", session_id="s", agent_name="a",
   agent_version="0")` returns an `AtifTrajectoryExporter` without
   raising.
@@ -298,7 +298,7 @@ blockers but they shape the test set:
 - Remove `_strip_context_block` once issue #208 lands and dynamic
   context is its own message.
 - Offline post-processor CLI wrapping `_records_from_jsonl` +
-  `build_trajectory` (e.g. `nemo_oo_agents atif-backfill
+  `build_trajectory` (e.g. `nooa atif-backfill
   traces/*.jsonl -o trajectory.json`). The builder already supports
   this path — only a thin CLI shim is missing.
 - Quickstart example

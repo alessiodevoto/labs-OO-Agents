@@ -6,10 +6,10 @@ Example: error on user line 30 was showing as line 17.
 
 import pytest
 
-from nemo_oo_agents import Agent
-from nemo_oo_agents.config import CodeActConfig
-from nemo_oo_agents.errors.formatting import format_error_for_llm
-from nemo_oo_agents.unifiedllm import FakeLLMClient
+from nooa import Agent
+from nooa.config import CodeActConfig
+from nooa.errors.formatting import format_error_for_llm
+from nooa.unifiedllm import FakeLLMClient
 
 # Module-level test LLM
 _TEST_LLM = FakeLLMClient()
@@ -159,7 +159,7 @@ if True
 
         assert result.error is not None
         # Syntax errors become RestrictedCodeError after validation
-        from nemo_oo_agents.errors import RestrictedCodeError
+        from nooa.errors import RestrictedCodeError
 
         assert isinstance(result.error, (SyntaxError, RestrictedCodeError))
 
@@ -504,7 +504,7 @@ class TestCodeActStrategyErrorFormatting:
     @pytest.mark.asyncio
     async def test_codeact_error_line_numbers(self, test_agent):
         """Test that CodeActStrategy formats errors with correct line numbers."""
-        from nemo_oo_agents.strategies.codeact import CodeActStrategy
+        from nooa.strategies.codeact import CodeActStrategy
 
         # Create strategy instance directly
         strat = CodeActStrategy(config=CodeActConfig())
@@ -639,7 +639,7 @@ class TestFormatterDirectly:
 
     def test_adjust_line_numbers_subtracts_offset(self):
         """_adjust_line_numbers should subtract the offset."""
-        from nemo_oo_agents.errors.formatting import _adjust_line_numbers
+        from nooa.errors.formatting import _adjust_line_numbers
 
         text = "Cell In[1], line 33, in <module>"
         result = _adjust_line_numbers(text, offset=3)
@@ -647,7 +647,7 @@ class TestFormatterDirectly:
 
     def test_adjust_line_numbers_never_below_1(self):
         """Line numbers should never go below 1."""
-        from nemo_oo_agents.errors.formatting import _adjust_line_numbers
+        from nooa.errors.formatting import _adjust_line_numbers
 
         text = "Cell In[1], line 2, in <module>"
         result = _adjust_line_numbers(text, offset=5)
@@ -655,7 +655,7 @@ class TestFormatterDirectly:
 
     def test_wrapper_names_replaced(self):
         """__repl_wrapper__ should be replaced with <module>."""
-        from nemo_oo_agents.errors.formatting import _replace_wrapper_names
+        from nooa.errors.formatting import _replace_wrapper_names
 
         text = "Cell In[1], line 5, in __repl_wrapper__"
         result = _replace_wrapper_names(text)

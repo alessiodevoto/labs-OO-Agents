@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Tests for :mod:`nemo_oo_agents.layered_config`.
+"""Tests for :mod:`nooa.layered_config`.
 
 Two entry points:
 
@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pytest
 
-from nemo_oo_agents.layered_config import layered_paths, load_layered_yaml
+from nooa.layered_config import layered_paths, load_layered_yaml
 
 _ENV_VAR = "NEMO_OO_SETTINGS"
 _FILENAME = "settings.yaml"
@@ -106,7 +106,7 @@ class TestLayeredPaths:
 
     def test_env_missing_path_warns(self, user_dir, project_dir, monkeypatch, caplog):
         monkeypatch.setenv(_ENV_VAR, "/nope/nope.yaml")
-        with caplog.at_level(logging.WARNING, logger="nemo_oo_agents.layered_config"):
+        with caplog.at_level(logging.WARNING, logger="nooa.layered_config"):
             assert layered_paths(_FILENAME, _ENV_VAR) == []
         assert "does not exist" in caplog.text
 
@@ -144,7 +144,7 @@ class TestLoadLayeredYaml:
     def test_non_mapping_skipped(self, user_dir, project_dir, caplog):
         _write(user_dir / _FILENAME, "model: foo\n")
         _write(project_dir / _FILENAME, "- just\n- a\n- list\n")
-        with caplog.at_level(logging.WARNING, logger="nemo_oo_agents.layered_config"):
+        with caplog.at_level(logging.WARNING, logger="nooa.layered_config"):
             merged = load_layered_yaml(_FILENAME, _ENV_VAR)
         assert merged == {"model": "foo"}
         assert "not a YAML mapping" in caplog.text

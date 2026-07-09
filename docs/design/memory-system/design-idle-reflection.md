@@ -93,7 +93,7 @@ While a reflection run is active, the status bar shows an animated segment:
 ```
 
 A single owner object, **`ReflectionRunner`** (new,
-`nemo_oo_agents_cli/tui/reflection_runner.py`), holds the entire state:
+`nooa_cli/tui/reflection_runner.py`), holds the entire state:
 `_task: asyncio.Task | None`, `_stop: threading.Event`, `_state`, and the
 last-report cache for the status command. It is created by the session when
 memory is configured and torn down with it.

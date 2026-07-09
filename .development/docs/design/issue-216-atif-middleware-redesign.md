@@ -217,7 +217,7 @@ aggregate metrics).
 
 Three layers, all in pytest:
 
-1. **Schema** — `src/nemo_oo_agents/atif/schema.py` Pydantic models
+1. **Schema** — `src/nooa/atif/schema.py` Pydantic models
    mirroring ATIF v1.7 §II. Every produced trajectory round-trips
    through `Trajectory.model_validate(...)`.
 2. **Normative rules** (`tests/atif/normative.py`) — MUST/MUST-NOT
@@ -249,7 +249,7 @@ Three layers, all in pytest:
 ## File layout
 
 ```
-src/nemo_oo_agents/atif/
+src/nooa/atif/
   __init__.py     # re-exports install_atif, atif_scope, enable_atif, Trajectory
   schema.py       # Pydantic v1.7 models
   exporter.py     # AtifExporter state machine

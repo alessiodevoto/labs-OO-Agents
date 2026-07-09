@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Contract tests for function/lambda default rendering in doc()."""
 
-from nemo_oo_agents.agentdoc import doc
+from nooa.agentdoc import doc
 
 
 def _my_validator(x: int) -> bool:

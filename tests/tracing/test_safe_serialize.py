@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Tests for _safe_serialize — bounded span attribute serialization."""
 
-from nemo_oo_agents.tracing._hooks_impl import OpenInferenceHooks
+from nooa.tracing._hooks_impl import OpenInferenceHooks
 
 
 class TestSafeSerialize:
@@ -85,13 +85,13 @@ class TestSafeSerialize:
         result = OpenInferenceHooks._safe_serialize(obj)
         assert isinstance(result, str)
         # Should not contain 500 levels — depth is capped
-        from nemo_oo_agents.tracing._hooks_impl import _TRACE_MAX_DEPTH
+        from nooa.tracing._hooks_impl import _TRACE_MAX_DEPTH
 
         assert result.count("nested") <= _TRACE_MAX_DEPTH
 
     def test_pydantic_model(self):
         """Pydantic models are serialized via safe_pformat."""
-        from nemo_oo_agents.events import ExecutionResult
+        from nooa.events import ExecutionResult
 
         result_obj = ExecutionResult(stdout="hello", stderr="", returned_value=42)
         serialized = OpenInferenceHooks._safe_serialize(result_obj)

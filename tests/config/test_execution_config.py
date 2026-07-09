@@ -1,8 +1,8 @@
 import pytest
 from pydantic import BaseModel, ValidationError
 
-from nemo_oo_agents.config.execution_config import ExecutionConfig
-from nemo_oo_agents.unifiedllm import FakeLLMClient
+from nooa.config.execution_config import ExecutionConfig
+from nooa.unifiedllm import FakeLLMClient
 
 
 def test_execution_config_is_pydantic_model():
@@ -45,7 +45,7 @@ async def test_max_nesting_depth_enforced():
     Regression test: ExecutionConfig.max_nesting_depth was stored but never
     checked during execution.
     """
-    from nemo_oo_agents import Agent
+    from nooa import Agent
 
     llm = FakeLLMClient.with_tool_call("return_result", {"result": "done"})
 

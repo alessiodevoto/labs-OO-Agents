@@ -14,7 +14,7 @@ dependencies = [
     # depend on the core only for documentation / type-check coverage.
 ]
 
-[project.entry-points."nemo_oo_agents.bundled_configs"]
+[project.entry-points."nooa.bundled_configs"]
 # Core's llm_config_chain() iterates this entry-point group and loads
 # every registered YAML as a low-priority chain layer. Adding more
 # providers is purely additive — drop a new package that registers

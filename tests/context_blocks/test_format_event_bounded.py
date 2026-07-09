@@ -7,8 +7,8 @@ uses structural bounds from ``event_format`` only; it must not rely on
 ``max_chars`` / ``TruncatingStringIO`` for event internals.
 """
 
-from nemo_oo_agents.context_blocks.events import EventBase
-from nemo_oo_agents.context_blocks.formatter import XMLBlockFormatter
+from nooa.context_blocks.events import EventBase
+from nooa.context_blocks.formatter import XMLBlockFormatter
 
 
 class BigValueEvent(EventBase):
@@ -32,7 +32,7 @@ class TestFormatEventBounded:
 
     def test_large_list_value_bounded_with_event_format(self):
         """Large structured values are bounded by event_format structural knobs."""
-        from nemo_oo_agents.config.truncation_config import FormatConfig
+        from nooa.config.truncation_config import FormatConfig
 
         event = BigValueEvent(value=list(range(1_000_000)))
         result = self.fmt.format_event(
@@ -47,7 +47,7 @@ class TestFormatEventBounded:
         family treatment when ``event_format`` provides a ``max_string`` bound.
         Without ``event_format``, hardcoded fallbacks are gone — the caller is
         expected to pass an explicit FormatConfig."""
-        from nemo_oo_agents.config.truncation_config import FormatConfig
+        from nooa.config.truncation_config import FormatConfig
 
         event = BigValueEvent(value="x" * 2_000_000)
         result = self.fmt.format_event(

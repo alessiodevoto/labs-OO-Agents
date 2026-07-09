@@ -1,6 +1,6 @@
 # Harbor config for Terminal Bench 1.0 on ipp1-3404 (x86_64) — Docker mode, ReAct baseline.
 #
-# Run from /localhome/local-rcabral/nemo_oo_agents:
+# Run from /localhome/local-rcabral/nooa:
 #   source .env
 #   harbor run --config util/harbor/terminal_bench_local_docker_react.yaml
 

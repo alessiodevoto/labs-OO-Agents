@@ -18,7 +18,7 @@ environment:
     OPENAI_API_KEY: "${OPENAI_API_KEY}"
     OPENAI_API_BASE: "https://inference-api.nvidia.com/v1"
     OPENAI_BASE_URL: "https://inference-api.nvidia.com/v1"
-    NEMO_OO_LLM_CONFIG: "/installed-agent/nemo_oo_agents/llm_config.yaml"
+    NEMO_OO_LLM_CONFIG: "/installed-agent/nooa/llm_config.yaml"
   mounts_json:
     - type: bind
       source: /localhome/local-rcabral/3p/harbor_bootstrap_overlay/opt/harbor

@@ -1,6 +1,6 @@
 # Issue 199 — Better SyntaxError message for bash heredocs in shell.run()
 
-Issue: https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents/-/issues/199
+Issue: https://gitlab-master.nvidia.com/interactive-agents/nooa/-/issues/199
 
 ## Problem
 
@@ -24,7 +24,7 @@ Heredocs already work fine through a triple-quoted Python string — the only fa
 
 ## Intervention point
 
-`src/nemo_oo_agents/errors/formatting.py:135-157` — `IPythonErrorFormatter._format_syntax_error`. This is where every SyntaxError surfaced to the LLM is built. Append a hint *after* the existing formatted message when we detect a heredoc-shaped source line combined with one of the three diagnostic messages above.
+`src/nooa/errors/formatting.py:135-157` — `IPythonErrorFormatter._format_syntax_error`. This is where every SyntaxError surfaced to the LLM is built. Append a hint *after* the existing formatted message when we detect a heredoc-shaped source line combined with one of the three diagnostic messages above.
 
 Why here and not at `ast.parse()` in `actor.py:1151-1155`: the formatter is the single funnel for *all* SyntaxErrors shown to the LLM (compile errors during `ast.parse`, the `compile()` step later, validator parse errors, etc.). Adding the check at the parse site would duplicate the logic across each call site and skip errors surfaced from other compile points.
 
@@ -62,13 +62,13 @@ Why here and not at `ast.parse()` in `actor.py:1151-1155`: the formatter is the 
 
 ## Files to touch
 
-1. `src/nemo_oo_agents/errors/formatting.py`
+1. `src/nooa/errors/formatting.py`
    - Add two module-level constants near the top: the trigger-message tuple and the heredoc regex.
    - Add a module-level constant `_HEREDOC_HINT` with the hint text.
    - Add a small private helper `_maybe_append_heredoc_hint(error, code) -> str | None` that returns the hint text if the heuristic matches, else `None`.
    - In `_format_syntax_error`, after the existing line-number adjustment, append the hint if `_maybe_append_heredoc_hint` returns one.
 
-2. `src/nemo_oo_agents/tools/shell_tools.py` — **deferred** to a follow-up MR.
+2. `src/nooa/tools/shell_tools.py` — **deferred** to a follow-up MR.
    The plan originally included a one-example docstring tweak here. At commit time the file had a pre-existing pyright failure (`StreamEvent(kind=stream_name, ...)` where `stream_name: str` but `kind: Literal['stdout', 'stderr']`) that fires whenever the file is touched. The docstring is explicitly listed as an optional follow-up in the issue — deferring keeps this MR focused on the actual error-message change.
 
 3. `tests/test_error_formatting.py`
@@ -100,7 +100,7 @@ Why here and not at `ast.parse()` in `actor.py:1151-1155`: the formatter is the 
 uv run pytest tests/test_error_formatting.py -x -q
 uv run pytest tests/test_execute_code_error_recovery.py tests/test_error_line_numbers.py -x -q
 uv run pytest -x -q
-uv run ruff check src/nemo_oo_agents/errors/formatting.py src/nemo_oo_agents/tools/shell_tools.py tests/test_error_formatting.py
+uv run ruff check src/nooa/errors/formatting.py src/nooa/tools/shell_tools.py tests/test_error_formatting.py
 ```
 
 ## Acceptance criteria mapping (from the issue)

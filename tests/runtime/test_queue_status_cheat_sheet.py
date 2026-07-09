@@ -8,7 +8,7 @@ import asyncio
 
 import pytest
 
-from nemo_oo_agents.runtime.channels import QueueManager
+from nooa.runtime.channels import QueueManager
 
 
 def test_no_cheat_sheet_with_only_user_messages():

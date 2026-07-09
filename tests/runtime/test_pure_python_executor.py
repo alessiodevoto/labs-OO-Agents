@@ -2,10 +2,10 @@
 
 import pytest
 
-from nemo_oo_agents import Agent, strategy
-from nemo_oo_agents.errors import GenerationError
-from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
-from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse
+from nooa import Agent, strategy
+from nooa.errors import GenerationError
+from nooa.strategies.pure_python import PurePythonStrategy
+from nooa.unifiedllm import FakeLLMClient, LLMResponse
 
 
 def _resp(content: str) -> LLMResponse:

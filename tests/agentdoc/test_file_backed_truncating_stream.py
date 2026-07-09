@@ -7,7 +7,7 @@ import tempfile
 
 import pytest
 
-from nemo_oo_agents.agentdoc._truncating_stream import FileBackedTruncatingStringIO
+from nooa.agentdoc._truncating_stream import FileBackedTruncatingStringIO
 
 
 @pytest.fixture
@@ -279,6 +279,6 @@ class TestFileBackedExport:
 
     def test_importable_from_agentdoc(self):
         """FileBackedTruncatingStringIO is importable from the agentdoc public API."""
-        from nemo_oo_agents.agentdoc import FileBackedTruncatingStringIO as FB
+        from nooa.agentdoc import FileBackedTruncatingStringIO as FB
 
         assert FB is FileBackedTruncatingStringIO

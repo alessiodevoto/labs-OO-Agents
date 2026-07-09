@@ -14,8 +14,8 @@ from __future__ import annotations
 
 import litellm
 
-from nemo_oo_agents.tracing._journal_exporter import JournalExporter
-from nemo_oo_agents.tracing._litellm_journal import MessageJournalCallback
+from nooa.tracing._journal_exporter import JournalExporter
+from nooa.tracing._litellm_journal import MessageJournalCallback
 
 
 def _journal_callbacks() -> list[MessageJournalCallback]:

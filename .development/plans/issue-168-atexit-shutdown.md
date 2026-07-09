@@ -1,6 +1,6 @@
 # Issue 168 — Flush in-flight journal POSTs on JournalExporter shutdown
 
-Source: https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents/-/issues/168
+Source: https://gitlab-master.nvidia.com/interactive-agents/nooa/-/issues/168
 
 ## Problem
 
@@ -18,7 +18,7 @@ calls the exporter's `shutdown()`. So OTel handles the
 `BatchSpanProcessor.drain` half automatically — no work needed there.
 
 What's broken is one specific spot: `JournalExporter.shutdown()` in
-`src/nemo_oo_agents/tracing/_journal_exporter.py`. The method removes
+`src/nooa/tracing/_journal_exporter.py`. The method removes
 the destination from the shared litellm callback and calls
 `self._span_exporter.shutdown()`, but it never calls `flush_pending()`,
 which is the only thing that joins the daemon `_post_json` worker
@@ -40,7 +40,7 @@ before the destination cleanup and span-exporter shutdown.
 
 | File | Change |
 |------|--------|
-| `src/nemo_oo_agents/tracing/_journal_exporter.py` | Call `flush_pending(timeout=30.0)` at the top of `shutdown()`. |
+| `src/nooa/tracing/_journal_exporter.py` | Call `flush_pending(timeout=30.0)` at the top of `shutdown()`. |
 | `tests/tracing/test_journal_exporter_shutdown_flushes.py` | New regression test: dispatch a slow journal POST, call `JournalExporter.shutdown()` from a side thread, assert it does not return until the POST completes. |
 
 ## What we explicitly did *not* do

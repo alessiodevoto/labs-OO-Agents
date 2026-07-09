@@ -1,6 +1,6 @@
 # Improve Harbor import
 
-Issue: https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents/-/issues/224
+Issue: https://gitlab-master.nvidia.com/interactive-agents/nooa/-/issues/224
 
 ## Problem
 
@@ -17,9 +17,9 @@ unusable on large, current Harbor runs:
 
 ## Files
 
-- `packages/nemo-oo-agents-cli/src/nemo_oo_agents_cli/commands/import_harbor.py` — main changes
-- `packages/nemo-oo-agents-cli/src/nemo_oo_agents_cli/commands/_otlp_helpers.py` — add batch POST helper
-- `packages/nemo-oo-agents-cli/tests/cli/test_import_commands.py` — tests
+- `packages/nemo-labs-oo-agents-cli/src/nooa_cli/commands/import_harbor.py` — main changes
+- `packages/nemo-labs-oo-agents-cli/src/nooa_cli/commands/_otlp_helpers.py` — add batch POST helper
+- `packages/nemo-labs-oo-agents-cli/tests/cli/test_import_commands.py` — tests
 
 ## Change 1: Score field fallback
 
@@ -170,5 +170,5 @@ loop calls `post_traces_batch` (not `post_trace`) per flush. So:
 
 ## Verification
 
-`uv run pytest packages/nemo-oo-agents-cli/tests/cli/test_import_commands.py` and
+`uv run pytest packages/nemo-labs-oo-agents-cli/tests/cli/test_import_commands.py` and
 `uv run ruff check` on changed files.

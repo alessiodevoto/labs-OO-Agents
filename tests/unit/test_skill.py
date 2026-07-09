@@ -1,11 +1,11 @@
-"""Tests for nemo_oo_agents.Skill — path-based loading."""
+"""Tests for nooa.Skill — path-based loading."""
 
 import math
 from pathlib import Path
 
 import pytest
 
-from nemo_oo_agents import Skill, TextSkill
+from nooa import Skill, TextSkill
 
 
 @pytest.fixture

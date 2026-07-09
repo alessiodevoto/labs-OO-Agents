@@ -2,7 +2,7 @@
 
 from pydantic import BaseModel, create_model
 
-from nemo_oo_agents.unifiedllm.unifiedllm import _clean_schema, _strict_schema_valid
+from nooa.unifiedllm.unifiedllm import _clean_schema, _strict_schema_valid
 
 
 class TestStrictSchemaRequiredArray:

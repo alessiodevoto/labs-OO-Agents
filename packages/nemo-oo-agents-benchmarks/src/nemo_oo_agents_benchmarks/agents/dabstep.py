@@ -25,13 +25,13 @@ from typing import TYPE_CHECKING, Any
 import pandas as pd
 from pydantic import BaseModel, Field
 
-from nemo_oo_agents import Agent, CodeActStrategy, Context, strategy
-from nemo_oo_agents.config import CodeActConfig
-from nemo_oo_agents.unifiedllm import CompletionClient as _CompletionClient
-from nemo_oo_agents.unifiedllm import FakeLLMClient
+from nooa import Agent, CodeActStrategy, Context, strategy
+from nooa.config import CodeActConfig
+from nooa.unifiedllm import CompletionClient as _CompletionClient
+from nooa.unifiedllm import FakeLLMClient
 
 if TYPE_CHECKING:
-    from nemo_oo_agents.unifiedllm import UnifiedLLM
+    from nooa.unifiedllm import UnifiedLLM
 
 # Module-level imports available to LLM-generated code at runtime
 import json  # noqa: F401

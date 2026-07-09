@@ -13,8 +13,8 @@ import asyncio
 
 import pytest
 
-from nemo_oo_agents.agent import Agent
-from nemo_oo_agents.unifiedllm import FakeLLMClient
+from nooa.agent import Agent
+from nooa.unifiedllm import FakeLLMClient
 
 # Module-level test LLM (can be overridden at instantiation)
 _TEST_LLM = FakeLLMClient()

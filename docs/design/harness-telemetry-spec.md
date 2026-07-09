@@ -20,7 +20,7 @@ flushes it to OTLP span attributes, and surfaces it in trace_explorer.
    to read. One-line calls only: `hm.fence_removal(detail)` -- never a 2-line
    `if metrics :=` guard at every call site.
 2. **No reverse dependencies.** `unifiedllm` must not import from
-   `nemo_oo_agents`. Use a ContextVar-based callback protocol instead.
+   `nooa`. Use a ContextVar-based callback protocol instead.
 3. **No dead code.** Only define record methods that have callers. Add new ones
    when instrumenting new paths.
 4. **Correlated data stays together.** Use structured sub-models (Pydantic)
@@ -83,7 +83,7 @@ holding an optional callback. The agent framework sets the callback when
 starting a generation session; unifiedllm calls it if present.
 
 ```python
-# In unifiedllm (standalone, no nemo_oo_agents import):
+# In unifiedllm (standalone, no nooa import):
 from contextvars import ContextVar
 from typing import Any, Callable
 
@@ -102,7 +102,7 @@ The agent framework (in `actor.py`) sets this ContextVar to a function that
 dispatches to `HarnessMetrics`:
 
 ```python
-from nemo_oo_agents.unifiedllm.unifiedllm import _llm_metrics_callback
+from nooa.unifiedllm.unifiedllm import _llm_metrics_callback
 
 def _make_llm_metrics_bridge(hm: HarnessMetrics) -> Callable[[str, Any], None]:
     dispatch = {
@@ -418,7 +418,7 @@ CLI: `--harness` flag, with `--json` support.
 | Issue | MR !47 | This spec |
 |-------|--------|-----------|
 | Inline `if metrics :=` guards | 30+ two-line blocks | Null object pattern -- one-liners, no guards |
-| `unifiedllm` reverse import | `try: from nemo_oo_agents...` | ContextVar callback protocol |
+| `unifiedllm` reverse import | `try: from nooa...` | ContextVar callback protocol |
 | Dead methods | 7 unused `record_*` methods | Only methods with callers |
 | Correlated list drift | Parallel lists for errors | `ErrorRecord` sub-model |
 | `strip_redundant_imports` API change | Returns tuple | Signature unchanged; caller detects changes |

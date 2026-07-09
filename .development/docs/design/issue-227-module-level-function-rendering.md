@@ -27,7 +27,7 @@
 
 ## Problem
 
-`CodeActStrategy.execution_context()` (`src/nemo_oo_agents/strategies/codeact.py`)
+`CodeActStrategy.execution_context()` (`src/nooa/strategies/codeact.py`)
 renders the **Available functions (defined in agent module)** bucket as a bare,
 comma-joined list of names. Agent *methods*, by contrast, are rendered via
 `doc(type(self))` with full signatures, return types, and docstrings in the
@@ -98,7 +98,7 @@ def plain_helper(x: int, y: int = 3) -> int:
 
 ## Files touched
 
-- `src/nemo_oo_agents/strategies/codeact.py` — `execution_context()` only.
+- `src/nooa/strategies/codeact.py` — `execution_context()` only.
   `_extract_module_context()` already surfaces the right objects (visibility fix
   already merged); no change needed there.
 

@@ -3,8 +3,8 @@
 # Same setup as terminal_bench_galaxy_docker.yaml but uses the ReAct
 # (Thought/Action/Observation) loop instead of CodeAct.
 #
-# Run from /home/lab/rcabral/nemo_oo_agents:
-#   source /home/lab/rcabral/nemo_oo_agents/.env
+# Run from /home/lab/rcabral/nooa:
+#   source /home/lab/rcabral/nooa/.env
 #   source /home/lab/miniforge3/bin/activate
 #   harbor run --config util/harbor/terminal_bench_galaxy_docker_react.yaml
 

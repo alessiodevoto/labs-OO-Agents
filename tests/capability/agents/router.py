@@ -8,7 +8,7 @@ Uses TypedDict for explicit return types to catch errors at type-check time.
 
 from typing import TypedDict
 
-from nemo_oo_agents import Agent
+from nooa import Agent
 
 # ============================================================================
 # Typed return structures - makes expected output explicit

@@ -16,7 +16,7 @@ Built-in tool for agent self-planning. State persists across turns (snapshot-bac
 ## Attaching TodoManager
 
 ```python
-from nemo_oo_agents.tools.todo import TodoManager
+from nooa.tools.todo import TodoManager
 
 class MyAgent(Agent, llm=llm):
     def __init__(self):
@@ -80,7 +80,7 @@ All read methods (`list_todos`, `status`, `get_var`, `comments`) are idempotent.
 TodoManager state is serialized by `SQLiteStorageManager` automatically. After a restart:
 
 ```python
-from nemo_oo_agents.storage import SQLiteStorageManager
+from nooa.storage import SQLiteStorageManager
 
 storage = SQLiteStorageManager("agent_state.db")
 agent = MyAgent(storage=storage)  # todos restored from last snapshot

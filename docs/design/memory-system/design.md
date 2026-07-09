@@ -2,7 +2,7 @@
 
 > **Status:** v1 IMPLEMENTED. The schema, algorithms, and hook map below are backed
 > by a codebase analysis + cognitive-science research pass and are now realised in
-> code (`src/nemo_oo_agents/memory/`), tested (`tests/memory/`, 69 tests), and
+> code (`src/nooa/memory/`), tested (`tests/memory/`, 69 tests), and
 > demonstrated (`examples/quickstart/11_memory.py`). See **§5.1 Implementation status**.
 >
 > **Companion file:** [`research-notes.md`](./research-notes.md) (1918 lines) — full
@@ -14,7 +14,7 @@
 
 ## 0. Goal in one paragraph
 
-An **opt-in, additive** long-term memory subsystem for nemo-oo agents — toggled on/off
+An **opt-in, additive** long-term memory subsystem for nooa agents — toggled on/off
 per agent, tuned by hyperparameters, **zero impact when off**. It gives an agent durable
 memory across **long-horizon autonomous tasks** and **tasks accreted over time**, modeled
 on how the conscious brain uses memory: **spontaneous association** (similarity retrieval
@@ -28,7 +28,7 @@ with vectors embedded via an **NVIDIA-served embedding model**.
 
 ## 1. Rationale
 
-**Problem.** A nemo-oo agent is effectively amnesic between method calls and sessions.
+**Problem.** A nooa agent is effectively amnesic between method calls and sessions.
 Long-horizon autonomous runs rediscover the same facts, re-derive the same procedures, and
 repeat the same mistakes; recurring tasks given over days/weeks start cold every time. The
 framework already invests in *short-term* context management (truncation/eviction), but
@@ -409,7 +409,7 @@ behind the protocols):
 
 ### 5.2 Milestone plan (as built)
 
-Module: `src/nemo_oo_agents/memory/` (`store.py`, `embeddings.py`, `schema.py`,
+Module: `src/nooa/memory/` (`store.py`, `embeddings.py`, `schema.py`,
 `retrieval.py`, `reflection.py`, `forgetting.py`, `manager.py`, `config.py`).
 
 | Milestone | Deliverable | Verifiable by |

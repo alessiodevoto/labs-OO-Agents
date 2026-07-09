@@ -29,17 +29,17 @@ from typing import Literal
 
 import pytest
 
-from nemo_oo_agents import Agent, strategy
-from nemo_oo_agents.atif import (
+from nooa import Agent, strategy
+from nooa.atif import (
     Trajectory,
     atif_scope,
     enable_atif,
     install_atif,
 )
-from nemo_oo_agents.config import CodeActConfig
-from nemo_oo_agents.standalone import _atif_exporter_var
-from nemo_oo_agents.strategies import CodeActStrategy, PredictStrategy
-from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
+from nooa.config import CodeActConfig
+from nooa.standalone import _atif_exporter_var
+from nooa.strategies import CodeActStrategy, PredictStrategy
+from nooa.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
 from tests.atif.normative import assert_atif_normative
 
 # ---------------------------------------------------------------------------
@@ -189,8 +189,8 @@ async def _classify_a(text: str) -> Literal["pos", "neg"]:
 def _isolated_agent_init():
     """Restore ``Agent.__init__`` after each test so ``enable_atif()``
     monkey-patching doesn't bleed into other tests."""
-    from nemo_oo_agents import atif as atif_module
-    from nemo_oo_agents.agent import Agent
+    from nooa import atif as atif_module
+    from nooa.agent import Agent
 
     orig_init = Agent.__init__
     orig_patched = atif_module.install._AGENT_INIT_PATCHED

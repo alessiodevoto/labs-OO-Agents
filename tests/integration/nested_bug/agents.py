@@ -4,9 +4,9 @@ This agent demonstrates the bug where nested agent calls cause tool_call_id
 ordering issues in the message history.
 """
 
-from nemo_oo_agents import Agent, strategy
-from nemo_oo_agents.config import CodeActConfig
-from nemo_oo_agents.strategies.codeact import CodeActStrategy
+from nooa import Agent, strategy
+from nooa.config import CodeActConfig
+from nooa.strategies.codeact import CodeActStrategy
 
 
 class NestedBugAgent(Agent):

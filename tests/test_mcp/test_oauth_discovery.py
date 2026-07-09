@@ -5,7 +5,7 @@
 import httpx
 import pytest
 
-from nemo_oo_agents.mcp import oauth
+from nooa.mcp import oauth
 
 
 def _client(handler):
@@ -227,7 +227,7 @@ def test_token_cache_roundtrip(tmp_path, monkeypatch):
     assert loaded.client_id == "client-id"
     assert loaded.client_secret == "client-secret"
 
-    cache_file = tmp_path / ".nemo_oo_agents" / "mcp_tokens.json"
+    cache_file = tmp_path / ".nooa" / "mcp_tokens.json"
     assert cache_file.exists()
     # Owner-only permissions (0o600).
     assert (cache_file.stat().st_mode & 0o777) == 0o600

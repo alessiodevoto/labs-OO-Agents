@@ -10,7 +10,7 @@ from kwargs (``max_string`` / ``max_length`` / ``max_depth``). The optional
 
 import pytest
 
-from nemo_oo_agents.context_blocks.utils import truncating_pformat
+from nooa.context_blocks.utils import truncating_pformat
 
 
 class TestStringPassthrough:

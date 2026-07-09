@@ -21,8 +21,8 @@ def _reset_tracing_module_state() -> None:
     ``enable_tracing`` repeatedly leave stale exporters / litellm callbacks
     behind, and one test's journal callback POSTs into another test's viewer.
     """
-    import nemo_oo_agents.tracing as module
-    from nemo_oo_agents.tracing._session import set_session
+    import nooa.tracing as module
+    from nooa.tracing._session import set_session
 
     if module._provider is not None:
         with contextlib.suppress(Exception):
@@ -36,12 +36,12 @@ def _reset_tracing_module_state() -> None:
     set_session(None)
 
     with contextlib.suppress(ImportError):
-        from nemo_oo_agents.runtime.hooks import set_hooks
+        from nooa.runtime.hooks import set_hooks
 
         set_hooks(None)
 
     with contextlib.suppress(ImportError):
-        from nemo_oo_agents.tracing._hooks_impl import _context_active_spans
+        from nooa.tracing._hooks_impl import _context_active_spans
 
         _context_active_spans.set(None)
 
@@ -54,7 +54,7 @@ def _reset_tracing_module_state() -> None:
     with contextlib.suppress(ImportError):
         import litellm
 
-        from nemo_oo_agents.tracing._litellm_journal import MessageJournalCallback
+        from nooa.tracing._litellm_journal import MessageJournalCallback
 
         def _strip(lst: list) -> list:
             return [cb for cb in lst if not isinstance(cb, MessageJournalCallback)]

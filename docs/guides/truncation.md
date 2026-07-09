@@ -39,7 +39,7 @@ Use when the LLM needs the **actual content** of a value, not just its shape.
 All `tc.*` parameters come from `TruncationConfig`, set per-agent:
 
 ```python
-from nemo_oo_agents.config.truncation_config import TruncationConfig
+from nooa.config.truncation_config import TruncationConfig
 
 class MyAgent(Agent, llm=llm):
     _truncation = TruncationConfig(

@@ -9,14 +9,14 @@ blocks) and returns ``list[RenderedMessage]``. ProviderFormatter.format() takes
 
 import pytest
 
-from nemo_oo_agents.context_blocks.events import ToolCallEvent, ToolResult
-from nemo_oo_agents.context_blocks.formatter import (
+from nooa.context_blocks.events import ToolCallEvent, ToolResult
+from nooa.context_blocks.formatter import (
     AnthropicProviderFormatter,
     MarkdownBlockFormatter,
     OpenAIProviderFormatter,
     XMLBlockFormatter,
 )
-from nemo_oo_agents.context_blocks.models import (
+from nooa.context_blocks.models import (
     BlockMetadata,
     RenderedMessage,
     ResolvedBlock,
@@ -50,13 +50,13 @@ def _system_content(messages: list[RenderedMessage]) -> str:
 
 class TestBlockFormatterABC:
     def test_is_abstract(self):
-        from nemo_oo_agents.context_blocks.formatter import BlockFormatter
+        from nooa.context_blocks.formatter import BlockFormatter
 
         with pytest.raises(TypeError):
             BlockFormatter()  # type: ignore[abstract]
 
     def test_requires_format_method(self):
-        from nemo_oo_agents.context_blocks.formatter import BlockFormatter
+        from nooa.context_blocks.formatter import BlockFormatter
 
         class IncompleteFormatter(BlockFormatter):
             pass
@@ -192,7 +192,7 @@ class TestMarkdownBlockFormatter:
 
 class TestProviderFormatterABC:
     def test_is_abstract(self):
-        from nemo_oo_agents.context_blocks.formatter import ProviderFormatter
+        from nooa.context_blocks.formatter import ProviderFormatter
 
         with pytest.raises(TypeError):
             ProviderFormatter()  # type: ignore[abstract]
@@ -372,21 +372,21 @@ class TestBlockFormatterFormatEvent:
     """format_event() still serializes raw events to content strings."""
 
     def test_xml_format_event_user_event(self):
-        from nemo_oo_agents.context_blocks.events import UserEvent
+        from nooa.context_blocks.events import UserEvent
 
         event = UserEvent(content="Hello world", tag="1")
         assert "Hello world" in XMLBlockFormatter().format_event(event)
 
     def test_markdown_format_event_user_event(self):
-        from nemo_oo_agents.context_blocks.events import UserEvent
+        from nooa.context_blocks.events import UserEvent
 
         event = UserEvent(content="Hello world", tag="1")
         assert "Hello world" in MarkdownBlockFormatter().format_event(event)
 
     def test_format_event_has_default(self):
         """BlockFormatter.format_event() is concrete by default (agentdoc pformat)."""
-        from nemo_oo_agents.context_blocks.events import UserEvent
-        from nemo_oo_agents.context_blocks.formatter import BlockFormatter, FormatType
+        from nooa.context_blocks.events import UserEvent
+        from nooa.context_blocks.formatter import BlockFormatter, FormatType
 
         class MinimalFormatter(BlockFormatter):
             @property

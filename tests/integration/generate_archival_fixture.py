@@ -15,12 +15,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
-from nemo_oo_agents import Agent
-from nemo_oo_agents.context_blocks.events import ResultStatus, ToolCallEvent, ToolResult
-from nemo_oo_agents.events import PythonOutput
-from nemo_oo_agents.runtime.actor import _current_llm_var, _current_method_var
-from nemo_oo_agents.storage.sqlite import SQLiteStorageManager
-from nemo_oo_agents.unifiedllm import CompletionClient
+from nooa import Agent
+from nooa.context_blocks.events import ResultStatus, ToolCallEvent, ToolResult
+from nooa.events import PythonOutput
+from nooa.runtime.actor import _current_llm_var, _current_method_var
+from nooa.storage.sqlite import SQLiteStorageManager
+from nooa.unifiedllm import CompletionClient
 
 _MODEL_NAME = "openai/nvidia/nvidia/Nemotron-3-Nano-30B-A3B"
 _API_BASE = "https://inference-api.nvidia.com/v1"

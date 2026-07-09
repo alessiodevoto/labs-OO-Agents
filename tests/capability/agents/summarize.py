@@ -1,6 +1,6 @@
 """Summarization agents."""
 
-from nemo_oo_agents import Agent
+from nooa import Agent
 
 
 class SummarizeAgent(Agent):

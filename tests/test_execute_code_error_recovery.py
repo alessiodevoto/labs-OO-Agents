@@ -2,9 +2,9 @@
 
 import pytest
 
-from nemo_oo_agents.agent import Agent
-from nemo_oo_agents.runtime.actor import ActorRuntime
-from nemo_oo_agents.unifiedllm import FakeLLMClient
+from nooa.agent import Agent
+from nooa.runtime.actor import ActorRuntime
+from nooa.unifiedllm import FakeLLMClient
 
 _TEST_LLM = FakeLLMClient()
 
@@ -102,7 +102,7 @@ raise Exception('error after state mutations')
 @pytest.mark.asyncio
 async def test_captured_locals_preserved_on_execution_signal():
     """Variables should be preserved when ExecutionSignal is raised."""
-    from nemo_oo_agents.events import ExecutionSignal
+    from nooa.events import ExecutionSignal
 
     class TestAgent(Agent, llm=_TEST_LLM):
         pass
@@ -141,7 +141,7 @@ z = 99  # This won't be reached
 @pytest.mark.asyncio
 async def test_captured_locals_preserved_with_return_result():
     """Variables should be preserved when return_result() is called (full integration)."""
-    from nemo_oo_agents.events import ExecutionSignal
+    from nooa.events import ExecutionSignal
 
     class TestAgent(Agent, llm=_TEST_LLM):
         pass

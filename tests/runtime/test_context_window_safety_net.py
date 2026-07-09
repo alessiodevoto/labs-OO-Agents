@@ -18,9 +18,9 @@ The 30% margin covers the litellm→API tokenizer gap.
 
 import pytest
 
-from nemo_oo_agents import Agent
-from nemo_oo_agents.events import Message
-from nemo_oo_agents.unifiedllm import FakeLLMClient
+from nooa import Agent
+from nooa.events import Message
+from nooa.unifiedllm import FakeLLMClient
 
 
 class _FakeLLM(FakeLLMClient):
@@ -77,7 +77,7 @@ class TestStructuredPayloadSafetyNet:
             agent.event_manager.add(Message(content="small message"))
 
         method = type(agent).respond
-        from nemo_oo_agents.runtime.actor import _current_llm_var
+        from nooa.runtime.actor import _current_llm_var
 
         token = _current_llm_var.set(agent._llm)
         try:
@@ -129,7 +129,7 @@ class TestStructuredPayloadSafetyNet:
             agent.event_manager.add(Message(content="hi"))
 
         method = type(agent).respond
-        from nemo_oo_agents.runtime.actor import _current_llm_var
+        from nooa.runtime.actor import _current_llm_var
 
         token = _current_llm_var.set(llm)
         try:
@@ -172,7 +172,7 @@ class TestTokenCounterRegression:
         agent.context_manager["prose"] = long_block
 
         method = type(agent).respond
-        from nemo_oo_agents.runtime.actor import _current_llm_var
+        from nooa.runtime.actor import _current_llm_var
 
         token = _current_llm_var.set(agent._llm)
         try:
@@ -214,7 +214,7 @@ class TestTokenCounterRegression:
             agent.event_manager.add(Message(content="event payload " * 2000))
 
         method = type(agent).respond
-        from nemo_oo_agents.runtime.actor import _current_llm_var
+        from nooa.runtime.actor import _current_llm_var
 
         token = _current_llm_var.set(agent._llm)
         try:
@@ -247,7 +247,7 @@ class TestMaxOutputTokensBudget:
         """When max_tokens is small (< 30 % of ctx_window), the default
         70 % heuristic is already tighter and should win.  No regression.
         """
-        from nemo_oo_agents.events import Message
+        from nooa.events import Message
 
         llm = _mk_llm(200_000)
 
@@ -261,7 +261,7 @@ class TestMaxOutputTokensBudget:
             agent.event_manager.add(Message(content="small message"))
 
         method = type(agent).respond
-        from nemo_oo_agents.runtime.actor import _current_llm_var
+        from nooa.runtime.actor import _current_llm_var
 
         token = _current_llm_var.set(agent._llm)
         try:
@@ -285,7 +285,7 @@ class TestMaxOutputTokensBudget:
         """When max_output_tokens is None (not passed), the old 70 %
         heuristic must be used — no crash from None arithmetic.
         """
-        from nemo_oo_agents.events import Message
+        from nooa.events import Message
 
         llm = _mk_llm(200_000)
 
@@ -299,7 +299,7 @@ class TestMaxOutputTokensBudget:
             agent.event_manager.add(Message(content="test message"))
 
         method = type(agent).respond
-        from nemo_oo_agents.runtime.actor import _current_llm_var
+        from nooa.runtime.actor import _current_llm_var
 
         token = _current_llm_var.set(agent._llm)
         try:
@@ -332,8 +332,8 @@ class TestContextWindowRecovery:
         recovery retries with reduced max_tokens and succeeds."""
         from unittest.mock import patch
 
-        from nemo_oo_agents.events import Message
-        from nemo_oo_agents.runtime.actor import (
+        from nooa.events import Message
+        from nooa.runtime.actor import (
             _current_llm_var,
             _current_method_var,
         )
@@ -391,8 +391,8 @@ class TestContextWindowRecovery:
         """Errors that aren't ContextWindowExceeded must propagate normally."""
         from unittest.mock import patch
 
-        from nemo_oo_agents.events import Message
-        from nemo_oo_agents.runtime.actor import (
+        from nooa.events import Message
+        from nooa.runtime.actor import (
             _current_llm_var,
             _current_method_var,
         )
@@ -427,8 +427,8 @@ class TestContextWindowRecovery:
         recovery should re-raise instead of retrying with a useless budget."""
         from unittest.mock import patch
 
-        from nemo_oo_agents.events import Message
-        from nemo_oo_agents.runtime.actor import (
+        from nooa.events import Message
+        from nooa.runtime.actor import (
             _current_llm_var,
             _current_method_var,
         )
@@ -477,8 +477,8 @@ class TestEndToEndSmallContextWindow:
         and succeed on retry."""
         from unittest.mock import patch
 
-        from nemo_oo_agents.events import Message
-        from nemo_oo_agents.runtime.actor import (
+        from nooa.events import Message
+        from nooa.runtime.actor import (
             _current_llm_var,
             _current_method_var,
         )

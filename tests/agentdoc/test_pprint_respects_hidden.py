@@ -6,7 +6,7 @@ from typing import Annotated
 
 from pydantic import BaseModel
 
-from nemo_oo_agents.agentdoc import hidden, pformat, spec
+from nooa.agentdoc import hidden, pformat, spec
 
 
 def test_pprint_excludes_annotated_hidden_field():
@@ -158,7 +158,7 @@ def test_pformat_excludes_callable_instance_attribute():
 
 def test_pformat_excludes_spec_hidden_true_annotation():
     """Annotated[T, spec(hidden=True)] must hide the field — not just Annotated[T, hidden]."""
-    from nemo_oo_agents.agentdoc import doc, spec
+    from nooa.agentdoc import doc, spec
 
     class Agent:
         label: str = "ok"
@@ -176,7 +176,7 @@ def test_pformat_excludes_spec_hidden_true_annotation():
 
 def test_pformat_type_mode_excludes_hidden_dict_attrs():
     """doc(instance) must not leak Annotated[T, hidden] fields via __dict__ extra-attr path."""
-    from nemo_oo_agents.agentdoc import doc
+    from nooa.agentdoc import doc
 
     class Agent:
         label: str = "default"

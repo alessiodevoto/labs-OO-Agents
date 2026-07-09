@@ -6,8 +6,8 @@ The current memory system is implemented as a `MemorySkill` mounted at `self.mem
 
 The core memory implementation is usable, but the agent-facing contract is split across three surfaces that do not fully agree:
 
-1. the injected `MEMORY_SCHEMA_GUIDE` in `src/nemo_oo_agents/memory/manager.py`,
-2. the `MemorySkill` docstring in `src/nemo_oo_agents/memory/memory_skill/__init__.py`, and
+1. the injected `MEMORY_SCHEMA_GUIDE` in `src/nooa/memory/manager.py`,
+2. the `MemorySkill` docstring in `src/nooa/memory/memory_skill/__init__.py`, and
 3. the actual public methods inherited from `MemoryToolsMixin` and exposed on `self.memory`.
 
 This report captures the misleading or missing pieces and suggests concrete changes.
@@ -16,18 +16,18 @@ This report captures the misleading or missing pieces and suggests concrete chan
 
 Relevant files and runtime observations:
 
-- `src/nemo_oo_agents/memory/manager.py`
+- `src/nooa/memory/manager.py`
   - `MEMORY_SCHEMA_GUIDE` tells the agent to call `self.remember(...)`, `self.update_memory(...)`, `self.forget(...)`, `self.associate(...)`, and `self.recall(...)`.
   - `MemoryToolsMixin` defines the conscious memory API as `remember`, `update_memory`, `forget`, `recall`, `search`, and `associate`.
-- `src/nemo_oo_agents/memory/memory_skill/__init__.py`
+- `src/nooa/memory/memory_skill/__init__.py`
   - `MemorySkill` registers as `nemo.memory`, so the active runtime surface is `self.memory`.
   - Its class docstring correctly describes `self.memory.remember(...)`, `self.memory.recall(...)`, etc.
 - Runtime session check:
   - `hasattr(self, "remember") == False`
   - `hasattr(self.memory, "remember") == True`
-- `src/nemo_oo_agents/memory/schema.py`
+- `src/nooa/memory/schema.py`
   - The persisted `Memory` model contains additional fields such as `owner`, `status`, `related_files`, `chat_turn_ref`, `valid_from`, `valid_to`, `trigger`, `entities`, and `place_or_task` that are not exposed by the public tool methods.
-- `src/nemo_oo_agents/memory/store.py`
+- `src/nooa/memory/store.py`
   - `owner` and `status` are promoted SQL columns and are authoritative when rows are read back.
 - `docs/design/memory-system/plan-todo-identity-references-observability.md`
   - Describes planned identity/reference/observability work, including TODO lifecycle, owner semantics, and “pass by reference” conventions.
@@ -270,7 +270,7 @@ Clarify:
 
 ### 9. Store scope and persistence are not explained to the agent
 
-The implementation supports configurable store paths. In this TUI runtime, the active memory DB is session-scoped under `.nemo_oo/sessions/...-memory.db`. Other docs mention `.nemo_oo/memory/memory.sqlite` as a default/project path.
+The implementation supports configurable store paths. In this TUI runtime, the active memory DB is session-scoped under `.nooa/sessions/...-memory.db`. Other docs mention `.nooa/memory/memory.sqlite` as a default/project path.
 
 For correct behavior, the agent should know whether a memory is session-local, project-local, or shared across agents/users. The current prompt only says “persistent long-term memory,” which may imply broader durability than the configured path provides.
 
@@ -279,7 +279,7 @@ For correct behavior, the agent should know whether a memory is session-local, p
 Expose store scope in a small context block or `self.memory.stats()`/`self.memory.status()` method, e.g.:
 
 ```text
-Memory store: session-scoped SQLite at .nemo_oo/sessions/<session>-memory.db
+Memory store: session-scoped SQLite at .nooa/sessions/<session>-memory.db
 ```
 
 The injected prompt should avoid overpromising and say “persistent according to the configured memory store.”
@@ -365,7 +365,7 @@ explicit recall/search results so you have stable memory IDs.
 ### P0: Fix agent-facing API mismatch
 
 - Change `MEMORY_SCHEMA_GUIDE` from `self.*` to `self.memory.*`.
-- Update `src/nemo_oo_agents/memory/README.md`, `docs/design/memory-system/results.md`, and examples that are intended for skill users.
+- Update `src/nooa/memory/README.md`, `docs/design/memory-system/results.md`, and examples that are intended for skill users.
 - Add a test that installs `MemorySkill` on a TUI-like agent and verifies the injected guide mentions `self.memory.remember` and not `self.remember`.
 
 ### P1: Add memory IDs to spontaneous recall context

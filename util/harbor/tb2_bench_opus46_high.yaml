@@ -24,4 +24,4 @@ datasets:
   - name: terminal-bench
     version: "2.0"
     registry:
-      path: /localhome/local-rcabral/rcabral/nemo_oo_agents/3p/harbor-nemo/registry.json
+      path: /localhome/local-rcabral/rcabral/nooa/3p/harbor-nemo/registry.json

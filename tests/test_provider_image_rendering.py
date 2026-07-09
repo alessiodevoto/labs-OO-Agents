@@ -5,15 +5,15 @@ in both OpenAI and Anthropic message formats. Both use LiteLLM's universal
 image_url format — no provider-specific conversion needed.
 """
 
-from nemo_oo_agents.context_blocks.events import ResultStatus
-from nemo_oo_agents.context_blocks.formatter import (
+from nooa.context_blocks.events import ResultStatus
+from nooa.context_blocks.formatter import (
     AnthropicProviderFormatter,
     OpenAIProviderFormatter,
     XMLBlockFormatter,
 )
-from nemo_oo_agents.context_blocks.models import BlockMetadata, ResolvedBlock, Role
-from nemo_oo_agents.context_blocks.renderer import render_context
-from nemo_oo_agents.events import PythonOutput
+from nooa.context_blocks.models import BlockMetadata, ResolvedBlock, Role
+from nooa.context_blocks.renderer import render_context
+from nooa.events import PythonOutput
 
 
 def _render_openai(blocks: list[ResolvedBlock]) -> list[dict]:
@@ -111,7 +111,7 @@ class TestPlainFormatterExcludesImages:
     """Verify that repr=False on PythonOutput.images excludes them from text rendering."""
 
     def test_images_excluded_from_plain_format(self):
-        from nemo_oo_agents.plain_formatter import PlainBlockFormatter
+        from nooa.plain_formatter import PlainBlockFormatter
 
         event = PythonOutput(
             tool_call_id="tc_1",

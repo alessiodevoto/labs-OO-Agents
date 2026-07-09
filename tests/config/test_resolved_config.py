@@ -1,9 +1,9 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Tests for the typed file-config API under ``nemo_oo_agents.config``.
+"""Tests for the typed file-config API under ``nooa.config``.
 
 ``resolved_config()`` / ``ModelConfig`` / ``Secrets`` are the typed boundary
-over the layered YAML files (the programmatic ``nemo-oo config show``).
+over the layered YAML files (the programmatic ``nooa config show``).
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from nemo_oo_agents.config import (
+from nooa.config import (
     ModelConfig,
     ResolvedConfig,
     Secrets,
@@ -31,7 +31,7 @@ def _isolate(tmp_path, monkeypatch):
     for v in ("NEMO_OO_SETTINGS", "NEMO_OO_SECRETS", "NEMO_OO_LLM_CONFIG"):
         monkeypatch.delenv(v, raising=False)
     # Stub bundled providers empty so the registry view is deterministic.
-    monkeypatch.setattr("nemo_oo_agents.llm_config.bundled_config_paths", lambda: [])
+    monkeypatch.setattr("nooa.llm_config.bundled_config_paths", lambda: [])
     return user
 
 
@@ -94,8 +94,8 @@ class TestResolvedConfig:
 class TestGetModelConfig:
     def test_known_alias(self, _isolate):
         (_isolate / "llm_config.yaml").write_text("models:\n  a:\n    model_name: openai/m\n")
-        from nemo_oo_agents.llm_config import llm_config_chain
-        from nemo_oo_agents.unifiedllm import reload_registry
+        from nooa.llm_config import llm_config_chain
+        from nooa.unifiedllm import reload_registry
 
         reload_registry(*llm_config_chain())
         mc = get_model_config("a")
@@ -103,7 +103,7 @@ class TestGetModelConfig:
         assert mc.model_name == "openai/m"
 
     def test_unknown_alias_returns_none(self, _isolate):
-        from nemo_oo_agents.unifiedllm import reload_registry
+        from nooa.unifiedllm import reload_registry
 
         reload_registry()  # empty (bundled stubbed, no files)
         assert get_model_config("does-not-exist") is None

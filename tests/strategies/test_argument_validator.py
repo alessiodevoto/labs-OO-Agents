@@ -7,7 +7,7 @@ import pytest
 from pydantic import BaseModel
 from typing_extensions import TypedDict
 
-from nemo_oo_agents.strategies.generated_code import ArgumentValidator
+from nooa.strategies.generated_code import ArgumentValidator
 
 
 class SampleModel(BaseModel):

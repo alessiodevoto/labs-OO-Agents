@@ -15,9 +15,9 @@ import functools
 
 import pytest
 
-from nemo_oo_agents import Agent
-from nemo_oo_agents.errors import DynamicMethodAdditionError
-from nemo_oo_agents.unifiedllm import FakeLLMClient
+from nooa import Agent
+from nooa.errors import DynamicMethodAdditionError
+from nooa.unifiedllm import FakeLLMClient
 
 _TEST_LLM = FakeLLMClient()
 
@@ -266,7 +266,7 @@ async def test_execute_code_blocks_named_class_mutation():
     name and mutates it" pattern. AgentMeta.__setattr__ is the runtime
     backstop if validation is ever disabled.
     """
-    from nemo_oo_agents.errors import RestrictedCodeError
+    from nooa.errors import RestrictedCodeError
 
     class MyAgent(Agent, llm=_TEST_LLM):
         async def task(self) -> str:
@@ -288,7 +288,7 @@ async def test_execute_code_blocks_named_class_mutation():
 @pytest.mark.asyncio
 async def test_execute_code_blocks_named_class_setattr_call():
     """`setattr(MyAgent, "foo", fn)` is rejected end-to-end."""
-    from nemo_oo_agents.errors import RestrictedCodeError
+    from nooa.errors import RestrictedCodeError
 
     class MyAgent(Agent, llm=_TEST_LLM):
         pass
@@ -312,7 +312,7 @@ async def test_execute_code_blocks_aliased_class_mutation():
     The ClassAssignmentValidator tracks variables assigned from `type(self)`
     in `class_ref_vars`. This test pins that the alias is followed.
     """
-    from nemo_oo_agents.errors import RestrictedCodeError
+    from nooa.errors import RestrictedCodeError
 
     class MyAgent(Agent, llm=_TEST_LLM):
         pass
@@ -336,7 +336,7 @@ async def test_execute_code_blocks_object_dunder_setattr_bypass():
     fire on `object.__setattr__` (it goes through the C-level slot directly),
     so the validator is the only safety net.
     """
-    from nemo_oo_agents.errors import RestrictedCodeError
+    from nooa.errors import RestrictedCodeError
 
     class A(Agent, llm=_TEST_LLM):
         pass
@@ -356,7 +356,7 @@ async def test_execute_code_blocks_object_dunder_setattr_bypass():
 @pytest.mark.asyncio
 async def test_execute_code_blocks_type_dunder_setattr_bypass():
     """`type.__setattr__(type(self), ...)` would bypass AgentMeta.__setattr__."""
-    from nemo_oo_agents.errors import RestrictedCodeError
+    from nooa.errors import RestrictedCodeError
 
     class A(Agent, llm=_TEST_LLM):
         pass
@@ -376,7 +376,7 @@ async def test_execute_code_blocks_type_dunder_setattr_bypass():
 @pytest.mark.asyncio
 async def test_execute_code_blocks_dict_subscript_bypass():
     """`self.__dict__['foo'] = lambda: ...` is rejected by the existing __dict__ guard."""
-    from nemo_oo_agents.errors import RestrictedCodeError
+    from nooa.errors import RestrictedCodeError
 
     class A(Agent, llm=_TEST_LLM):
         pass
@@ -394,7 +394,7 @@ async def test_execute_code_blocks_dict_subscript_bypass():
 
 def test_validator_flags_object_dunder_setattr():
     """Unit-level: SecurityValidator catches object.__setattr__ as a forbidden pattern."""
-    from nemo_oo_agents.runtime.code_validator import (
+    from nooa.runtime.code_validator import (
         UnifiedCodeValidator,
         ValidationContext,
     )
@@ -417,7 +417,7 @@ def test_validator_flags_super_dunder_setattr():
     `super(SomeAgent, self).__setattr__("foo", fn)` would route to the parent
     class's __setattr__, bypassing Agent.__setattr__. Catch it at validation.
     """
-    from nemo_oo_agents.runtime.code_validator import (
+    from nooa.runtime.code_validator import (
         UnifiedCodeValidator,
         ValidationContext,
     )
@@ -436,7 +436,7 @@ def test_validator_flags_super_dunder_setattr():
 
 def test_validator_flags_type_dunder_setattr():
     """Unit-level: same for type.__setattr__."""
-    from nemo_oo_agents.runtime.code_validator import (
+    from nooa.runtime.code_validator import (
         UnifiedCodeValidator,
         ValidationContext,
     )
@@ -455,7 +455,7 @@ def test_validator_flags_type_dunder_setattr():
 
 def test_validator_allows_type_as_a_call():
     """Regression: `type(x)` (calling type as a builtin) is fine, only attribute access on bare `type`/`object` is flagged."""
-    from nemo_oo_agents.runtime.code_validator import (
+    from nooa.runtime.code_validator import (
         UnifiedCodeValidator,
         ValidationContext,
     )

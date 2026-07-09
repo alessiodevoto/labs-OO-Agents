@@ -2,7 +2,7 @@
 
 ## Problem
 
-When the LLM "thinks it's done" by emitting a plain-text summary instead of calling `return_result(...)`, the CodeAct strategy converts that text into a synthetic `execute_python(reasoning(...))` call (see `src/nemo_oo_agents/strategies/codeact.py` lines 747–789). The framework returns `status: complete` for that synthetic call. The LLM, seeing a "complete" tool result, emits another plain-text summary on the next turn — and the loop repeats indefinitely.
+When the LLM "thinks it's done" by emitting a plain-text summary instead of calling `return_result(...)`, the CodeAct strategy converts that text into a synthetic `execute_python(reasoning(...))` call (see `src/nooa/strategies/codeact.py` lines 747–789). The framework returns `status: complete` for that synthetic call. The LLM, seeing a "complete" tool result, emits another plain-text summary on the next turn — and the loop repeats indefinitely.
 
 `max_iterations` defaults to `None` (unlimited), so there is no implicit cap. In production this has been observed running for 20+ identical turns burning ~5k tokens each (issue 185, evolutionary optimizer trace).
 
@@ -24,7 +24,7 @@ Tighten the existing "You MUST call a tool each turn." line in `strategy_instruc
 
 ## Code changes
 
-### `src/nemo_oo_agents/config/strategy_config.py`
+### `src/nooa/config/strategy_config.py`
 
 Add a config field on `CodeActConfig`:
 
@@ -36,7 +36,7 @@ Description: Maximum consecutive turns where the LLM returns text without a tool
 
 **Backward-compat note**: This changes runtime behavior for existing users. Previously a text-only loop would run forever (or until `max_iterations` cut it off, which is `None` by default). With the default `3`, such loops abort with a `GenerationError` after 3 consecutive text-only turns. Users who relied on the old behavior must explicitly set `max_consecutive_text_only=0`. We accept this break because the old behavior is the bug being fixed.
 
-### `src/nemo_oo_agents/strategies/codeact.py`
+### `src/nooa/strategies/codeact.py`
 
 1. Add a counter field on `CodeActSession`:
    ```python
@@ -123,13 +123,13 @@ If `FakeLLMClient` repeats the last response when scripted responses are exhaust
 ```bash
 uv run pytest tests/strategies/test_codeact_strategy.py -k text_only -x -v
 uv run pytest tests/strategies/test_codeact_strategy.py -x
-uv run ruff check src/nemo_oo_agents/strategies/codeact.py \
-                  src/nemo_oo_agents/config/strategy_config.py \
+uv run ruff check src/nooa/strategies/codeact.py \
+                  src/nooa/config/strategy_config.py \
                   tests/strategies/test_codeact_strategy.py
 ```
 
 ## Out of scope
 
-- Adapting `PurePythonStrategy` / `CodeActLite` / `Reflexion` — verified by `grep -rn "synthetic_type" src/nemo_oo_agents/strategies/`: only `codeact.py` has the text-to-synthetic conversion path. Other strategies use different completion mechanics (e.g. PurePython parses raw Python output, not tool calls) and cannot exhibit this loop.
+- Adapting `PurePythonStrategy` / `CodeActLite` / `Reflexion` — verified by `grep -rn "synthetic_type" src/nooa/strategies/`: only `codeact.py` has the text-to-synthetic conversion path. Other strategies use different completion mechanics (e.g. PurePython parses raw Python output, not tool calls) and cannot exhibit this loop.
 - Optimizer-level token caps (separate concern; this fix prevents the runaway at its source).
 - Auto-`return_result(None)` behavior. Documented as deliberately not chosen (return-type validation would just move the error).

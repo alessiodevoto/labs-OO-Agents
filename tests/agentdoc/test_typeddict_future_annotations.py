@@ -8,7 +8,7 @@ from typing import Annotated
 
 from typing_extensions import TypedDict
 
-from nemo_oo_agents.agentdoc._structured import extract_type_info
+from nooa.agentdoc._structured import extract_type_info
 
 
 class ServerConfig(TypedDict):

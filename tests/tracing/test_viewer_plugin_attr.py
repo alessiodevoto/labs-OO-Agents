@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Tests for the nemo_oo_agents.viewer.plugin span attribute."""
+"""Tests for the nooa.viewer.plugin span attribute."""
 
 from __future__ import annotations
 
@@ -13,16 +13,16 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from otlp_test_helpers import read_all_otlp_jsonl_spans
 
-from nemo_oo_agents.tracing._hooks_impl import (
+from nooa.tracing._hooks_impl import (
     VIEWER_PLUGIN_ATTR,
     OpenInferenceHooks,
     ViewerPlugin,
 )
-from nemo_oo_agents.tracing._otlp_file_exporter import OtlpJsonFileExporter
+from nooa.tracing._otlp_file_exporter import OtlpJsonFileExporter
 
 
 class TestViewerPluginAttribute:
-    """Verify nemo_oo_agents.viewer.plugin is set on all span types."""
+    """Verify nooa.viewer.plugin is set on all span types."""
 
     def _make_hooks(self, tmpdir: str):
         exporter = OtlpJsonFileExporter(tmpdir)

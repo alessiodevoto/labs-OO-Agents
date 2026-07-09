@@ -46,7 +46,7 @@ class ExpensiveObject:
 
 def test_pformat_skips_excluded_pydantic_fields():
     """_pformat must not recurse into fields with exclude=True."""
-    from nemo_oo_agents.agentdoc import truncating_pformat
+    from nooa.agentdoc import truncating_pformat
 
     expensive = ExpensiveObject()
     result = FakeExecutionResult(
@@ -68,7 +68,7 @@ def test_pformat_skips_excluded_pydantic_fields():
 
 def test_pformat_still_includes_non_excluded_fields():
     """Non-excluded fields should still be formatted normally."""
-    from nemo_oo_agents.agentdoc import truncating_pformat
+    from nooa.agentdoc import truncating_pformat
 
     result = FakeExecutionResult(
         stdout="test output",
@@ -86,9 +86,9 @@ def test_pformat_no_hang_on_importlib_metadata_entrypoints():
     """End-to-end: pformat on ExecutionResult with entry_points must not hang."""
     from importlib.metadata import entry_points
 
-    from nemo_oo_agents.agentdoc import truncating_pformat
+    from nooa.agentdoc import truncating_pformat
 
-    eps = entry_points(group="nemo_oo_agents.skills")
+    eps = entry_points(group="nooa.skills")
 
     result = FakeExecutionResult(
         stdout="found skills",
@@ -119,7 +119,7 @@ def test_exact_regression_real_execution_result():
 
     The agent generated code:
         from importlib.metadata import entry_points
-        eps = entry_points(group="nemo_oo_agents.skills")
+        eps = entry_points(group="nooa.skills")
         print(...)
         for ep in eps: print(...)
 
@@ -133,12 +133,12 @@ def test_exact_regression_real_execution_result():
 
     from importlib.metadata import entry_points
 
-    from nemo_oo_agents.agentdoc import truncating_pformat
+    from nooa.agentdoc import truncating_pformat
 
     # Use FakeExecutionResult which has the same model_fields structure
     # as the real ExecutionResult (captured_locals with exclude=True).
     # The real ExecutionResult import is too heavy for a unit test.
-    eps = entry_points(group="nemo_oo_agents.skills")
+    eps = entry_points(group="nooa.skills")
 
     result = FakeExecutionResult(
         stdout="Registered skill entry points:\n  nemo.shell → ...",

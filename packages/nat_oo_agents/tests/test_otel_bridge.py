@@ -12,7 +12,7 @@ import sys
 import types
 
 import pytest
-from nat.plugins.nemo_oo_agents import otel_bridge
+from nat.plugins.nooa import otel_bridge
 
 
 def test_setup_shared_tracer_no_endpoint_does_not_raise():

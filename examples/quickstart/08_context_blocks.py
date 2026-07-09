@@ -4,8 +4,8 @@
 uv run python examples/quickstart/08_context_blocks.py
 """
 
-from nemo_oo_agents.agentdoc import spec
-from nemo_oo_agents.util.quickstart import *
+from nooa.agentdoc import spec
+from nooa.util.quickstart import *
 
 
 class NoteTakingAgent(Agent, llm=llm):
@@ -41,7 +41,7 @@ async def main():
 
     # Dynamic block: the expression is re-evaluated every LLM turn,
     # so the LLM always sees the latest notes without re-passing them
-    from nemo_oo_agents import Context
+    from nooa import Context
 
     agent.context["notes"] = Context(expr="self.render_notes()")
 

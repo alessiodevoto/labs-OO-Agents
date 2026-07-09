@@ -62,7 +62,7 @@ stubs in `_visibility.pyi`):
 ```python
 def iter_agent_mro_modules(agent_class) -> list[types.ModuleType]:
     """Distinct user-defined modules across the MRO, base → leaf order.
-    Skips framework (nemo_oo_agents*) and builtins modules; the leaf module is
+    Skips framework (nooa*) and builtins modules; the leaf module is
     always included. De-duplicated, base-most position retained."""
 
 def filter_mro_module_globals(agent_class) -> dict[str, Any]:
@@ -74,7 +74,7 @@ def filter_mro_module_globals(agent_class) -> dict[str, Any]:
   `result.update(filter_module_globals(module))` per module → leaf overrides on collision,
   matching Python's own name resolution.
 - **Skip rule** for an ancestor module `m` (never the leaf): `m is None` or `m.__name__` is
-  `builtins` / `nemo_oo_agents` / starts with `nemo_oo_agents.`.
+  `builtins` / `nooa` / starts with `nooa.`.
 
 Site changes:
 

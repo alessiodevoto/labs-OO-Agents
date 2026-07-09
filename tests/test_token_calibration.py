@@ -4,7 +4,7 @@
 
 import pytest
 
-from nemo_oo_agents.unifiedllm.unifiedllm import (
+from nooa.unifiedllm.unifiedllm import (
     TokenCalibration,
     _token_calibration,
     _update_token_calibration,

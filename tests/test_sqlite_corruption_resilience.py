@@ -6,8 +6,8 @@ from unittest.mock import patch
 
 import pytest
 
-from nemo_oo_agents.context_blocks import Metadata
-from nemo_oo_agents.storage.sqlite import SQLiteStorageManager, _is_virtiofs
+from nooa.context_blocks import Metadata
+from nooa.storage.sqlite import SQLiteStorageManager, _is_virtiofs
 
 
 @pytest.fixture
@@ -180,7 +180,7 @@ class TestCorruptEventResilience:
                     raise sqlite3.DatabaseError("database disk image is malformed")
                 return original_execute(sql, *args, **kwargs)
 
-        from nemo_oo_agents.storage.sqlite import SQLiteEventBackend
+        from nooa.storage.sqlite import SQLiteEventBackend
 
         backend = SQLiteEventBackend(CorruptingConnection())
         assert backend._insertion_counter == 0
@@ -235,7 +235,7 @@ class TestVirtiofsDetection:
 
     def test_synchronous_full_on_virtiofs(self, tmp_db):
         """Storage manager sets DELETE + synchronous=FULL when virtiofs detected."""
-        with patch("nemo_oo_agents.storage.sqlite._is_virtiofs", return_value=True):
+        with patch("nooa.storage.sqlite._is_virtiofs", return_value=True):
             sm = SQLiteStorageManager(tmp_db)
             try:
                 row = sm._conn.execute("PRAGMA synchronous").fetchone()
@@ -267,7 +267,7 @@ class TestVirtiofsDetection:
             return RecordingConnection(real_connect(*args, **kwargs))
 
         with (
-            patch("nemo_oo_agents.storage.sqlite._is_virtiofs", return_value=True),
+            patch("nooa.storage.sqlite._is_virtiofs", return_value=True),
             patch("sqlite3.connect", side_effect=recording_connect),
         ):
             sm = SQLiteStorageManager(tmp_db)
@@ -283,7 +283,7 @@ class TestVirtiofsDetection:
         WAL+NORMAL leaves a disk-full window that can corrupt the file; FULL
         closes it. Regression for the disk-full corruption crash.
         """
-        with patch("nemo_oo_agents.storage.sqlite._is_virtiofs", return_value=False):
+        with patch("nooa.storage.sqlite._is_virtiofs", return_value=False):
             sm = SQLiteStorageManager(tmp_db)
             try:
                 row = sm._conn.execute("PRAGMA synchronous").fetchone()
@@ -309,7 +309,7 @@ class TestStoreCorruptionResilience:
 
     def test_store_raises_typed_corruption_error(self, storage):
         """store() converts a corruption DatabaseError into CorruptDatabaseError."""
-        from nemo_oo_agents.storage.sqlite import CorruptDatabaseError
+        from nooa.storage.sqlite import CorruptDatabaseError
 
         def boom(*args, **kwargs):
             raise sqlite3.DatabaseError("database disk image is malformed")
@@ -338,7 +338,7 @@ class TestStoreCorruptionResilience:
         Reproduces the double-failure: disk-I/O error on the first _do_store,
         then corruption on the retry after reconnect.
         """
-        from nemo_oo_agents.storage.sqlite import CorruptDatabaseError
+        from nooa.storage.sqlite import CorruptDatabaseError
 
         calls = {"n": 0}
 

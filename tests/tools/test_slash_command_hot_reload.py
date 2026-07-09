@@ -6,8 +6,8 @@ from unittest.mock import patch
 
 import pytest
 
-from nemo_oo_agents.skill import Skill, slash_command
-from nemo_oo_agents.skill_registry import SkillRegistry
+from nooa.skill import Skill, slash_command
+from nooa.skill_registry import SkillRegistry
 
 
 def _make_skill_class(version: str):
@@ -33,7 +33,7 @@ def test_stale_slash_command_without_refresh():
     Without calling refresh_skill_commands(), the _user_skills dict still
     references the old bound method from the previous skill instance.
     """
-    from nemo_oo_agents_cli.tui.commands import CommandRegistry
+    from nooa_tui.tui.commands import CommandRegistry
 
     class FakeAgent:
         pass

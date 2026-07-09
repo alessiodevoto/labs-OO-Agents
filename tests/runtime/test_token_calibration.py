@@ -9,10 +9,10 @@ remain fallback diagnostics and recovery inputs, not the primary token signal.
 
 import pytest
 
-from nemo_oo_agents import Agent
-from nemo_oo_agents.context_blocks.events import ResultStatus, ToolCallEvent, ToolResult
-from nemo_oo_agents.events import Message
-from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse
+from nooa import Agent
+from nooa.context_blocks.events import ResultStatus, ToolCallEvent, ToolResult
+from nooa.events import Message
+from nooa.unifiedllm import FakeLLMClient, LLMResponse
 
 
 class _CalibratingFakeLLM(FakeLLMClient):
@@ -160,7 +160,7 @@ class TestTokenCalibration:
         runtime = agent.runtime
 
         # Before any response: the cold-start default.
-        from nemo_oo_agents.runtime.actor import _DEFAULT_TOKENS_PER_CHAR
+        from nooa.runtime.actor import _DEFAULT_TOKENS_PER_CHAR
 
         assert runtime._tokens_per_char == _DEFAULT_TOKENS_PER_CHAR
 

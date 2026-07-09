@@ -7,7 +7,7 @@ import os
 
 import pytest
 
-from nemo_oo_agents.runtime.producers import monitor
+from nooa.runtime.producers import monitor
 
 
 class TestMonitorProcessIsolation:

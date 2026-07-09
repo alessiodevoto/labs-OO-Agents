@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 import httpx
 import pytest
 
-from nemo_oo_agents.unifiedllm.retry import (
+from nooa.unifiedllm.retry import (
     RetryConfig,
     RetryingWrapper,
     _calculate_delay,

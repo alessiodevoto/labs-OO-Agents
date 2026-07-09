@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from nemo_oo_agents.tracing import probe_otlp_endpoint
+from nooa.tracing import probe_otlp_endpoint
 
 
 class TestProbeOtlpEndpoint:

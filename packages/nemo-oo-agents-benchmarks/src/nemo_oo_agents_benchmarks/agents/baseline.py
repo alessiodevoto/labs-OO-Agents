@@ -31,12 +31,12 @@ from __future__ import annotations
 import textwrap
 from typing import TYPE_CHECKING, Any
 
-from nemo_oo_agents import Agent, CodeActStrategy, strategy
-from nemo_oo_agents.config import CodeActConfig
-from nemo_oo_agents.unifiedllm import FakeLLMClient
+from nooa import Agent, CodeActStrategy, strategy
+from nooa.config import CodeActConfig
+from nooa.unifiedllm import FakeLLMClient
 
 if TYPE_CHECKING:
-    from nemo_oo_agents.unifiedllm import UnifiedLLM
+    from nooa.unifiedllm import UnifiedLLM
 
 # Data science imports — pre-loaded so they're available in the REPL sandbox.
 # Required for DABStep (financial data analysis benchmark).
@@ -73,7 +73,7 @@ class BaselineAgent(Agent, llm=FakeLLMClient()):
 
     async def _run_evaluation(self, task_input: dict) -> dict:
         """Entry point called by the Harbor runner."""
-        from nemo_oo_agents.agentdoc import doc
+        from nooa.agentdoc import doc
 
         parts = []
 

@@ -15,11 +15,11 @@ from typing import Annotated, ClassVar
 import pytest
 from pydantic import Field
 
-from nemo_oo_agents.atif import Trajectory
-from nemo_oo_agents.atif.exporter import AtifExporter
-from nemo_oo_agents.context_blocks.events import EventBase
-from nemo_oo_agents.context_blocks.roles import Role
-from nemo_oo_agents.events import (
+from nooa.atif import Trajectory
+from nooa.atif.exporter import AtifExporter
+from nooa.context_blocks.events import EventBase
+from nooa.context_blocks.roles import Role
+from nooa.events import (
     AfterTurn,
     BeforeTurn,
     LLMComplete,
@@ -222,11 +222,11 @@ class TestWildcardSubscription:
         # then returns via return_result.
         import json
 
-        from nemo_oo_agents import Agent, strategy
-        from nemo_oo_agents.atif import atif_scope
-        from nemo_oo_agents.config import CodeActConfig
-        from nemo_oo_agents.strategies import CodeActStrategy
-        from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
+        from nooa import Agent, strategy
+        from nooa.atif import atif_scope
+        from nooa.config import CodeActConfig
+        from nooa.strategies import CodeActStrategy
+        from nooa.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
 
         def _resp(tool_calls: list[ToolCall] | None = None) -> LLMResponse:
             return LLMResponse(

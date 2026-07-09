@@ -59,7 +59,7 @@ import re
 from pathlib import Path
 from typing import Annotated
 
-from nemo_oo_agents import Agent, hidden, spec
+from nooa import Agent, hidden, spec
 
 CATEGORIES = ["billing", "technical", "general"]   # visible to LLM by default
 MAX_RESULTS = 10
@@ -98,7 +98,7 @@ class MyAgent(Agent, llm=llm):
 `ContextApi` and `EventsApi` are **always present** on every Agent as `self.context` and `self.events`, but **hidden from the LLM by default**. Subclasses opt in by calling `spec(self, "context", hidden=False)` (and/or `spec(self, "events", hidden=False)`) in their `__init__` to expose them via `doc(self)`.
 
 ```python
-from nemo_oo_agents.agentdoc import spec
+from nooa.agentdoc import spec
 
 class MyAgent(Agent, llm=llm):
     def __init__(self, **kwargs):
@@ -143,7 +143,7 @@ self.context.set_dynamic("project_state", "self.format_project_state()")
 ### Tracing
 
 ```python
-from openinference_instrumentation_nemo_oo_agents import enable_tracing
+from openinference_instrumentation_nooa import enable_tracing
 
 exporter = enable_tracing(trace_dir="traces/my_agent")
 ```
@@ -154,7 +154,7 @@ Trace viewer runs on `NEMO_OO_TRACE_VIEWER_PORT` (default 5001). See `examples/q
 - **Use `@no_trace` to exclude from traces.** Decorate any method (public, private, or dunder) with `@no_trace` to prevent it from appearing in traces while still allowing generation.
 
 ```python
-from nemo_oo_agents import no_trace
+from nooa import no_trace
 
 class MyAgent(Agent, llm=llm):
     @no_trace

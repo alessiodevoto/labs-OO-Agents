@@ -21,8 +21,8 @@ from types import SimpleNamespace
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.trace import SpanKind
 
-from nemo_oo_agents.tracing._otlp_http_exporter import OtlpJsonHttpExporter
-from nemo_oo_agents.tracing._otlp_serialize import build_resource_spans
+from nooa.tracing._otlp_http_exporter import OtlpJsonHttpExporter
+from nooa.tracing._otlp_serialize import build_resource_spans
 
 _RESOURCE = Resource(attributes={})
 

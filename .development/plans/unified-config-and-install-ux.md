@@ -21,27 +21,27 @@ One layout, one precedence chain, one loader for all three config files.
 ### Filesystem layout
 
 ```text
-~/.config/nemo_oo/      # user-global (honors XDG_CONFIG_HOME; all platforms)
+~/.config/nooa/      # user-global (honors XDG_CONFIG_HOME; all platforms)
 ├── settings.yaml       # TUI settings
 ├── secrets.yaml        # API keys; chmod 600
 └── llm_config.yaml     # LLM aliases
 
-.nemo_oo/               # project-local (per repo)
+.nooa/               # project-local (per repo)
 ├── settings.yaml
-├── secrets.yaml        # gitignore-d (.nemo_oo/ is ignored)
+├── secrets.yaml        # gitignore-d (.nooa/ is ignored)
 └── llm_config.yaml
 ```
 
 No file is required; absence means "use the layer below." Base dirs are
 overridable via `NEMO_OO_USER_DIR` / `NEMO_OO_PROJECT_DIR`
-(`src/nemo_oo_agents/paths.py` is the single source of truth).
+(`src/nooa/paths.py` is the single source of truth).
 
 ### Precedence (low → high, last wins)
 
-1. **Bundled defaults** — entry-point group `nemo_oo_agents.bundled_configs`
+1. **Bundled defaults** — entry-point group `nooa.bundled_configs`
    (LLM config only); in-code defaults for settings; nothing for secrets.
-2. **User** file: `~/.config/nemo_oo/<name>.yaml`.
-3. **Project** file: `.nemo_oo/<name>.yaml`.
+2. **User** file: `~/.config/nooa/<name>.yaml`.
+3. **Project** file: `.nooa/<name>.yaml`.
 4. **Env-var path override** — `NEMO_OO_{LLM_CONFIG,SETTINGS,SECRETS}`, each
    a comma-separated list of YAML *file paths* to load as the top file layer.
 
@@ -79,7 +79,7 @@ env:
 
 ### Config as typed objects
 
-Everything is reachable through one namespace, **`nemo_oo_agents.config`**,
+Everything is reachable through one namespace, **`nooa.config`**,
 and file-based config flows as typed objects (not raw dicts), matching the
 in-code configs (`CodeActConfig`, …):
 
@@ -92,26 +92,26 @@ in-code configs (`CodeActConfig`, …):
   typed `models` / `secrets` / `settings` (dict; the rich `Config` object is
   CLI-owned) + the resolved `sources`. Secret values redacted by default.
 - Loader helpers (`load_layered_yaml`, `layered_paths`, `load_secrets_into_env`)
-  are re-exported here too, so `nemo_oo_agents.config` is the single door.
+  are re-exported here too, so `nooa.config` is the single door.
 - TUI `Config`/`TUIConfig`/`AgentConfig` are Pydantic models living in the CLI
   package (following the main-package convention; not moved to core).
 
 ### Code
 
-- `src/nemo_oo_agents/layered_config.py` — the shared engine.
+- `src/nooa/layered_config.py` — the shared engine.
   `layered_paths(filename, env_var, prepend=…)` returns the resolved file
   chain; `load_layered_yaml(filename, env_var, prepend=…)` returns the merged
-  dict. Re-exported via `nemo_oo_agents.config`.
-- `src/nemo_oo_agents/secrets.py::load_secrets_into_env()` — applies
+  dict. Re-exported via `nooa.config`.
+- `src/nooa/secrets.py::load_secrets_into_env()` — applies
   `secrets.yaml`'s `env:` map to `os.environ` non-clobbering; idempotent.
   Called by the TUI bootstrap before `reload_registry()` and by the `oo`
   CLI group before subcommands (skipped for thin launchers like `term` /
   `completion` that don't use keys in-process and shouldn't pay the core
   import cost).
-- `nemo_oo_agents_cli/tui/settings.py` — `settings.yaml` ↔ `Config`
+- `nooa_cli/tui/settings.py` — `settings.yaml` ↔ `Config`
   (de)serialisation, layered via the engine above. (Lives in the CLI
   package because it binds to `Config`/`TUIConfig`; core can't import those.)
-- `install.sh` — writes `~/.config/nemo_oo/secrets.yaml` (chmod 600, value
+- `install.sh` — writes `~/.config/nooa/secrets.yaml` (chmod 600, value
   written as a quoted YAML scalar); no shell-rc edit. Next step is just
   `nemo oo tui`.
 - `nemo oo config show` — prints the resolved layers for all three files;
@@ -123,4 +123,4 @@ in-code configs (`CodeActConfig`, …):
 - Renaming `llm_config.yaml` → `models.yaml` (pure churn).
 - Keyring / OS-credential-store integration (deferred).
 - Project-level `secrets.yaml` lint that warns if not gitignored
-  (nice-to-have; not blocking — `.nemo_oo/` is already gitignored).
+  (nice-to-have; not blocking — `.nooa/` is already gitignored).

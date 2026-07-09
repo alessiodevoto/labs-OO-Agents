@@ -4,7 +4,7 @@
 
 from enum import Enum
 
-from nemo_oo_agents.agentdoc import doc
+from nooa.agentdoc import doc
 
 
 class Color(Enum):

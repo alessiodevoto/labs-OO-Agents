@@ -1,8 +1,8 @@
 # Blocking Call Prevention in CodeAct — Design
 
 **Date:** 2026-03-09
-**Issue:** [#116](https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents/-/issues/116) — `execute_code()` blocks event loop
-**Related:** [!327](https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents/-/merge_requests/327) — restricted imports
+**Issue:** [#116](https://gitlab-master.nvidia.com/interactive-agents/nooa/-/issues/116) — `execute_code()` blocks event loop
+**Related:** [!327](https://gitlab-master.nvidia.com/interactive-agents/nooa/-/merge_requests/327) — restricted imports
 
 ## Problem
 
@@ -19,7 +19,7 @@ Two complementary mechanisms:
 
 ### Unified Restrictions File
 
-`src/nemo_oo_agents/runtime/restrictions.py` — single source of truth for all module restrictions, consumed by both the startup import checker (!327) and the runtime validator.
+`src/nooa/runtime/restrictions.py` — single source of truth for all module restrictions, consumed by both the startup import checker (!327) and the runtime validator.
 
 ```python
 # Default blocked modules — blocks event loop, stripped from exec_globals
@@ -87,7 +87,7 @@ async def needs_subprocess(self) -> str:
 Single context manager controls what the agent can see. Normal imports are developer-only:
 
 ```python
-with nemo_oo_agents.allow_imports:
+with nooa.allow_imports:
     import json        # Agent can use
     import os          # Agent can use (specific calls still blocked via blocked_calls)
     import requests    # Agent can use

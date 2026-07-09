@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Tests for :func:`nemo_oo_agents.llm_config.llm_config_chain`.
+"""Tests for :func:`nooa.llm_config.llm_config_chain`.
 
 The chain layers, lowest priority first:
 
@@ -9,7 +9,7 @@ The chain layers, lowest priority first:
 3. ``get_project_dir("llm_config.yaml")``
 
 These tests use the ``NEMO_OO_USER_DIR`` / ``NEMO_OO_PROJECT_DIR``
-env-var overrides exposed by :mod:`nemo_oo_agents.paths` so they
+env-var overrides exposed by :mod:`nooa.paths` so they
 never touch the real user config directory.
 """
 
@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from nemo_oo_agents.llm_config import llm_config_chain
+from nooa.llm_config import llm_config_chain
 
 
 @pytest.fixture
@@ -52,7 +52,7 @@ def _clean_env(monkeypatch, tmp_path):
     monkeypatch.delenv("NEMO_OO_LLM_CONFIG", raising=False)
     # Stub out the entry-point lookup so tests don't pick up the
     # workspace-installed nemo-oo-agents-nvidia bundled YAML.
-    monkeypatch.setattr("nemo_oo_agents.llm_config.bundled_config_paths", lambda: [])
+    monkeypatch.setattr("nooa.llm_config.bundled_config_paths", lambda: [])
     monkeypatch.chdir(tmp_path)
 
 
@@ -156,14 +156,14 @@ class TestDedup:
 class TestMissing:
     def test_env_var_missing_path_warns(self, user_dir, project_dir, monkeypatch, caplog):
         monkeypatch.setenv("NEMO_OO_LLM_CONFIG", "/nope/nope.yaml")
-        with caplog.at_level(logging.WARNING, logger="nemo_oo_agents.llm_config"):
+        with caplog.at_level(logging.WARNING, logger="nooa.llm_config"):
             chain = llm_config_chain()
         assert chain == []
         assert "does not exist" in caplog.text
 
     def test_user_missing_silent(self, user_dir, project_dir, caplog):
         # User-dir file simply not present — no warning expected.
-        with caplog.at_level(logging.WARNING, logger="nemo_oo_agents.llm_config"):
+        with caplog.at_level(logging.WARNING, logger="nooa.llm_config"):
             chain = llm_config_chain()
         assert chain == []
         assert "does not exist" not in caplog.text
@@ -173,7 +173,7 @@ class TestBundledDefaults:
     """Bundled defaults are the lowest-priority layer.
 
     External packages register their YAML under the
-    ``nemo_oo_agents.bundled_configs`` entry-point group; tests
+    ``nooa.bundled_configs`` entry-point group; tests
     monkeypatch :func:`bundled_config_paths` to stub providers in/out.
     """
 
@@ -182,7 +182,7 @@ class TestBundledDefaults:
         synthetic = tmp_path / "synthetic.yaml"
         _write_yaml(synthetic)
         monkeypatch.setattr(
-            "nemo_oo_agents.llm_config.bundled_config_paths",
+            "nooa.llm_config.bundled_config_paths",
             lambda: [synthetic],
         )
         chain = llm_config_chain()
@@ -196,7 +196,7 @@ class TestBundledDefaults:
         synthetic = tmp_path / "synthetic.yaml"
         _write_yaml(synthetic)
         monkeypatch.setattr(
-            "nemo_oo_agents.llm_config.bundled_config_paths",
+            "nooa.llm_config.bundled_config_paths",
             lambda: [synthetic],
         )
         project_yaml = project_dir / "llm_config.yaml"
@@ -215,7 +215,7 @@ class TestBundledDefaults:
         _write_yaml(first)
         _write_yaml(second)
         monkeypatch.setattr(
-            "nemo_oo_agents.llm_config.bundled_config_paths",
+            "nooa.llm_config.bundled_config_paths",
             lambda: [first, second],
         )
         chain = llm_config_chain()
@@ -223,13 +223,13 @@ class TestBundledDefaults:
 
     def test_nvidia_package_registered_via_entry_point(self):
         """End-to-end: the workspace-installed ``nemo-oo-agents-nvidia``
-        package registers under ``nemo_oo_agents.bundled_configs``.
+        package registers under ``nooa.bundled_configs``.
 
         Bypasses the autouse-fixture stub by inspecting
         :mod:`importlib.metadata` directly.
         """
         from importlib import metadata
 
-        eps = metadata.entry_points(group="nemo_oo_agents.bundled_configs")
+        eps = metadata.entry_points(group="nooa.bundled_configs")
         names = {ep.name for ep in eps}
         assert "nvidia" in names, names

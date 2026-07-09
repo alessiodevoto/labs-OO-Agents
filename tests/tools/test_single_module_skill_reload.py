@@ -1,6 +1,6 @@
 """Single-module hot-reload for builtin framework tool skills (issue 225).
 
-Builtin tool skills live under ``nemo_oo_agents`` / ``nemo_oo_agents_cli``, which
+Builtin tool skills live under ``nooa`` / ``nooa_cli``, which
 are in ``_NO_RELOAD`` because the package-purge reload would strand the live
 framework. These tests pin the narrow leaf-module reload path that reloads ONLY
 the skill's own module via ``importlib.reload`` and re-resolves the class by name.
@@ -13,7 +13,7 @@ import types
 
 import pytest
 
-from nemo_oo_agents.skill_registry import SkillRegistry
+from nooa.skill_registry import SkillRegistry
 
 
 class _FakeAgent:
@@ -21,7 +21,7 @@ class _FakeAgent:
 
 
 def _install_framework_module(mod_name: str, cls_name: str, version: str):
-    """Create a module that lives under the ``nemo_oo_agents`` top package."""
+    """Create a module that lives under the ``nooa`` top package."""
     mod = types.ModuleType(mod_name)
     mod.__file__ = f"/fake/{mod_name.replace('.', '/')}.py"
     ns: dict = {}
@@ -52,7 +52,7 @@ async def test_framework_tool_skill_reloads_in_place(monkeypatch):
     Reproduces issue 225: previously this returned
     "Skill ... is not reloadable". The fix reloads only the leaf module.
     """
-    mod_name = "nemo_oo_agents.tools._fake_shell_for_test"
+    mod_name = "nooa.tools._fake_shell_for_test"
     mod_v1, cls_v1 = _install_framework_module(mod_name, "FakeShell", "v1")
 
     agent = _FakeAgent()
@@ -108,7 +108,7 @@ class FakeShell:
 @pytest.mark.asyncio
 async def test_framework_skill_needing_ctor_args_returns_clear_message(monkeypatch):
     """If the reloaded class can't be built zero-arg, return a clear message, not a crash."""
-    mod_name = "nemo_oo_agents.tools._fake_needs_args_for_test"
+    mod_name = "nooa.tools._fake_needs_args_for_test"
     mod = types.ModuleType(mod_name)
     mod.__file__ = f"/fake/{mod_name.replace('.', '/')}.py"
     ns: dict = {}
@@ -155,7 +155,7 @@ async def test_user_skill_reload_path_unchanged(monkeypatch):
     """No regression: a skill in a non-framework top package still uses the package-purge path."""
     import sys as _sys
 
-    from nemo_oo_agents.skill import Skill
+    from nooa.skill import Skill
 
     events = []
     ns = {"Skill": Skill, "events": events, "asyncio": asyncio}
@@ -220,10 +220,10 @@ async def test_underscore_top_package_uses_single_module_path(monkeypatch):
 
     Pins the deliberate routing of `top_pkg.startswith("_")` to the in-place
     leaf reload (never the package purge) — so e.g. dynamically-loaded skill
-    modules (`_nemo_oo_skill_*`) get a clear, accurate result instead of a
+    modules (`_nooa_skill_*`) get a clear, accurate result instead of a
     framework-wide purge.
     """
-    mod_name = "_nemo_oo_skill_fake_for_test"
+    mod_name = "_nooa_skill_fake_for_test"
     mod = types.ModuleType(mod_name)
     mod.__file__ = f"/fake/{mod_name}.py"
     ns: dict = {}
@@ -285,7 +285,7 @@ async def test_attach_failure_leaves_agent_untouched(monkeypatch):
     Mutation (setattr + context-block re-registration) must happen only after a
     successful attach, so a failing reload can't leave a half-reloaded skill.
     """
-    mod_name = "nemo_oo_agents.tools._fake_attach_raises_for_test"
+    mod_name = "nooa.tools._fake_attach_raises_for_test"
     mod = types.ModuleType(mod_name)
     mod.__file__ = f"/fake/{mod_name.replace('.', '/')}.py"
     ns: dict = {}
@@ -345,7 +345,7 @@ class Boom:
 @pytest.mark.asyncio
 async def test_reload_awaits_old_detach_before_new_attach(monkeypatch):
     """Hot-reload must tear down the old skill before starting the new one."""
-    mod_name = "nemo_oo_agents.tools._fake_async_detach_for_test"
+    mod_name = "nooa.tools._fake_async_detach_for_test"
     mod = types.ModuleType(mod_name)
     mod.__file__ = f"/fake/{mod_name.replace('.', '/')}.py"
     events = []
@@ -401,7 +401,7 @@ async def test_reload_awaits_old_detach_before_new_attach(monkeypatch):
 @pytest.mark.asyncio
 async def test_reload_detaches_old_skill_before_reexecuting_module(monkeypatch):
     """Old cleanup must run before importlib.reload mutates module globals."""
-    mod_name = "nemo_oo_agents.tools._fake_detach_before_reload_for_test"
+    mod_name = "nooa.tools._fake_detach_before_reload_for_test"
     mod = types.ModuleType(mod_name)
     mod.__file__ = f"/fake/{mod_name.replace('.', '/')}.py"
     events = []
@@ -457,7 +457,7 @@ async def test_reload_detaches_old_skill_before_reexecuting_module(monkeypatch):
 @pytest.mark.asyncio
 async def test_reload_restores_old_skill_if_new_attach_fails_after_detach(monkeypatch):
     """If new attach fails after old detach, best-effort reattach the old skill."""
-    mod_name = "nemo_oo_agents.tools._fake_restore_after_detach_for_test"
+    mod_name = "nooa.tools._fake_restore_after_detach_for_test"
     mod = types.ModuleType(mod_name)
     mod.__file__ = f"/fake/{mod_name.replace('.', '/')}.py"
     events = []
@@ -513,7 +513,7 @@ async def test_reload_restores_old_skill_if_new_attach_fails_after_detach(monkey
 @pytest.mark.asyncio
 async def test_reload_reports_new_attach_error_if_old_reattach_also_fails(monkeypatch):
     """The replacement attach failure is more useful than a restore failure."""
-    mod_name = "nemo_oo_agents.tools._fake_restore_also_fails_for_test"
+    mod_name = "nooa.tools._fake_restore_also_fails_for_test"
     mod = types.ModuleType(mod_name)
     mod.__file__ = f"/fake/{mod_name.replace('.', '/')}.py"
     events = []
@@ -573,7 +573,7 @@ async def test_reload_reports_new_attach_error_if_old_reattach_also_fails(monkey
 @pytest.mark.asyncio
 async def test_reload_failure_reattaches_old_skill_after_reload_raises(monkeypatch):
     """A failed module reload after old detach restores the original skill."""
-    mod_name = "nemo_oo_agents.tools._fake_reload_raises_after_detach_for_test"
+    mod_name = "nooa.tools._fake_reload_raises_after_detach_for_test"
     mod = types.ModuleType(mod_name)
     mod.__file__ = f"/fake/{mod_name.replace('.', '/')}.py"
     events = []
@@ -619,7 +619,7 @@ async def test_reload_failure_reattaches_old_skill_after_reload_raises(monkeypat
 @pytest.mark.asyncio
 async def test_reload_failure_does_not_reload_when_old_detach_raises(monkeypatch):
     """If old detach fails, stop before module reload and return a controlled failure."""
-    mod_name = "nemo_oo_agents.tools._fake_detach_raises_before_reload_for_test"
+    mod_name = "nooa.tools._fake_detach_raises_before_reload_for_test"
     mod = types.ModuleType(mod_name)
     mod.__file__ = f"/fake/{mod_name.replace('.', '/')}.py"
     events = []
@@ -666,7 +666,7 @@ async def test_reload_failure_does_not_reload_when_old_detach_raises(monkeypatch
 @pytest.mark.asyncio
 async def test_reload_restores_old_skill_if_new_constructor_raises(monkeypatch):
     """Constructor failures after pre-reload detach also restore the old skill."""
-    mod_name = "nemo_oo_agents.tools._fake_constructor_raises_for_test"
+    mod_name = "nooa.tools._fake_constructor_raises_for_test"
     mod = types.ModuleType(mod_name)
     mod.__file__ = f"/fake/{mod_name.replace('.', '/')}.py"
     events = []

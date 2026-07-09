@@ -24,8 +24,8 @@ Two distinct gaps:
 
 ## Scope
 
-`src/nemo_oo_agents/unifiedllm/unifiedllm.py` (ResponsesClient) and
-`src/nemo_oo_agents/unifiedllm/retry.py` (`_is_retryable_error`). No registry changes:
+`src/nooa/unifiedllm/unifiedllm.py` (ResponsesClient) and
+`src/nooa/unifiedllm/retry.py` (`_is_retryable_error`). No registry changes:
 `get_llm_client(**overrides)` already forwards `retry_config` into the constructor `params`,
 so once `ResponsesClient.__init__` accepts it, the registry path works for both client types.
 

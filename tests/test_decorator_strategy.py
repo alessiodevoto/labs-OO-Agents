@@ -3,8 +3,8 @@
 TDD: Write tests first, then implement to make them pass.
 """
 
-from nemo_oo_agents import strategy
-from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
+from nooa import strategy
+from nooa.strategies.pure_python import PurePythonStrategy
 
 
 class TestStrategyDecoratorWithInstances:

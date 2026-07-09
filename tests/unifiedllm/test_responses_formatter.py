@@ -10,8 +10,8 @@ import json
 
 import pytest
 
-from nemo_oo_agents.context_blocks.formatter import ResponsesProviderFormatter
-from nemo_oo_agents.context_blocks.models import RenderedMessage, Role, ToolCallInfo
+from nooa.context_blocks.formatter import ResponsesProviderFormatter
+from nooa.context_blocks.models import RenderedMessage, Role, ToolCallInfo
 
 
 class TestResponsesProviderFormatter:
@@ -123,7 +123,7 @@ class TestResponsesClientTransformMessages:
 
     @pytest.fixture
     def client(self):
-        from nemo_oo_agents.unifiedllm import ResponsesClient
+        from nooa.unifiedllm import ResponsesClient
 
         return ResponsesClient(model="test-model", api_key="fake")
 

@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from nemo_oo_agents.config.tool_configs import BashConfig
+from nooa.config.tool_configs import BashConfig
 
 
 class TestBashConfig:

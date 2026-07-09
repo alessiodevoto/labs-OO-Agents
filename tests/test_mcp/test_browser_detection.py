@@ -11,7 +11,7 @@ used instead.
 
 import webbrowser
 
-import nemo_oo_agents.mcp.oauth as oauth
+import nooa.mcp.oauth as oauth
 
 
 def test_uses_launcher_when_webbrowser_get_fails(monkeypatch):

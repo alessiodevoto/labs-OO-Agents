@@ -23,10 +23,10 @@ from pathlib import Path
 
 import pytest
 
-from nemo_oo_agents import Agent
-from nemo_oo_agents.context_blocks.events import ToolCallEvent
-from nemo_oo_agents.events import PythonOutput
-from nemo_oo_agents.unifiedllm import CompletionClient
+from nooa import Agent
+from nooa.context_blocks.events import ToolCallEvent
+from nooa.events import PythonOutput
+from nooa.unifiedllm import CompletionClient
 
 _FIXTURE_PATH = Path(__file__).parent / "fixtures" / "archival_95pct.json.gz"
 _API_BASE = "https://inference-api.nvidia.com/v1"

@@ -15,13 +15,13 @@ from typing import Any
 import pytest
 from pydantic import BaseModel
 
-from nemo_oo_agents import Agent, strategy
-from nemo_oo_agents.config import CodeActConfig, PredictConfig
-from nemo_oo_agents.errors import GenerationError
-from nemo_oo_agents.strategies.codeact import CodeActStrategy
-from nemo_oo_agents.strategies.predict import PredictStrategy
-from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
-from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
+from nooa import Agent, strategy
+from nooa.config import CodeActConfig, PredictConfig
+from nooa.errors import GenerationError
+from nooa.strategies.codeact import CodeActStrategy
+from nooa.strategies.predict import PredictStrategy
+from nooa.strategies.pure_python import PurePythonStrategy
+from nooa.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
 
 # ---------------------------------------------------------------------------
 # Module-level Pydantic models (required for PredictStrategy type resolution)

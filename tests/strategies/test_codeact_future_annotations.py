@@ -14,14 +14,14 @@ from typing import Annotated
 import pytest
 from pydantic import BaseModel, BeforeValidator
 
-from nemo_oo_agents import Agent, strategy
-from nemo_oo_agents.config import CodeActConfig
-from nemo_oo_agents.strategies.codeact import CodeActStrategy
-from nemo_oo_agents.strategies.current_call import CurrentCall
-from nemo_oo_agents.strategies.generated_code import ReturnValueValidator
-from nemo_oo_agents.strategies.predict import PredictStrategy
-from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
-from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
+from nooa import Agent, strategy
+from nooa.config import CodeActConfig
+from nooa.strategies.codeact import CodeActStrategy
+from nooa.strategies.current_call import CurrentCall
+from nooa.strategies.generated_code import ReturnValueValidator
+from nooa.strategies.predict import PredictStrategy
+from nooa.strategies.pure_python import PurePythonStrategy
+from nooa.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
 
 # ---------------------------------------------------------------------------
 # Types defined in this module — stringified by PEP 563
@@ -158,7 +158,7 @@ class TestReturnValueValidatorPEP563:
         class FakeRuntime:
             @property
             def truncation_config(self):
-                from nemo_oo_agents.config.truncation_config import DEFAULT_TRUNCATION_CONFIG
+                from nooa.config.truncation_config import DEFAULT_TRUNCATION_CONFIG
 
                 return DEFAULT_TRUNCATION_CONFIG
 
@@ -427,7 +427,7 @@ class TestGetTypeHintsFallback:
         class FakeRuntime:
             @property
             def truncation_config(self):
-                from nemo_oo_agents.config.truncation_config import DEFAULT_TRUNCATION_CONFIG
+                from nooa.config.truncation_config import DEFAULT_TRUNCATION_CONFIG
 
                 return DEFAULT_TRUNCATION_CONFIG
 

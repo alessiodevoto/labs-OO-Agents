@@ -6,10 +6,10 @@ a user-role message (not a tool result) so it doesn't require pairing
 validation - providers don't enforce pairing for user messages.
 """
 
-from nemo_oo_agents.context_blocks import ResultStatus
-from nemo_oo_agents.context_blocks.events import ToolCallEvent
-from nemo_oo_agents.events import PythonOutput
-from nemo_oo_agents.runtime.event_manager import EventManager
+from nooa.context_blocks import ResultStatus
+from nooa.context_blocks.events import ToolCallEvent
+from nooa.events import PythonOutput
+from nooa.runtime.event_manager import EventManager
 
 
 def test_filter_with_limit_returns_most_recent_events():
@@ -123,7 +123,7 @@ def test_filter_handles_empty_events():
 
 def test_filter_by_call_id():
     """Test that filter(call_id=...) returns only events for that invocation."""
-    from nemo_oo_agents.events import Task
+    from nooa.events import Task
 
     events = EventManager()
 
@@ -147,7 +147,7 @@ def test_filter_by_call_id():
 
 def test_filter_by_call_id_and_type():
     """Test that call_id and type filters are ANDed together."""
-    from nemo_oo_agents.events import LLMOutput, Task
+    from nooa.events import LLMOutput, Task
 
     events = EventManager()
 
@@ -176,7 +176,7 @@ def test_filter_by_call_id_and_type():
 
 def test_filter_by_call_id_with_limit():
     """Test that call_id filter respects limit parameter."""
-    from nemo_oo_agents.events import Task
+    from nooa.events import Task
 
     events = EventManager()
 

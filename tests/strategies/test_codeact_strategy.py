@@ -15,16 +15,16 @@ from unittest.mock import MagicMock
 import pytest
 from pydantic import BaseModel
 
-from nemo_oo_agents import Agent, strategy
-from nemo_oo_agents.config import CodeActConfig
-from nemo_oo_agents.events import PythonOutput, ResultStatus
-from nemo_oo_agents.strategies.codeact import CodeActStrategy
-from nemo_oo_agents.strategies.codeact_errors import (
+from nooa import Agent, strategy
+from nooa.config import CodeActConfig
+from nooa.events import PythonOutput, ResultStatus
+from nooa.strategies.codeact import CodeActStrategy
+from nooa.strategies.codeact_errors import (
     format_validation_error,
     get_type_example,
     get_type_hint_str,
 )
-from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
+from nooa.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
 
 
 def _resp(content: str, tool_calls: list | None = None) -> LLMResponse:
@@ -146,7 +146,7 @@ class TestCodeActStrategyInheritance:
 
     def test_is_generation_strategy(self):
         """CodeActStrategy should inherit from GenerationStrategy."""
-        from nemo_oo_agents.strategies.base import GenerationStrategy
+        from nooa.strategies.base import GenerationStrategy
 
         strat = CodeActStrategy(config=CodeActConfig())
         assert isinstance(strat, GenerationStrategy)
@@ -888,7 +888,7 @@ class TestCodeActStrategyErrorHandling:
     @pytest.mark.asyncio
     async def test_max_iterations_exceeded(self):
         """Should raise GenerationError when max_iterations exceeded."""
-        from nemo_oo_agents.errors import GenerationError
+        from nooa.errors import GenerationError
 
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=2)))
@@ -915,7 +915,7 @@ class TestCodeActStrategyErrorHandling:
     @pytest.mark.asyncio
     async def test_missing_return_type_raises_error(self):
         """Should raise GenerationError if method has no return type."""
-        from nemo_oo_agents.errors import GenerationError
+        from nooa.errors import GenerationError
 
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(CodeActStrategy(config=CodeActConfig()))
@@ -1252,7 +1252,7 @@ class TestCodeActStrategyEventSequence:
         "   " is truthy but str.strip() is falsy, so it should fall through to the
         empty-response error handler rather than creating a synthetic comment.
         """
-        from nemo_oo_agents.errors import GenerationError
+        from nooa.errors import GenerationError
 
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(CodeActStrategy(config=CodeActConfig(max_retries=1)))
@@ -1495,7 +1495,7 @@ class TestCodeActStrategyEventSequence:
         consecutive_text_only counter increments. After max_consecutive_text_only
         consecutive failures, the guard aborts with a clear error message.
         """
-        from nemo_oo_agents.errors import GenerationError
+        from nooa.errors import GenerationError
 
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(
@@ -1572,7 +1572,7 @@ class TestCodeActStrategyEventSequence:
     @pytest.mark.asyncio
     async def test_text_only_loop_disabled_when_threshold_zero(self):
         """max_consecutive_text_only=0 disables the abort guard."""
-        from nemo_oo_agents.errors import GenerationError
+        from nooa.errors import GenerationError
 
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(
@@ -1609,7 +1609,7 @@ class TestCodeActStrategyEventSequence:
         AfterTurn uses record=False (runtime event, not persisted in backend),
         so we capture it via the event-manager subscription channel.
         """
-        from nemo_oo_agents.errors import GenerationError
+        from nooa.errors import GenerationError
 
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(
@@ -1683,8 +1683,8 @@ class TestCodeActStrategyEventSequence:
 
     def test_prepend_comment_skips_to_next_on_invalid_json(self):
         """If the first execute_python has invalid JSON arguments, skip it and prepend to next."""
-        from nemo_oo_agents.strategies.codeact import _prepend_comment
-        from nemo_oo_agents.unifiedllm import ToolCall
+        from nooa.strategies.codeact import _prepend_comment
+        from nooa.unifiedllm import ToolCall
 
         bad_tc = ToolCall(id="bad", name="execute_python", arguments="NOT VALID JSON")
         good_tc = ToolCall(id="c2", name="execute_python", arguments=json.dumps({"code": "x = 42"}))
@@ -1701,8 +1701,8 @@ class TestCodeActStrategyEventSequence:
 
     def test_prepend_comment_no_execute_python_unchanged(self):
         """If there's no execute_python in the list, all tool calls are returned unchanged."""
-        from nemo_oo_agents.strategies.codeact import _prepend_comment
-        from nemo_oo_agents.unifiedllm import ToolCall
+        from nooa.strategies.codeact import _prepend_comment
+        from nooa.unifiedllm import ToolCall
 
         rr = ToolCall(id="ret", name="return_result", arguments=json.dumps({"result": 7}))
         result = _prepend_comment([rr], "some content")
@@ -1994,13 +1994,13 @@ class TestCodeActStrategyExport:
 
     def test_exported_from_strategies_module(self):
         """CodeActStrategy should be exported from strategies module."""
-        from nemo_oo_agents.strategies import CodeActStrategy
+        from nooa.strategies import CodeActStrategy
 
         assert CodeActStrategy is not None
 
     def test_exported_from_main_module(self):
-        """CodeActStrategy should be exported from main nemo_oo_agents module."""
-        from nemo_oo_agents import CodeActStrategy
+        """CodeActStrategy should be exported from main nooa module."""
+        from nooa import CodeActStrategy
 
         assert CodeActStrategy is not None
 
@@ -2276,7 +2276,7 @@ class TestCodeActInlineReturnResult:
         """return_result() inside try block should not be caught by 'except Exception'.
 
         This is a regression test for GitLab issue #55:
-        https://gitlab.com/nvidia/cloudnative/ai-workflow/nemo_oo_agents/-/issues/55
+        https://gitlab.com/nvidia/cloudnative/ai-workflow/nooa/-/issues/55
 
         The _ReturnResultSignal inherits from BaseException (not Exception), so it
         should NOT be caught by 'except Exception:' blocks. This ensures that
@@ -2534,7 +2534,7 @@ class TestCodeActReturnTypeInspection:
 @pytest.fixture
 def mock_runtime():
     """Create mock runtime for strategy tests."""
-    from nemo_oo_agents.events import ExecutionResult
+    from nooa.events import ExecutionResult
 
     class MockRuntime:
         def __init__(self):
@@ -2601,7 +2601,7 @@ class TestCodeActNoneReturnType:
     completing the task without requiring a result value.
 
     Regression tests for GitLab issue #59:
-    https://gitlab.com/nvidia/cloudnative/ai-workflow/nemo_oo_agents/-/issues/59
+    https://gitlab.com/nvidia/cloudnative/ai-workflow/nooa/-/issues/59
     """
 
     @pytest.mark.asyncio
@@ -2929,7 +2929,7 @@ class TestCodeActTurnEvents:
     @pytest.mark.asyncio
     async def test_emits_before_and_after_turn_events_on_success(self):
         """Strategy should emit BeforeTurn and AfterTurn on successful execution."""
-        from nemo_oo_agents.events import AfterTurn, BeforeTurn
+        from nooa.events import AfterTurn, BeforeTurn
 
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(CodeActStrategy(config=CodeActConfig()))
@@ -2987,7 +2987,7 @@ class TestCodeActTurnEvents:
     @pytest.mark.asyncio
     async def test_turn_number_increments_across_iterations(self):
         """Turn number should increment with each iteration."""
-        from nemo_oo_agents.events import BeforeTurn
+        from nooa.events import BeforeTurn
 
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(CodeActStrategy(config=CodeActConfig()))
@@ -3038,7 +3038,7 @@ class TestCodeActTurnEvents:
     @pytest.mark.asyncio
     async def test_inline_return_result_emits_success_event(self):
         """Inline return_result() should emit AfterTurn with success=True."""
-        from nemo_oo_agents.events import AfterTurn, BeforeTurn
+        from nooa.events import AfterTurn, BeforeTurn
 
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(CodeActStrategy(config=CodeActConfig()))

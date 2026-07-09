@@ -25,10 +25,10 @@ Replace all visibility mechanisms with two concepts: `visible` and `hidden`.
 
 ### Public API
 
-Both exported from `nemo_oo_agents`:
+Both exported from `nooa`:
 
 ```python
-from nemo_oo_agents import visible, hidden
+from nooa import visible, hidden
 ```
 
 ### The `hidden` sentinel
@@ -39,14 +39,14 @@ A single object that works in two roles:
 2. **Annotation marker** on fields: `Annotated[T, hidden]`
 
 ```python
-# src/nemo_oo_agents/visibility.py
+# src/nooa/visibility.py
 
 class _Hidden:
     """Marker for hiding methods and fields from the LLM."""
 
     def __call__(self, func):
         """Use as @hidden decorator on methods."""
-        func._nemo_oo_agents_hidden = True
+        func._nooa_hidden = True
         return func
 
     def __repr__(self):
@@ -57,7 +57,7 @@ hidden = _Hidden()
 
 Detection helpers:
 
-- `is_hidden_method(func)` — checks for `_nemo_oo_agents_hidden` attribute
+- `is_hidden_method(func)` — checks for `_nooa_hidden` attribute
 - `is_hidden_field(cls, name)` — inspects `typing.get_type_hints(cls, include_extras=True)`, checks if `hidden` sentinel is in `Annotated` metadata
 
 ### The `visible` context manager
@@ -69,7 +69,7 @@ Rename of the existing `_VisibleToAgent`. Controls which module-level names are 
 import json
 import os
 
-from nemo_oo_agents import visible
+from nooa import visible
 
 with visible:
     from pathlib import Path
@@ -96,7 +96,7 @@ Same dict-diff mechanism, same reentrant stack. Only the name changes:
 import json
 import os
 
-from nemo_oo_agents import Agent, hidden, visible
+from nooa import Agent, hidden, visible
 
 with visible:
     from pathlib import Path
@@ -190,7 +190,7 @@ class Agent:
 ### Unchanged
 - `@no_trace` — orthogonal (tracing)
 - `blocked_modules` / `blocked_calls` — orthogonal (security)
-- `exec_globals` filtering via `_nemo_oo_agents_visible_names` — same mechanism, `visible` is just the rename
+- `exec_globals` filtering via `_nooa_visible_names` — same mechanism, `visible` is just the rename
 
 ## Breaking changes
 

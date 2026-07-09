@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from nemo_oo_agents.viewer import otlp_store
+from nooa.viewer import otlp_store
 
 
 @pytest.fixture

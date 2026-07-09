@@ -15,11 +15,11 @@ from __future__ import annotations
 
 import sqlite3
 
-from nemo_oo_agents import Agent
-from nemo_oo_agents.events import EventBase
-from nemo_oo_agents.storage import SQLiteStorageManager
-from nemo_oo_agents.storage.sqlite import SQLiteEventBackend
-from nemo_oo_agents.unifiedllm import CompletionClient
+from nooa import Agent
+from nooa.events import EventBase
+from nooa.storage import SQLiteStorageManager
+from nooa.storage.sqlite import SQLiteEventBackend
+from nooa.unifiedllm import CompletionClient
 
 _LLM = CompletionClient(model="openai/gpt-4o-mini", api_key="test")
 
@@ -176,7 +176,7 @@ def test_sqlite_multiple_managers_share_backend_without_tag_collision(tmp_path):
     and the SessionManager's thin EventManager both write through the
     same storage's backend.
     """
-    from nemo_oo_agents.runtime.event_manager import EventManager
+    from nooa.runtime.event_manager import EventManager
 
     storage = SQLiteStorageManager(tmp_path / "session.db")
     em1 = EventManager(backend=storage.event_backend)

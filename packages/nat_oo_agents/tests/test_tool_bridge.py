@@ -12,7 +12,7 @@ from __future__ import annotations
 import inspect
 
 import pytest
-from nat.plugins.nemo_oo_agents.tool_bridge import (
+from nat.plugins.nooa.tool_bridge import (
     _DUMMY_PARAM_NAMES,
     create_tool_method,
     inject_nat_tools,

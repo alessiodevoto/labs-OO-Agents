@@ -15,7 +15,7 @@ This test pins exactly that round-trip:
       -> the file on disk has full messages on its LLM span (T1 covers
       that file is complete).
   2.  Spin up an *empty* viewer-B.
-  3.  ``nemo-oo import-traces <saved.jsonl> --endpoint <viewer-B>``
+  3.  ``nooa import-traces <saved.jsonl> --endpoint <viewer-B>``
   4.  ``GET /api/trace/export?session_id=...`` from viewer-B.
   5.  Compare span-by-span with the original file: same span ids, same
       ``llm.input_messages.*`` / ``llm.output_messages.*``.
@@ -63,7 +63,7 @@ async def test_save_then_import_then_download_preserves_messages(fresh_viewer):
     pytest.importorskip("openinference.instrumentation.litellm")
     import litellm
 
-    from nemo_oo_agents.tracing import enable_tracing, exporters, set_session
+    from nooa.tracing import enable_tracing, exporters, set_session
 
     with tempfile.TemporaryDirectory() as tmpdir_str:
         tmpdir = Path(tmpdir_str)
@@ -81,7 +81,7 @@ async def test_save_then_import_then_download_preserves_messages(fresh_viewer):
             mock_response="T6_OUTPUT 4",
         )
 
-        from nemo_oo_agents.tracing import _provider
+        from nooa.tracing import _provider
 
         assert _provider is not None
         _provider.force_flush()
@@ -121,7 +121,7 @@ async def test_save_then_import_then_download_preserves_messages(fresh_viewer):
 
         # 3. Import the file into a fresh viewer via the actual CLI command.
         from click.testing import CliRunner
-        from nemo_oo_agents_cli.commands.import_traces import command
+        from nooa_cli.commands.import_traces import command
 
         # The file's basename becomes the session_id during import; rename
         # to a known session id we can query.

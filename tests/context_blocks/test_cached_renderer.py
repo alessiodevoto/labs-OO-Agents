@@ -2,19 +2,19 @@
 # SPDX-License-Identifier: Apache-2.0
 """Tests for the cached renderer (static-prefix / events / dynamic-suffix)."""
 
-from nemo_oo_agents.context_blocks.events import (
+from nooa.context_blocks.events import (
     AssistantEvent,
     ToolCallEvent,
     ToolResult,
     UserEvent,
 )
-from nemo_oo_agents.context_blocks.formatter import (
+from nooa.context_blocks.formatter import (
     AnthropicProviderFormatter,
     OpenAIProviderFormatter,
 )
-from nemo_oo_agents.context_blocks.models import BlockMetadata, DynamicContext, ResolvedBlock, Role
-from nemo_oo_agents.context_blocks.renderer import render_context
-from nemo_oo_agents.context_blocks.renderers.cached import CachedBlockFormatter
+from nooa.context_blocks.models import BlockMetadata, DynamicContext, ResolvedBlock, Role
+from nooa.context_blocks.renderer import render_context
+from nooa.context_blocks.renderers.cached import CachedBlockFormatter
 
 
 def _static_block(key: str, content: str, expr: str | None = None) -> ResolvedBlock:

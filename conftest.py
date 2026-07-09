@@ -6,7 +6,7 @@ import sqlite3
 
 import pytest
 
-from nemo_oo_agents.storage.sqlite import _ensure_schema
+from nooa.storage.sqlite import _ensure_schema
 
 
 @pytest.fixture

@@ -7,8 +7,8 @@ import json  # noqa: F401
 # agentdoc: hide
 import os  # noqa: F401
 
-from nemo_oo_agents import Agent
-from nemo_oo_agents.unifiedllm import FakeLLMClient
+from nooa import Agent
+from nooa.unifiedllm import FakeLLMClient
 
 
 class AgentHideCommentBefore(Agent, llm=FakeLLMClient()):

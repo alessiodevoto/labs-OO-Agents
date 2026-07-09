@@ -131,7 +131,7 @@ Agent scope ("my-agent")              ← nemo_flow_scope()
 
 | File | Purpose |
 |------|---------|
-| `src/nemo_oo_agents/nemo_flow_middleware.py` | All middleware + public API |
+| `src/nooa/nemo_flow_middleware.py` | All middleware + public API |
 | `tests/test_nemo_flow_middleware.py` | Integration tests (requires `nemo_flow`) |
 | `examples/quickstart/13_nemo_flow.py` | Full quickstart example |
 

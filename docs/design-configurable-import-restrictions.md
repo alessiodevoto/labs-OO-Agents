@@ -140,12 +140,12 @@ or falls back to `DEFAULT_RESTRICTED_IMPORTS`.
 
 ## Files to Change
 
-1. `src/nemo_oo_agents/runtime/restrictions.py` — Add DEFAULT_RESTRICTED_IMPORTS,
+1. `src/nooa/runtime/restrictions.py` — Add DEFAULT_RESTRICTED_IMPORTS,
    add restricted_imports field, add importlib to blocked_calls
-2. `src/nemo_oo_agents/runtime/code_validator.py` — Add restricted_imports to
+2. `src/nooa/runtime/code_validator.py` — Add restricted_imports to
    ValidationContext, rewrite _is_module_available(), update error message
-3. `src/nemo_oo_agents/runtime/actor.py` — Pass restricted_imports to ValidationContext
-4. `src/nemo_oo_agents/tools/library_writing_lib.py` — Pass restricted_imports
+3. `src/nooa/runtime/actor.py` — Pass restricted_imports to ValidationContext
+4. `src/nooa/tools/library_writing_lib.py` — Pass restricted_imports
 5. `tests/runtime/test_restrictions.py` — Test RestrictionsConfig with restricted_imports
 6. `tests/runtime/test_code_validator.py` — Test SecurityValidator deny-list behavior
 

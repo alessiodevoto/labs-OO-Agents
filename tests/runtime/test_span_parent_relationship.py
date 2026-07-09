@@ -11,11 +11,11 @@ Refs: gitlab#81
 
 import pytest
 
-from nemo_oo_agents import no_trace, strategy
-from nemo_oo_agents.agent import Agent
-from nemo_oo_agents.runtime.hooks import get_hooks, set_hooks
-from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
-from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse
+from nooa import no_trace, strategy
+from nooa.agent import Agent
+from nooa.runtime.hooks import get_hooks, set_hooks
+from nooa.strategies.pure_python import PurePythonStrategy
+from nooa.unifiedllm import FakeLLMClient, LLMResponse
 
 
 def _resp(content: str) -> LLMResponse:
