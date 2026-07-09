@@ -75,7 +75,7 @@ class ExecutionNamespaceBuilder:
                 "self": agent,
                 "asyncio": asyncio,
                 "typing": _typing,
-                # agentdoc helpers (doc respects agentscope hidden fields)
+                # agentdoc helpers (doc respects hidden fields)
                 "doc": doc,
                 "methods": methods,
                 "variables": variables,

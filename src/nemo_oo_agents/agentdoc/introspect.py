@@ -5,7 +5,7 @@
 Lower-level alternatives to ``doc()`` when you need just one slice of a type
 rather than the full rendered contract:
 
-    from agentdoc.introspect import methods, variables
+    from nemo_oo_agents.agentdoc.introspect import methods, variables
 
     methods(MyAgent)                   # callable names + signatures only
     methods(MyAgent, detail="full")    # with docstrings

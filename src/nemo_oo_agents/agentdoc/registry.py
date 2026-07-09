@@ -122,8 +122,8 @@ def register_module_info_extractor(
 
     Example:
         import numpy
-        from agentdoc import spec
-        from agentdoc.ext import ModuleInfo, CallableInfo
+        from nemo_oo_agents.agentdoc import spec
+        from nemo_oo_agents.agentdoc.ext import ModuleInfo, CallableInfo
 
         @spec.define_doc(numpy)
         def _(mod) -> ModuleInfo:

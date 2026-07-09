@@ -7,8 +7,8 @@ types. `register_type_info_extractor` is the lower-level alternative for
 advanced use cases.
 
 ```python
-from agentdoc import spec
-from agentdoc.ext import TypeInfo, FieldInfo
+from nemo_oo_agents.agentdoc import spec
+from nemo_oo_agents.agentdoc.ext import TypeInfo, FieldInfo
 
 @spec.define_doc(MyThirdPartyClass)
 def _(cls_or_instance) -> TypeInfo | tuple[TypeInfo, dict]:

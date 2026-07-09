@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Visibility control for agent namespace (exec_globals).
 
-Moved from agentscope into agentdoc so that agentdoc is self-contained.
+Self-contained within agentdoc.
 
 Simplified model: everything (module-level and agent-level) is visible by default.
 Explicitly hide with:

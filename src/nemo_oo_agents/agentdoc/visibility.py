@@ -7,7 +7,7 @@ same filtering that ``spec()`` and ``hidden`` produce — so your exec_globals,
 prompt context, or schema builder includes exactly the same names that
 documentation shows.
 
-    from agentdoc.visibility import filter_module_globals, is_hidden_field
+    from nemo_oo_agents.agentdoc.visibility import filter_module_globals, is_hidden_field
 
     # Populate exec_globals from a module, respecting hidden annotations
     agent_globals = filter_module_globals(my_module)

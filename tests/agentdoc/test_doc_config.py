@@ -14,11 +14,9 @@ def test_doc_config_defaults():
     c = DocConfig()
     assert c.max_value_chars == 50
     assert c.max_list_items == 10
-    assert c.max_dict_items == 10
     assert c.hidden_prefixes == ("_",)
     assert c.hidden_names == frozenset()
     assert c.include_types is True
-    assert c.include_defaults is True
     assert c.include_docstrings is True
     assert c.include_hints is True
 
@@ -51,11 +49,3 @@ def test_should_hide_by_name():
     c = DocConfig(hidden_names=frozenset({"secret"}))
     assert c.should_hide("secret") is True
     assert c.should_hide("public") is False
-
-
-def test_merge_with_overrides_only_explicit_fields():
-    base = DocConfig()
-    override = DocConfig(max_value_chars=100)
-    merged = base.merge_with(override)
-    assert merged.max_value_chars == 100
-    assert merged.max_list_items == 10  # not overridden

@@ -9,7 +9,7 @@ Two flavors:
 - :class:`TruncatingStringIO` — pure in-memory head/tail buffer (default).
 - :class:`FileBackedTruncatingStringIO` — same truncation, but also streams
   all output to a temp file and includes the file path in the truncation
-  notice.  Gated behind ``CaptureConfig.file_backed``.
+  notice, so the full untruncated output remains retrievable.
 """
 
 import collections

@@ -9,7 +9,7 @@ Two-step mental model:
 
 Quick start:
 
-    from agentdoc import spec, hidden, doc, pformat, truncating_pformat
+    from nemo_oo_agents.agentdoc import spec, hidden, doc, pformat, truncating_pformat
 
     class MyAgent:
         api_key: Annotated[str, hidden] = ""          # excluded from documentation
@@ -37,9 +37,6 @@ from nemo_oo_agents.agentdoc.core import doc
 from nemo_oo_agents.agentdoc.doc_config import DocConfig
 
 __submodules__ = ["ext", "introspect", "visibility", "adapters"]
-
-
-_TRUNCATING_PFORMAT_MAX_CHARS: int = 500_000
 
 
 def truncating_pformat(

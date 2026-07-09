@@ -106,9 +106,7 @@ def doc(
         )
 
     # Multiple objects: use multi-type formatting with deduplication
-    return _doc_multiple(
-        flat_objs, concise=concise, inline_depth=inline_depth, config=DEFAULT_CONFIG
-    )
+    return _doc_multiple(flat_objs, concise=concise, inline_depth=inline_depth)
 
 
 def _doc_multiple(
@@ -116,7 +114,6 @@ def _doc_multiple(
     *,
     concise: bool,
     inline_depth: int,
-    config: DocConfig,
 ) -> str:
     """Format multiple objects with deduplicated referenced types.
 
@@ -124,7 +121,6 @@ def _doc_multiple(
         objs: List of objects to document
         concise: If True, show first-line docstrings only
         inline_depth: How deep to expand referenced types inline
-        config: Configuration
 
     Returns:
         Formatted documentation with each type appearing exactly once
