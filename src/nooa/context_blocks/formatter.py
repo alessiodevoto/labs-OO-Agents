@@ -551,8 +551,26 @@ class ResponsesProviderFormatter(ProviderFormatter):
                     content_parts.append({"type": "input_text", "text": msg.content})
                 for img in msg.images:
                     if img.get("type") == "image_url":
-                        # Responses API requires input_image, not image_url
-                        content_parts.append({"type": "input_image", "image_url": img["image_url"]})
+                        # Responses API requires input_image, and its image_url must
+                        # be the URL STRING (not the Chat-Completions {"url": ...}
+                        # object) — otherwise the API rejects it with
+                        # "expected an image URL, but got an object instead".
+                        iu = img["image_url"]
+                        if isinstance(iu, dict):
+                            url = iu.get("url")
+                            if not url:
+                                # Fail fast: an empty image_url only yields an opaque
+                                # "invalid URL" from the API, hiding the real problem.
+                                raise ValueError(
+                                    "image_url dict has no 'url'; cannot build a "
+                                    f"Responses input_image block: {iu!r}"
+                                )
+                            part = {"type": "input_image", "image_url": url}
+                            if iu.get("detail"):
+                                part["detail"] = iu["detail"]
+                        else:
+                            part = {"type": "input_image", "image_url": iu}
+                        content_parts.append(part)
                     else:
                         content_parts.append(img)
                 out.append({"role": role.value, "content": content_parts})

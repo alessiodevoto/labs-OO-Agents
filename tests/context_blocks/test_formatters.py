@@ -14,6 +14,7 @@ from nooa.context_blocks.formatter import (
     AnthropicProviderFormatter,
     MarkdownBlockFormatter,
     OpenAIProviderFormatter,
+    ResponsesProviderFormatter,
     XMLBlockFormatter,
 )
 from nooa.context_blocks.models import (
@@ -398,3 +399,34 @@ class TestBlockFormatterFormatEvent:
 
         event = UserEvent(content="Hello world", tag="1")
         assert "Hello world" in MinimalFormatter().format_event(event)
+
+
+class TestResponsesProviderFormatterImages:
+    """Responses API image blocks: image_url must be a URL STRING, not the
+    Chat-Completions {"url": ...} object (regression — the object shape makes the
+    API reject the request with 'expected an image URL, but got an object')."""
+
+    def _image_message(self, image_url):
+        img = {"type": "image_url", "image_url": image_url}
+        return [RenderedMessage(role=Role.USER, content="the grid", images=[img])]
+
+    def test_image_url_object_becomes_input_image_string(self):
+        msgs = self._image_message({"url": "data:image/png;base64,AAAA", "detail": "high"})
+        out = ResponsesProviderFormatter().format(msgs)
+        parts = out[-1]["content"]
+        assert parts[0] == {"type": "input_text", "text": "the grid"}
+        img = parts[1]
+        assert img["type"] == "input_image"
+        assert isinstance(img["image_url"], str), img
+        assert img["image_url"] == "data:image/png;base64,AAAA"
+        assert img.get("detail") == "high"
+
+    def test_image_url_already_string_passthrough(self):
+        out = ResponsesProviderFormatter().format(self._image_message("data:image/png;base64,BBBB"))
+        img = out[-1]["content"][1]
+        assert img == {"type": "input_image", "image_url": "data:image/png;base64,BBBB"}
+
+    def test_image_url_dict_without_url_raises(self):
+        # Fail fast instead of emitting an empty image_url the API rejects opaquely.
+        with pytest.raises(ValueError, match="no 'url'"):
+            ResponsesProviderFormatter().format(self._image_message({"detail": "high"}))
