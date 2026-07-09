@@ -3,7 +3,6 @@
 Covers:
 - nemo_oo_agents.experimental (factory functions with FutureWarning)
 - nemo_oo_agents.strategies.experimental (backward-compat re-export)
-- nemo_oo_agents.llm (re-exports from unifiedllm)
 - nemo_oo_agents._visible (_Visible context manager)
 - nemo_oo_agents_cli.commands._template (Click command)
 - nemo_oo_agents.nemo_flow_middleware (install_nemo_flow, nemo_flow_scope, middleware)
@@ -94,50 +93,6 @@ class TestExperimentalStrategies:
         from nemo_oo_agents.strategies.pure_python import PurePythonStrategy as _Real
 
         assert isinstance(strategy, _Real)
-
-
-# ---------------------------------------------------------------------------
-# nemo_oo_agents.llm
-# ---------------------------------------------------------------------------
-
-
-class TestLLMImports:
-    """nemo_oo_agents.llm re-exports unifiedllm public API."""
-
-    def test_completion_client_importable(self):
-        from nemo_oo_agents.llm import CompletionClient
-
-        assert CompletionClient is not None
-
-    def test_llm_response_importable(self):
-        from nemo_oo_agents.llm import LLMResponse
-
-        assert LLMResponse is not None
-
-    def test_tool_call_importable(self):
-        from nemo_oo_agents.llm import ToolCall
-
-        assert ToolCall is not None
-
-    def test_tool_importable(self):
-        from nemo_oo_agents.llm import Tool
-
-        assert Tool is not None
-
-    def test_all_exports(self):
-        import nemo_oo_agents.llm as llm_module
-
-        assert "CompletionClient" in llm_module.__all__
-        assert "LLMResponse" in llm_module.__all__
-        assert "ToolCall" in llm_module.__all__
-        assert "Tool" in llm_module.__all__
-
-    def test_names_are_types(self):
-        from nemo_oo_agents.llm import CompletionClient, LLMResponse, Tool, ToolCall
-
-        # They should be classes or callables
-        for obj in (CompletionClient, LLMResponse, ToolCall, Tool):
-            assert callable(obj) or isinstance(obj, type)
 
 
 # ---------------------------------------------------------------------------

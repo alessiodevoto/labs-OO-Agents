@@ -47,35 +47,6 @@ def test_retryable_exceptions_is_typed_tuple():
         assert issubclass(exc_type, BaseException)
 
 
-def test_merge_with_overrides_only_explicit_fields():
-    base = RetryConfig()
-    override = RetryConfig(max_retries=5)
-    merged = base.merge_with(override)
-    assert merged.max_retries == 5
-    assert merged.base_delay == 1.0  # not overridden
-
-
-def test_merge_with_rejects_empty_fields_set():
-    # The ValueError fires when model_fields_set is empty
-    # (e.g. model_validate({}) with all-default fields)
-    base = RetryConfig()
-    empty_fields = RetryConfig.model_validate({})
-    assert not empty_fields.model_fields_set
-    with pytest.raises(ValueError, match="merge_with"):
-        base.merge_with(empty_fields)
-
-
-def test_merge_with_known_limitation_round_trip():
-    # KNOWN LIMITATION (Option A): model_validate(model_dump()) marks ALL
-    # fields as set, so merge_with cannot detect "defaults only" configs.
-    # Callers must always construct fresh: RetryConfig(field=value).
-    base = RetryConfig()
-    round_tripped = RetryConfig.model_validate(RetryConfig().model_dump())
-    assert round_tripped.model_fields_set  # all fields appear "set"
-    merged = base.merge_with(round_tripped)  # does not raise — known limitation
-    assert merged == round_tripped
-
-
 def test_rate_limit_backoff_base_is_new_field():
     # This field did not exist in the old dataclass
     c = RetryConfig(rate_limit_backoff_base=5.0)

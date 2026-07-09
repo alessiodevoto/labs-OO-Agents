@@ -27,12 +27,3 @@ class RetryConfig(BaseModel):
     )
     retry_on_empty_content: bool = False
     on_retry: Callable[[int, Exception, float], None] | None = None
-
-    def merge_with(self, other: "RetryConfig") -> "RetryConfig":
-        if not other.model_fields_set:
-            raise ValueError(
-                "merge_with() received a config with no model_fields_set. "
-                "Was it constructed from model_dump() or model_validate()? "
-                "Config objects must be freshly constructed: RetryConfig(field=value)."
-            )
-        return self.model_copy(update={k: getattr(other, k) for k in other.model_fields_set})

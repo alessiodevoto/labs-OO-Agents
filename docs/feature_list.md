@@ -185,7 +185,7 @@ NeMo OO Agents is a single repository that ships as several lockstep packages:
 - **Restrict agent code execution** with `RestrictionsConfig` — `blocked_modules` (hard block, stripped + AST-denied), `blocked_calls` (per-module function/method denylist), `restricted_imports` (AST-denied soft block); flip the process-global default with `set_restricted_imports()` / inspect via `get_restricted_imports()`. **(opt-in)**
 - **Configure the BashTool** with `BashConfig` — `default_timeout`, `use_sandbox`, `srt_settings`, `srt_executable`.
 - **Configure summarizers** with `TokenBudgetConfig` (`max_tokens`/`preserve_recent`/`target_chars`) and `MethodSummarizerConfig` (`min_events`/`exclude_root`/`target_chars`).
-- **Layer two configs field-by-field** with `merge_with(other)` — present on every config dataclass; only fields in `other.model_fields_set` override, and it raises if `other` wasn't freshly constructed (guards against `model_dump()`/`model_validate()` round-trips). `TruncationConfig.merge_with` additionally merges sub-configs field-by-field.
+- **Layer selected configs field-by-field** with `merge_with(other)` — supported by generation/truncation/doc configs; only fields in `other.model_fields_set` override, and guards reject `model_dump()`/`model_validate()` round-trips where applicable. `TruncationConfig.merge_with` additionally merges sub-configs field-by-field.
 
 ### Install, setup & TUI settings
 
@@ -371,7 +371,7 @@ NeMo OO Agents is a single repository that ships as several lockstep packages:
 - **Describe a resolved block** — `ResolvedBlock(key, content, role, metadata, event)` carries pre-evaluated content, a `Role`, typed `BlockMetadata`, and the original `EventBase` for event blocks.
 - **Mark dynamic expressions** — `DynamicContext("expr")` wraps a Python expression, validating its syntax at construction (raises `BlockSyntaxError`).
 - **Carry typed block metadata** — `BlockMetadata` exposes `expr`, `tag`, `truncated`, `user_block`, `static`, and `source_dynamic` flags that drive truncation order and formatter behavior.
-- **Configure the formatter pair** — `RenderConfig(block_formatter=..., provider_formatter=...)` selects formatting; defaults to `CachedBlockFormatter` + `OpenAIProviderFormatter` and supports `merge_with()` for layered overrides.
+- **Configure the formatter pair** — `RenderConfig(block_formatter=..., provider_formatter=...)` selects formatting; defaults to `CachedBlockFormatter` + `OpenAIProviderFormatter`.
 - **Re-use stock message wrapping** — `format_message_content(block, format_type)` applies the XML/Markdown/plain event wrapper outside the render pipeline.
 
 ### Formatters (extensibility points)
@@ -388,7 +388,7 @@ NeMo OO Agents is a single repository that ships as several lockstep packages:
 - **Cap total context tokens** — `TruncationConfig.max_context_tokens` evicts over-budget system blocks at assembly, dropping `user_block` (non-static) blocks first then others from the end, replacing content with an `EVICTED: over context budget` notice (requires a `count_tokens` counter) **(opt-in)**.
 - **Declare an event-token budget** — `TruncationConfig.max_event_tokens`, with `min_preserved_events`/`response_reserve_tokens` knobs, currently only surfaces in `ContextWindowStats` utilization display; event-history eviction is not yet wired into the render path.
 - **Bound per-value rendering** — `FormatConfig(max_string, max_length, max_depth)` sets `pformat` bounds, applied separately as `event_format`, `prefill_format`, and `context_block_format` (the latter unlimited by default for author-curated `self.context` values).
-- **Inspect window utilization** — `ContextWindowStats` reports `context_blocks_tokens`/`count`, `events_tokens`/`count`, `total_tokens`, configured limits, `context_blocks_dropped` (alias `context_blocks_evicted`), `events_dropped`, `context_utilization`/`event_utilization` properties, and a human-readable `format()` summary.
+- **Inspect window utilization** — `ContextWindowStats` reports `context_blocks_tokens`/`count`, `events_tokens`/`count`, `total_tokens`, configured limits, `context_blocks_dropped`, `events_dropped`, `context_utilization`/`event_utilization` properties, and a human-readable `format()` summary.
 
 ### Typed events & metadata
 
@@ -628,7 +628,6 @@ NeMo OO Agents is a single repository that ships as several lockstep packages:
 - **Strip `<think>` reasoning tags** — use `ReasoningCompletionClient` for NIM/Nemotron-style models that emit `<think>...</think>`; it moves the thinking text into `LLMResponse.reasoning` and returns clean content (**opt-in**).
 - **Call sync or async** — every client implements `call()` and `acall()` returning a standardized `LLMResponse`; pass `tools=` and `output_model=` to either.
 - **Force structured output** — pass a Pydantic `output_model`; the client builds a provider-appropriate `response_format`/`text.format` (strict when the schema allows, non-strict fallback otherwise) and parses+validates the result.
-- **Retry on bad parses** — `call_llm_with_retry()` / `acall_llm_with_retry()` re-prompt the model with a formatted validation/JSON error message up to `max_retries` times.
 
 ### Model Registry (YAML config chain)
 
@@ -648,10 +647,8 @@ NeMo OO Agents is a single repository that ships as several lockstep packages:
 - **Retry empty reasoning-model responses** — set `retry_on_empty_content=True` so a model returning reasoning but blank content raises `EmptyContentError` and retries (**opt-in**).
 - **Hook each retry** — supply an `on_retry(attempt, error, delay)` callback on `RetryConfig` for custom logging/metrics (**custom**).
 - **Auto-retry a client's own calls** — pass `retry_config=RetryConfig(...)` to `CompletionClient`/`ResponsesClient`; its `call()`/`acall()` then transparently wrap each request in `sync_retry()`/`with_retry()` so transient failures retry without an external wrapper (**opt-in**).
-- **Merge partial retry configs** — `RetryConfig.merge_with(other)` overlays only the fields explicitly set on `other`.
 - **Tune HTTP pooling and timeouts** — `HttpConfig` (max_connections, max_keepalive_connections, keepalive_expiry, connect/read/write/pool timeouts) is applied process-wide via a global `httpx.AsyncClient` monkey-patch that disables keep-alive to prevent CLOSE_WAIT hangs (**opt-in**).
 - **Apply an HttpConfig to the process** — pass `http_config=HttpConfig(...)` to a client; the most recently constructed client's config is installed globally (`_set_http_config`) and read by the httpx pooling patch for all subsequent `AsyncClient` instances (**opt-in**).
-- **Merge partial HTTP configs** — `HttpConfig.merge_with(other)` overlays only the explicitly set fields.
 
 ### Tools, Schemas & Provider Quirks
 
@@ -665,9 +662,9 @@ NeMo OO Agents is a single repository that ships as several lockstep packages:
 
 ### Token Counting & Prompt Caching
 
-- **Count tokens for a model** — `client.count_tokens(text)` uses litellm's tokenizer with a per-model EMA calibration ratio derived from API-reported usage; `count_tokens_raw()` returns the uncalibrated estimate.
+- **Count tokens for a model** — `client.count_tokens(text)` uses litellm's tokenizer with a per-model EMA calibration ratio derived from API-reported usage.
 - **Approximate tokens without the model** — `char_approximate_token_counter(text)` (`len//4`) is a drop-in `count_tokens` for clients lacking a real counter (**opt-in**).
-- **Look up context window and model info** — `client.context_window` resolves registry → litellm metadata, and `get_model_info()` / `supports_vision()` expose litellm's model registry data.
+- **Look up context window and model info** — `client.context_window` resolves registry → litellm metadata, and `get_model_info()` exposes litellm's model registry data.
 - **Read usage and reasoning off responses** — `LLMResponse.usage`, `.reasoning`, `.tool_calls`, `.finish_reason`, `.assistant_message`, and `.content` (with `.message` alias) standardize every provider's output.
 - **Mark prompt-cache breakpoints** — `cache_control_injection_points` (default: cache the system message and the last tool message) injects Anthropic `cache_control: ephemeral` markers per role or only the last message of a role; a litellm patch preserves the markers for Anthropic-served models behind OpenAI-compatible gateways (**opt-in**).
 - **Render messages as plain text** — set `_block_formatter = PlainBlockFormatter()` on an agent to serialize conversation events without XML wrapping for more token-efficient prompts (**opt-in**).

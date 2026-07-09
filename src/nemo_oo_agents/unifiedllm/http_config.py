@@ -33,15 +33,6 @@ class HttpConfig(BaseModel):
     write_timeout: float = 10.0
     pool_timeout: float = 10.0
 
-    def merge_with(self, other: "HttpConfig") -> "HttpConfig":
-        if not other.model_fields_set:
-            raise ValueError(
-                "merge_with() received a config with no model_fields_set. "
-                "Was it constructed from model_dump() or model_validate()? "
-                "Config objects must be freshly constructed: HttpConfig(field=value)."
-            )
-        return self.model_copy(update={k: getattr(other, k) for k in other.model_fields_set})
-
     def to_httpx_limits(self) -> httpx.Limits:
         """Build the httpx connection-pool limits for this config."""
         return httpx.Limits(

@@ -23,16 +23,21 @@ warnings.filterwarnings(
 from nemo_oo_agents.media import Image
 from nemo_oo_agents.util.quickstart import *
 
-# This example requires a vision-capable model
-if not llm.supports_vision():
-    print(
-        f"SKIP: quickstart MODEL ({MODEL}) does not support vision.\n"
-        "Set MODEL to a vision-capable model (e.g. gpt-4o) and configure\n"
-        "OPENAI_API_KEY to run this example."
-    )
-    sys.exit(0)
-
 ASSETS = Path(__file__).parent.parent / "assets"
+
+
+def _skip_if_vision_unsupported(error: Exception) -> None:
+    text = str(error).lower()
+    if any(term in text for term in ("vision", "image", "multimodal")) and any(
+        term in text for term in ("unsupported", "not support", "does not support", "invalid")
+    ):
+        print(
+            f"SKIP: quickstart MODEL ({MODEL}) does not support vision.\n"
+            "Set MODEL to a vision-capable model (e.g. gpt-4o) and configure\n"
+            "OPENAI_API_KEY to run this example."
+        )
+        sys.exit(0)
+    raise error
 
 
 # ---------------------------------------------------------------------------
@@ -75,18 +80,21 @@ class ImageAnalyzer(Agent, llm=llm):
 async def main():
     print(f"Model: {llm.model}\n")
 
-    # --- CodeAct: describe the shapes image ---
-    shapes_image = Image.from_file(ASSETS / "test_image.png")
-    print("=== CodeAct: describe(shapes_image) ===")
-    describer = ImageDescriber()
-    description = await describer.describe(shapes_image)
-    print(f"  {description}\n")
+    try:
+        # --- CodeAct: describe the shapes image ---
+        shapes_image = Image.from_file(ASSETS / "test_image.png")
+        print("=== CodeAct: describe(shapes_image) ===")
+        describer = ImageDescriber()
+        description = await describer.describe(shapes_image)
+        print(f"  {description}\n")
 
-    # --- PredictStrategy: structured analysis of the text image ---
-    text_image = Image.from_file(ASSETS / "test_text.png")
-    print("=== PredictStrategy: analyze(text_image) ===")
-    analyzer = ImageAnalyzer()
-    analysis = await analyzer.analyze(text_image)
-    print(f"  Colors: {analysis.colors}")
-    print(f"  Text:   {analysis.text_content}")
-    print(f"  Desc:   {analysis.description}\n")
+        # --- PredictStrategy: structured analysis of the text image ---
+        text_image = Image.from_file(ASSETS / "test_text.png")
+        print("=== PredictStrategy: analyze(text_image) ===")
+        analyzer = ImageAnalyzer()
+        analysis = await analyzer.analyze(text_image)
+        print(f"  Colors: {analysis.colors}")
+        print(f"  Text:   {analysis.text_content}")
+        print(f"  Desc:   {analysis.description}\n")
+    except Exception as error:
+        _skip_if_vision_unsupported(error)
