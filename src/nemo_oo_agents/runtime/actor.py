@@ -1387,7 +1387,7 @@ class ActorRuntime:
                     "Literal": _typing.Literal,
                     "Optional": _typing.Optional,
                     "Union": _typing.Union,
-                    # agentdoc introspection (doc respects agentscope hidden fields)
+                    # agentdoc introspection (doc respects hidden fields)
                     "doc": doc,
                     "methods": methods,
                     "variables": variables,
@@ -2112,7 +2112,7 @@ class ActorRuntime:
 
         namespace = {
             "self": self.agent,
-            # agentdoc introspection (doc respects agentscope hidden fields)
+            # agentdoc introspection (doc respects hidden fields)
             "doc": doc,
             "pformat": pformat,
             "methods": methods,

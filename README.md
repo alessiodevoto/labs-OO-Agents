@@ -511,7 +511,7 @@ Context blocks let you pin information directly into the LLM's system prompt—s
 
 ```python
 from nemo_oo_agents.util.quickstart import *
-from agentdoc import spec
+from nemo_oo_agents.agentdoc import spec
 
 
 class NoteTakingAgent(Agent, llm=llm):
@@ -582,7 +582,7 @@ Each exchange in a multi-turn conversation adds events to the agent's history. L
 from nemo_oo_agents.agents import TokenBudgetSummarizer
 from nemo_oo_agents.config import TokenBudgetConfig
 from nemo_oo_agents.util.quickstart import *
-from agentdoc import spec
+from nemo_oo_agents.agentdoc import spec
 
 
 class InterviewAgent(Agent, llm=llm):

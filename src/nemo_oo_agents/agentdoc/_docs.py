@@ -27,10 +27,10 @@ Which form to use:
 - **Imperative** — for types you don't own::
 
       spec(ThirdPartyClass, "verbose_field", hidden=True)
-      spec(ThirdPartyClass, "method_name", description="override")
+      spec(ThirdPartyClass, "verbose_field", description="Full config dump")
 
   Quick rule: use ``@hidden`` for simple method hiding; use ``@spec(hidden=True)``
-  when you also need to attach a description or expand hint in the same call.
+  when you also need to attach an expand hint in the same call.
 
 Extension point:
    ``spec.define_doc(Type)``  — specify a custom TypeInfo extractor for doc()
@@ -141,16 +141,17 @@ class Spec:
         expand: Annotated[
             bool | None, "If False, collapse sub-type to a one-liner in doc()"
         ] = None,
-        concise: Annotated[bool | None, "If True, show one-line docstring only in doc()"] = None,
         max_length: Annotated[
             int | None,
-            "Override max items per container in pformat — useful as Annotated parameter override (e.g. Annotated[list, spec(max_length=20)])",
+            "Override max items per container in pformat — parameter annotations only, e.g. Annotated[list, spec(max_length=20)] (not honored on class fields)",
         ] = _SENTINEL,
         max_string: Annotated[
-            int | None, "Override max characters per string in pformat for this annotation"
+            int | None,
+            "Override max characters per string in pformat for this annotation (parameter annotation or class field)",
         ] = _SENTINEL,
         max_depth: Annotated[
-            int | None, "Override max nesting depth in pformat for this annotation"
+            int | None,
+            "Override max nesting depth in pformat — parameter annotations only (not honored on class fields)",
         ] = _SENTINEL,
     ) -> SpecAnnotation | None:
         """Specify documentation metadata — step 1.
@@ -172,7 +173,7 @@ class Spec:
         First arg is the class/function; second (optional) is the field name::
 
             spec(MyClass, "field_name", hidden=True)    # hide a field
-            spec(MyClass, "method_name", description="…") # describe a method
+            spec(MyClass, "field_name", description="…") # describe a field
             spec(MyClass, hidden=True)                  # hide the whole class
 
         Examples::
@@ -187,7 +188,7 @@ class Spec:
             @spec(hidden=True)
             def _internal(self): ...
 
-            @spec(concise=True)
+            @spec(expand=False)
             class SubConfig: ...
 
             # Imperative — for types you don't own
@@ -201,8 +202,6 @@ class Spec:
             kwargs["description"] = description
         if expand is not None:
             kwargs["expand"] = expand
-        if concise is not None:
-            kwargs["concise"] = concise
         if max_length is not _SENTINEL:
             kwargs["max_length"] = max_length
         if max_string is not _SENTINEL:
@@ -241,7 +240,7 @@ class Spec:
         **For a module** — extractor receives the module, returns ``ModuleInfo``::
 
             import numpy
-            from agentdoc.ext import ModuleInfo, CallableInfo
+            from nemo_oo_agents.agentdoc.ext import ModuleInfo, CallableInfo
 
             @spec.define_doc(numpy)
             def _(mod) -> ModuleInfo:

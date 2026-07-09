@@ -1161,45 +1161,6 @@ class TestPformatTypes:
         assert "BLUE = 3" in result
 
 
-class TestFormatValueFullVsSummary:
-    """Tests that format_value_full shows more content than format_value_summary."""
-
-    def test_full_shows_more_string_content(self):
-        """format_value_full should show more of a long string."""
-        from nemo_oo_agents.agentdoc.ext import DocConfig
-        from nemo_oo_agents.agentdoc.format import format_value_full, format_value_summary
-
-        config = DocConfig(max_value_chars=50)
-        data = "x" * 1000
-
-        summary = format_value_summary(data, config)
-        full = format_value_full(data, config)
-
-        # Full should be longer (shows more content)
-        assert len(full) > len(summary)
-        # Both should carry the truncation 3.0 string marker
-        assert "str(len=1000," in summary  # truncated at 50
-        assert "str(len=1000," in full  # truncated at 500
-
-    def test_full_shows_more_list_items(self):
-        """format_value_full should show more list items, both use head+tail."""
-        from nemo_oo_agents.agentdoc.ext import DocConfig
-        from nemo_oo_agents.agentdoc.format import format_value_full, format_value_summary
-
-        config = DocConfig(max_list_items=10)
-        data = list(range(200))
-
-        summary = format_value_summary(data, config)
-        full = format_value_full(data, config)
-
-        # Summary: max_length=10 → 5 head + 5 tail, marker carries len=200
-        assert "list(len=200," in summary
-        assert "199" in summary  # tail visible
-        # Full: max_length=100 → 50 head + 50 tail, marker carries len=200
-        assert "list(len=200," in full
-        assert "199" in full  # tail visible
-
-
 class TestParameterDefaultTruncation:
     """Tests that parameter defaults are truncated properly.
 

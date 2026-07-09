@@ -120,7 +120,7 @@ def extract_type_info(
     2. __type_info__ protocol (for classes that implement it)
     3. Automatic extraction
 
-    Fields marked with agentscope hidden (Annotated[T, hidden]) are excluded
+    Fields marked hidden (Annotated[T, hidden]) are excluded
     unless _include_hidden=True.
 
     Args:

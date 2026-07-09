@@ -270,8 +270,8 @@ NeMo OO Agents is a single repository that ships as several lockstep packages:
 
 - **List method signatures only** — `introspect.methods(obj, detail="summary"|"full")` emits `def`/`async def` signatures (plus docstrings in full mode), respecting `@hidden` and the `_` convention.
 - **List field values only** — `introspect.variables(instance)` emits non-callable attributes with current values and drill-down hints, respecting `@hidden`, `Annotated[T, hidden]`, and `_` prefixes.
-- **Mirror doc()'s filtering in your own framework** — `agentdoc.visibility.filter_module_globals(module)`, `is_hidden_field(cls, name)`, `is_hidden_method(func)`, and `is_hidden_module_variable(module, name)` reproduce the exact visibility decisions for building exec_globals or prompt payloads.
-- **Tune doc/introspection formatting** — pass a frozen `DocConfig` (`max_value_chars`, `max_list_items`, `max_dict_items`, `hidden_prefixes`, `hidden_names`, `include_types`/`include_defaults`/`include_docstrings`/`include_hints`) with `merge_with()` to override defaults.
+- **Mirror doc()'s filtering in your own framework** — `nemo_oo_agents.agentdoc.visibility.filter_module_globals(module)`, `is_hidden_field(cls, name)`, `is_hidden_method(func)`, and `is_hidden_module_variable(module, name)` reproduce the exact visibility decisions for building exec_globals or prompt payloads.
+- **Tune doc/introspection formatting** — pass a frozen `DocConfig` (`max_value_chars`, `max_list_items`, `hidden_prefixes`, `hidden_names`, `include_types`/`include_docstrings`/`include_hints`) to override defaults.
 
 ### Pretty-Formatting with Truncation
 

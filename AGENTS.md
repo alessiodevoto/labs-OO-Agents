@@ -98,7 +98,7 @@ class MyAgent(Agent, llm=llm):
 `ContextApi` and `EventsApi` are **always present** on every Agent as `self.context` and `self.events`, but **hidden from the LLM by default**. Subclasses opt in by calling `spec(self, "context", hidden=False)` (and/or `spec(self, "events", hidden=False)`) in their `__init__` to expose them via `doc(self)`.
 
 ```python
-from agentdoc import spec
+from nemo_oo_agents.agentdoc import spec
 
 class MyAgent(Agent, llm=llm):
     def __init__(self, **kwargs):

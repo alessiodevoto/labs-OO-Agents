@@ -209,7 +209,7 @@ class Analyzer(Agent, llm=my_llm):
 Use `agentdoc` functions in your docstrings:
 
 ```python
-from agentdoc import doc, brief
+from nemo_oo_agents.agentdoc import doc, brief
 
 class MyAgent(Agent, llm=my_llm):
     async def task(self, data: str):

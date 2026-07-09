@@ -40,37 +40,6 @@ def format_value_summary(value: Any, config: DocConfig) -> str:
         return f"{type(value).__name__}(...)"
 
 
-def format_value_full(value: Any, config: DocConfig) -> str:
-    """Format a value with full representation (less truncation).
-
-    Uses _pformat with higher limits for more detailed output.
-
-    Args:
-        value: Value to format
-        config: Configuration controlling formatting
-
-    Returns:
-        Formatted string representation
-    """
-    if value is None:
-        return "None"
-
-    # Simple types don't need _pformat
-    if isinstance(value, (int, float, bool)):
-        return str(value)
-
-    # Use _pformat with higher limits for full view
-    try:
-        return _pformat(
-            value,
-            max_length=config.max_list_items * 10,  # 10x more items
-            max_string=config.max_value_chars * 10,  # 10x longer strings
-            max_depth=5,  # Deeper nesting
-        )
-    except Exception:  # _pformat may raise ImportError, AttributeError, RecursionError, etc.
-        return f"{type(value).__name__}(...)"
-
-
 def truncate_docstring(docstring: str | None, max_lines: int = 1) -> str:
     """Truncate a docstring to a specified number of lines.
 

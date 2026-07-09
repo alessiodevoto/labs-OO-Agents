@@ -14,11 +14,9 @@ class DocConfig(BaseModel):
     Attributes:
         max_value_chars: Maximum length for string values before truncation
         max_list_items: Maximum number of list/tuple items to display
-        max_dict_items: Maximum number of dict items to display
         hidden_prefixes: Tuple of prefixes to hide (e.g., ("_",) hides private attrs)
         hidden_names: Frozenset of specific attribute names to hide
         include_types: Whether to show type annotations
-        include_defaults: Whether to show default parameter values
         include_docstrings: Whether to include docstring summaries
         include_hints: Whether to show drill-down hints like "# doc(self.items)"
     """
@@ -27,11 +25,9 @@ class DocConfig(BaseModel):
 
     max_value_chars: int = 50
     max_list_items: int = 10
-    max_dict_items: int = 10
     hidden_prefixes: tuple[str, ...] = ("_",)
     hidden_names: frozenset[str] = frozenset()
     include_types: bool = True
-    include_defaults: bool = True
     include_docstrings: bool = True
     include_hints: bool = True
 
@@ -40,12 +36,3 @@ class DocConfig(BaseModel):
         if name in self.hidden_names:
             return True
         return any(name.startswith(prefix) for prefix in self.hidden_prefixes)
-
-    def merge_with(self, other: "DocConfig") -> "DocConfig":
-        if not other.model_fields_set:
-            raise ValueError(
-                "merge_with() received a config with no model_fields_set. "
-                "Was it constructed from model_dump() or model_validate()? "
-                "Config objects must be freshly constructed: DocConfig(field=value)."
-            )
-        return self.model_copy(update={k: getattr(other, k) for k in other.model_fields_set})

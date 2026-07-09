@@ -4,8 +4,8 @@
 
 This module defines the canonical ``_pformat`` implementation used by:
 
-- ``packages/agentdoc/src/agentdoc/format.py`` for value summaries
-- ``src/nemo_oo_agents/runtime/pprint.py`` for the public ``pprint`` API
+- ``nemo_oo_agents/agentdoc/format.py`` for value summaries
+- ``nemo_oo_agents/agentdoc/__init__.py`` for the public ``pformat``/``pprint`` API
 
 The unified pformat() function handles:
 - Regular values (list, dict, str, etc.) with truncation
@@ -188,8 +188,6 @@ def _pformat(
             )
         case ModuleInfo():
             _stream.write(_format_module_info(_object, concise=concise, indent=_indent))
-        case _ if _object.__class__.__name__ == "Environment" and hasattr(_object, "render"):
-            _stream.write(_object.render())
         case type():
             # Python type (class) - extract and format
             from nemo_oo_agents.agentdoc._structured import extract_type_info
@@ -1462,16 +1460,13 @@ def _format_string(s: str, max_string: int | None) -> str:
     Untruncated strings render with the usual repr (or triple-quote multiline
     form when the content has newlines or mixed quote types).
 
-    Truncated strings use the truncation 3.0 slice-keys marker — same shape
-    as ordered containers — so the count is upfront and head/tail chunks are
-    explicitly anchored to their character positions::
+    Truncated strings use the slice-keys marker — same shape as ordered
+    containers — so the count is upfront and head/tail chunks are explicitly
+    anchored to their character positions::
 
         str(len=789516, [:250]='Lorem ipsum...', [-250:]='...end of string')
 
-    The matrix data (truncation_str_v* fixtures) showed the slice-keys form
-    beats the legacy ``'foo'+N`` shape by ~25-30 pp on string-comprehension
-    questions across the 13-model matrix; this is the same family the rest of
-    the renderer uses.
+    This is the same marker family the rest of the renderer uses.
     """
     needs_multiline = "\n" in s or ("'" in s and '"' in s)
 
@@ -1753,8 +1748,7 @@ def _format_sequence(
           set(len=100, items={42, 17, 89, ...})
 
     The marker's *presence* signals truncation — a bare ``[1, 2, 3]`` is
-    always a complete value. See ``docs/design/truncation-3.0.md`` for the
-    rationale and the experimental data behind the format choice.
+    always a complete value.
 
     Cycles: if ``_seen`` already contains ``id(seq)``, emit ``<cycle>`` and
     return. This matches Python's built-in ``Py_ReprEnter`` behaviour for

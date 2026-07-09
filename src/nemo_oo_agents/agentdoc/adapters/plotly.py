@@ -4,7 +4,7 @@
 
 Import to register:
 
-    import agentdoc.adapters.plotly
+    import nemo_oo_agents.agentdoc.adapters.plotly
 
 Without this adapter, doc(px) is ~2000 lines of generated parameter docs.
 With it, doc(px) is ~60 lines covering every chart type.
@@ -16,20 +16,6 @@ import plotly.graph_objects as go
 
 from nemo_oo_agents.agentdoc import spec
 from nemo_oo_agents.agentdoc.ext import CallableInfo, ModuleInfo
-
-# ---------------------------------------------------------------------------
-# Shared parameter shorthand
-# ---------------------------------------------------------------------------
-
-# The "core" px params that appear on almost every express function
-_PX_COMMON = (
-    "data_frame=None, x=None, y=None, color=None, "
-    "facet_row=None, facet_col=None, "
-    "hover_name=None, hover_data=None, "
-    "labels=None, title=None, template=None, "
-    "width=None, height=None"
-)
-
 
 # ---------------------------------------------------------------------------
 # plotly root

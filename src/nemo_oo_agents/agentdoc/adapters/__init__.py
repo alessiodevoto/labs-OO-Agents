@@ -8,11 +8,11 @@ curated, token-efficient view.
 
 Import the adapter you need before calling doc():
 
-    import agentdoc.adapters.plotly  # registers extractors for plotly
+    import nemo_oo_agents.agentdoc.adapters.plotly  # registers extractors for plotly
 
 Or register all adapters for installed libraries at once:
 
-    from agentdoc.adapters import register_all
+    from nemo_oo_agents.agentdoc.adapters import register_all
     register_all()
 
 Available adapters:
