@@ -26,7 +26,7 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Annotated
 
-from nemo_oo_agents.agentdoc import spec
+from nemo_oo_agents.agentdoc import hidden, spec
 from nemo_oo_agents.skill import Skill
 from nemo_oo_agents.tools._bash_session import BashSession
 from nemo_oo_agents.tools._results import (
@@ -96,11 +96,19 @@ class ShellToolsLegacy(Skill):
 
     __nosnapshot__ = True
 
-    def __init__(self, cwd: str | Path = ".") -> None:
-        self._session = BashSession(cwd=cwd)
+    def __init__(self, cwd: str | Path = ".", init_command: str | None = None) -> None:
+        # ``init_command`` (if given) runs once on session start, before any user
+        # command, to set up the environment (e.g. activate a conda env).
+        self._session = BashSession(cwd=cwd, init_command=init_command)
         self._current_file: str | None = None
         self._current_line: int | None = None
         self._rg_available: bool | None = None
+
+    @property
+    @hidden
+    def session(self) -> BashSession:
+        """The underlying persistent bash session (shared with e.g. RepoTools)."""
+        return self._session
 
     async def _has_rg(self) -> bool:
         """Check whether ripgrep (rg) is available, caching the result."""

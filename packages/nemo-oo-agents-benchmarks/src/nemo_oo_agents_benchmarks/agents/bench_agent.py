@@ -156,9 +156,8 @@ class BenchAgent(
 
     def _install_python_tools(self, cwd: str) -> None:
         """Install shell/repo tools rooted at the same working directory."""
-        self.shell = ShellTools(cwd=cwd)
-        self.shell._init_command = _OPTIONAL_TESTBED_ACTIVATE
-        self.repo = RepoTools(root=cwd, session=self.shell._session)
+        self.shell = ShellTools(cwd=cwd, init_command=_OPTIONAL_TESTBED_ACTIVATE)
+        self.repo = RepoTools(root=cwd, session=self.shell.session)
 
     def _seed_todos(self) -> None:
         """Preload the planning todo every benchmark task should start from."""

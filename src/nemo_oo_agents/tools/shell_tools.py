@@ -308,16 +308,24 @@ class ShellTools(Skill):
 
     """
 
-    def __init__(self, cwd: str = ".", **kwargs: Any):
+    def __init__(self, cwd: str = ".", init_command: str | None = None, **kwargs: Any):
         super().__init__(**kwargs)
         self.cwd = Path(cwd).resolve()
         # Construct the session eagerly (it starts lazily on first run) so a
-        # consumer wired at construction time — e.g. RepoTools(session=shell._session)
+        # consumer wired at construction time — e.g. RepoTools(session=shell.session)
         # in the TUI — shares this shell's bash session instead of capturing None.
-        self._session: BashSession = BashSession(cwd=str(self.cwd))
+        # ``init_command`` (if given) runs once on session start, before any user
+        # command, to set up the environment (e.g. activate a conda env).
+        self._session: BashSession = BashSession(cwd=str(self.cwd), init_command=init_command)
 
     def __repr__(self) -> str:
         return f"ShellTools(cwd={self.cwd!s})"
+
+    @property
+    @hidden
+    def session(self) -> BashSession:
+        """The underlying persistent bash session (shared with e.g. RepoTools)."""
+        return self._session
 
     async def _get_session(self) -> BashSession:
         if not self._session._started:

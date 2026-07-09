@@ -16,8 +16,15 @@ from __future__ import annotations
 #   terminal-bench-1    — Terminal Bench 1 (stub, see gl-16)
 #   terminal-bench-2    — Terminal Bench 2 (stub, see gl-15)
 #   locomo              — LoCoMo / long-context memory (stub, see gl-14)
-#   tau-bench           — Tau Bench opt2 (ported; requires Harbor multi-turn gl-23)
 #   dabstep             — DABStep opt63 (ported from agent006)
+#
+# tau-bench is intentionally NOT registered: the TauBenchAgent renders
+# ``doc(self.taubench)`` / ``self.taubench.policy`` every turn, but nothing
+# provides ``self.taubench`` (no TauBenchTools class or injection site exists —
+# the runner's --tools only covers "swebench"/"terminal"), so it would crash
+# with AttributeError on the first context render. Re-register once Harbor
+# multi-turn support (gl-23) and a TauBenchTools injection site land — matching
+# the VendingBench disposition.
 AGENT_CLASSES: dict[str, str] = {
     # General-purpose baselines (gl-22, gl-65–71)
     "baseline": "nemo_oo_agents_benchmarks.agents.baseline:BaselineAgent",
@@ -32,8 +39,8 @@ AGENT_CLASSES: dict[str, str] = {
     "terminal-bench-2": "nemo_oo_agents_benchmarks.agents.terminal_bench2:TerminalBench2Agent",
     # LoCoMo / memory — stub
     "locomo": "nemo_oo_agents_benchmarks.agents.locomo:LoCoMoAgent",
-    # Tau Bench — ported (also requires Harbor multi-turn support, gl-23)
-    "tau-bench": "nemo_oo_agents_benchmarks.agents.tau_bench:TauBenchAgent",
+    # Tau Bench — ported but unregistered until self.taubench injection lands
+    # (gl-23); see the note above.
     # DABStep — ported from agent006 rsc_dab_agent_hard_opt63
     "dabstep": "nemo_oo_agents_benchmarks.agents.dabstep:DABStepAgent",
     # Unified SWE-bench + Terminal-Bench agent

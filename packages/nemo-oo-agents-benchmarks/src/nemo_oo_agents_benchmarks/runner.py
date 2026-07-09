@@ -145,6 +145,35 @@ def _write_answer(result: dict[str, Any]) -> None:
         logger.warning("Could not write answer file %s: %s", ANSWER_FILE, e)
 
 
+def _inject_tools(
+    agent: Any,
+    tools: frozenset[str],
+    agent_type: str,
+    working_dir: str | None,
+) -> None:
+    """Attach container tool suites to ``agent`` based on the requested tool sets.
+
+    The resolved ``--working-dir`` (if any) becomes each tool's shell cwd so
+    relative paths resolve where the agent's system prompt says the repo lives
+    (e.g. swebench/pro expects ``/app``); otherwise we fall back to the container
+    defaults (``/testbed`` for swebench, ``/app`` for terminal).
+    """
+    if "swebench" in tools:
+        from nemo_oo_agents_benchmarks.tools import SWEBenchLocalTools
+
+        agent.swebench = SWEBenchLocalTools(workdir=working_dir or "/testbed")
+
+    # Auto-inject terminal tools for terminal-bench agents — Harbor YAML configs
+    # don't pass --tools, so we infer from agent_type rather than requiring it.
+    if agent_type.startswith("terminal-bench"):
+        tools = tools | {"terminal"}
+
+    if "terminal" in tools:
+        from nemo_oo_agents_benchmarks.tools import TerminalBenchTools
+
+        object.__setattr__(agent, "terminal", TerminalBenchTools(workdir=working_dir or "/app"))
+
+
 async def _run(
     instruction: str,
     model: str,
@@ -171,24 +200,8 @@ async def _run(
     AgentClass = _import_agent_class(agent_type)
     agent: Any = AgentClass(llm=llm_client)
 
-    # Inject container tools if requested.
-    if "swebench" in tools:
-        from nemo_oo_agents_benchmarks.tools import SWEBenchLocalTools
-
-        swebench_tools = SWEBenchLocalTools()
-        agent.swebench = swebench_tools
-        if hasattr(agent, "feedback") and agent.feedback is not None:
-            agent.feedback.swebench = swebench_tools
-
-    # Auto-inject terminal tools for terminal-bench agents — Harbor YAML configs
-    # don't pass --tools, so we infer from agent_type rather than requiring it.
-    if agent_type.startswith("terminal-bench"):
-        tools = tools | {"terminal"}
-
-    if "terminal" in tools:
-        from nemo_oo_agents_benchmarks.tools import TerminalBenchTools
-
-        object.__setattr__(agent, "terminal", TerminalBenchTools(workdir="/app"))
+    # Inject container tools if requested, honouring --working-dir.
+    _inject_tools(agent, tools, agent_type, working_dir)
 
     # All agents share the same interface: {"user_message": instruction}.
     # Benchmark-specific parsing (system prompts, data paths, etc.) happens

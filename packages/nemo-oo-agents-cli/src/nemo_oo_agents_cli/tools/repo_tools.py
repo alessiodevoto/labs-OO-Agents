@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Annotated
 
-from nemo_oo_agents.agentdoc import spec
+from nemo_oo_agents.agentdoc import hidden, spec
 from nemo_oo_agents.skill import Skill
 from nemo_oo_agents.tools._bash_session import BashSession
 from nemo_oo_agents.tools.shell_tools import Match
@@ -415,6 +415,18 @@ class RepoTools(Skill):
     def __repr__(self) -> str:
         session = "shared" if self._session is not None else "none"
         return f"RepoTools(root={str(self._root)!r}, session={session}, has_rg={self._has_rg!r})"
+
+    @property
+    @hidden
+    def root(self) -> Path:
+        """Repository root this tool is scoped to."""
+        return self._root
+
+    @property
+    @hidden
+    def session(self) -> BashSession | None:
+        """The shared bash session, if one was wired in (else None)."""
+        return self._session
 
     async def symbols(
         self,
