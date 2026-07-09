@@ -24,7 +24,11 @@ from nemo_oo_agents.agentdoc import truncating_pformat
 from nemo_oo_agents.decorators import strategy
 from nemo_oo_agents.errors import GenerationError
 from nemo_oo_agents.events import Feedback
-from nemo_oo_agents.strategies.base import GenerationStrategy, RuntimeServices
+from nemo_oo_agents.strategies.base import (
+    GenerationStrategy,
+    RuntimeServices,
+    build_sampling_kwargs,
+)
 from nemo_oo_agents.strategies.template import TemplateStrategy
 
 if TYPE_CHECKING:
@@ -104,6 +108,10 @@ class ReflexionStrategy(GenerationStrategy):
 
         self.base = base if base is not None else PurePythonStrategy()
         self.config = config or _RC()
+
+    def _build_sampling_kwargs(self) -> dict[str, Any]:
+        """Build sampling kwargs for llm calls, excluding None values."""
+        return build_sampling_kwargs(self.config)
 
     @property
     def name(self) -> str:
@@ -261,6 +269,7 @@ class ReflexionStrategy(GenerationStrategy):
         response, _event_id = await runtime.generate(
             tools=None,
             output_model=ReflectionOutput,
+            **self._build_sampling_kwargs(),
         )
 
         # Parse response

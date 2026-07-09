@@ -108,7 +108,7 @@ def _make_process_method():
 ParentAgent.process = _make_process_method()
 """
         agent = ParentAgent.__new__(ParentAgent)
-        context = ValidationContext(agent=agent, available_names=set(), importable_modules=set())
+        context = ValidationContext(agent=agent)
 
         with pytest.raises(RestrictedCodeError, match="class attribute"):
             UnifiedCodeValidator().validate(code, context)

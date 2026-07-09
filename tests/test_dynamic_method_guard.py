@@ -405,7 +405,7 @@ def test_validator_flags_object_dunder_setattr():
         pass
 
     a = _A()
-    ctx = ValidationContext(agent=a, available_names=set(), importable_modules=set())
+    ctx = ValidationContext(agent=a)
 
     with pytest.raises(Exception, match=r"object\.__setattr__"):
         UnifiedCodeValidator().validate(code, ctx)
@@ -428,7 +428,7 @@ def test_validator_flags_super_dunder_setattr():
         pass
 
     a = _A()
-    ctx = ValidationContext(agent=a, available_names=set(), importable_modules=set())
+    ctx = ValidationContext(agent=a)
 
     with pytest.raises(Exception, match=r"super\(\)\.__setattr__"):
         UnifiedCodeValidator().validate(code, ctx)
@@ -447,7 +447,7 @@ def test_validator_flags_type_dunder_setattr():
         pass
 
     a = _A()
-    ctx = ValidationContext(agent=a, available_names=set(), importable_modules=set())
+    ctx = ValidationContext(agent=a)
 
     with pytest.raises(Exception, match=r"type\.__setattr__"):
         UnifiedCodeValidator().validate(code, ctx)
@@ -466,7 +466,7 @@ def test_validator_allows_type_as_a_call():
         pass
 
     a = _A()
-    ctx = ValidationContext(agent=a, available_names=set(), importable_modules=set())
+    ctx = ValidationContext(agent=a)
 
     # __name__ on a derived class is not in the dangerous-dunder list and
     # `type(self)` is a regular function call, not attribute access.

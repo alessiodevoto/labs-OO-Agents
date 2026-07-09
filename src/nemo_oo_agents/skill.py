@@ -23,19 +23,17 @@ _SLASH_COMMAND_ATTR = "_slash_command_meta"
 class SlashCommandMeta:
     """Metadata attached to a method by @slash_command."""
 
-    __slots__ = ("name", "argument_hint", "user_only", "completions", "output_to_agent")
+    __slots__ = ("name", "argument_hint", "completions", "output_to_agent")
 
     def __init__(
         self,
         name: str,
         argument_hint: str | None,
-        user_only: bool,
         completions: tuple[str, ...] = (),
         output_to_agent: bool = True,
     ):
         self.name = name
         self.argument_hint = argument_hint
-        self.user_only = user_only
         self.completions = completions
         self.output_to_agent = output_to_agent
 
@@ -44,7 +42,6 @@ def slash_command(
     name: str,
     *,
     argument_hint: str | None = None,
-    user_only: bool = False,
     completions: tuple[str, ...] | list[str] = (),
     output_to_agent: bool = True,
 ):
@@ -56,7 +53,6 @@ def slash_command(
     Args:
         name: Command name (without leading /). E.g. "gl-ci" -> /gl-ci.
         argument_hint: Shown in help. E.g. "<pipeline-id>".
-        user_only: If True, only the user can invoke (not the LLM).
         completions: Subcommand names offered by tab-completion.
         output_to_agent: If True (default), the command's return value is fed to the
             agent as a turn (via the ``slash_commands`` queue). If False, the
@@ -82,7 +78,7 @@ def slash_command(
         setattr(
             fn,
             _SLASH_COMMAND_ATTR,
-            SlashCommandMeta(name, argument_hint, user_only, tuple(completions), output_to_agent),
+            SlashCommandMeta(name, argument_hint, tuple(completions), output_to_agent),
         )
         return fn
 
@@ -112,18 +108,6 @@ def get_slash_commands(skill) -> list[tuple[SlashCommandMeta, Any]]:
 class _SkillProperties(BaseModel):
     name: str
     description: str
-    license: str | None = None
-    compatibility: str | None = None
-    allowed_tools: str | None = None
-    metadata: dict[str, str] = {}
-    user_invocable: bool = True  # CC default: true; opt out with user-invocable: false
-    install_as: str | None = None  # install-as: command → honored for backward compat
-    argument_hint: str | None = None
-
-    @property
-    def is_user_command(self) -> bool:
-        """True if this skill should be registered as a user-invocable slash command."""
-        return self.user_invocable
 
 
 def _find_skill_md(skill_dir: Path) -> Path | None:
@@ -202,13 +186,6 @@ def _read_skill_properties(skill_dir: Path) -> _SkillProperties:
     return _SkillProperties(
         name=str(meta["name"]).strip(),
         description=str(meta["description"]).strip(),
-        license=meta.get("license"),
-        compatibility=meta.get("compatibility"),
-        allowed_tools=meta.get("allowed-tools"),
-        metadata=meta.get("metadata") or {},
-        user_invocable=bool(meta.get("user-invocable", True)),
-        install_as=meta.get("install-as"),
-        argument_hint=meta.get("argument-hint"),
     )
 
 

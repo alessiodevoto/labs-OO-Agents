@@ -151,7 +151,7 @@ class FakeAgent:
         self.block = ThreadGate(initially_set=True)  # default: handle returns immediately
         self.emit: Callable[[str], None] | None = None  # set by app
         # Tests don't need event-mode channels, so no event_manager.
-        self.queue_manager = QueueManager(agent=self)
+        self.queue_manager = QueueManager()
         self._user_messages_in = self.queue_manager.queue("user_messages")
         self.user_messages = self._user_messages_in.reader
         self.next_kind: str = "GET_USER_INPUT"

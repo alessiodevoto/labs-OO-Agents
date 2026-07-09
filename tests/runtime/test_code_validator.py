@@ -67,8 +67,6 @@ def default_context() -> ValidationContext:
     # (no restrictions by default), but tests need specific modules restricted.
     return ValidationContext(
         code="",
-        available_names={"self", "asyncio", "json"},
-        importable_modules={"asyncio", "json"},
         restricted_imports=frozenset({"os", "shutil", "pathlib", "sys", "ctypes", "importlib"}),
         blocked_modules=DEFAULT_BLOCKED_MODULES,
     )
@@ -187,7 +185,6 @@ class TestSecurityValidator:
             # When builtins is in importable_modules, track the alias
             context = ValidationContext(
                 code="",
-                importable_modules={"builtins"},
             )
             code = """
 from builtins import input as get_input
@@ -1289,8 +1286,6 @@ y = 3
         """Import error should show restricted module in message."""
         context = ValidationContext(
             code="",
-            available_names={"asyncio", "json", "self"},
-            importable_modules={"asyncio", "json"},
             restricted_imports=frozenset({"numpy"}),
         )
         code = "import numpy"
@@ -2100,8 +2095,6 @@ class TestReturnTypeShadowValidator:
         """Build a ValidationContext seeded with a return type annotation."""
         return ValidationContext(
             code="",
-            available_names={"self", "asyncio"},
-            importable_modules={"asyncio"},
             return_type=return_type,
         )
 
@@ -2255,8 +2248,6 @@ class TestReturnTypeShadowValidator:
             """Without a known return type, validator is a no-op."""
             context = ValidationContext(
                 code="",
-                available_names={"self"},
-                importable_modules=set(),
                 return_type=None,
             )
             code = "class Answer:\n    pass"
@@ -2630,8 +2621,6 @@ class TestReturnTypeShadowValidator:
             # but the agent's exec_globals contain the actual class.
             context = ValidationContext(
                 code="",
-                available_names={"self", "Answer"},
-                importable_modules=set(),
                 return_type="Answer",
                 exec_globals={"Answer": Answer},
                 execution_count=2,
@@ -2648,8 +2637,6 @@ class TestReturnTypeShadowValidator:
             crash on a perfectly-fine helper-class definition."""
             context = ValidationContext(
                 code="",
-                available_names={"self"},
-                importable_modules=set(),
                 return_type="Mystery",
                 exec_globals={},
                 execution_count=2,
@@ -2673,8 +2660,6 @@ class TestReturnTypeShadowValidator:
             list_of_ref = list[ForwardRef("Answer")]
             context = ValidationContext(
                 code="",
-                available_names={"self", "Answer"},
-                importable_modules=set(),
                 return_type=list_of_ref,
                 exec_globals={"Answer": Answer},
                 execution_count=2,

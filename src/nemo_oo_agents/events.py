@@ -440,11 +440,12 @@ class LLMCallEnd(EventBase):  # type: ignore[misc]
 class Notification(EventBase):  # type: ignore[misc]
     """Generic "something happened" signal rendered into the LLM context.
 
-    Not tied to any specific producer. Input queues emit Notifications
-    on ``put()`` to tell the LLM that new input arrived, but this event
-    is equally usable for long-running job completions, timer ticks,
-    external webhook deliveries, or any other asynchronous signal the
-    agent should know about.
+    Not tied to any specific producer. The framework never emits this
+    event itself — input channels emit :class:`QueueOutput` on ``put()``
+    (see ``runtime/channels.py``). ``Notification`` is a user-emitted
+    signal you can ``event_manager.add(...)`` yourself for long-running
+    job completions, timer ticks, external webhook deliveries, or any
+    other asynchronous signal the agent should know about.
 
     - ``source`` identifies the producer — convention is a short
       namespaced string like ``"queue:user_messages"``, ``"job:12345"``,
