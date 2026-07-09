@@ -385,7 +385,6 @@ Standard Python builtins and agent instance (`self`) are available."""
 
         # Filter out blocked modules so the LLM doesn't see unavailable symbols
         from nemo_oo_agents.agentdoc.visibility import iter_agent_mro_modules
-        from nemo_oo_agents.runtime.restrictions import is_from_blocked_module
 
         blocked = self.config.restrictions.blocked_modules
 
@@ -395,75 +394,149 @@ Standard Python builtins and agent instance (`self`) are available."""
         # types/functions reflect parent-module symbols too.
         own_module_names = {m.__name__ for m in iter_agent_mro_modules(type(runtime.agent))}
 
-        # Separate into categories
-        modules = []
-        types_defined = []
-        functions_defined = []
-        imported_items = []
+        return self._render_execution_context_stub(context, own_module_names, blocked)
+
+    def _render_execution_context_stub(
+        self, context: dict[str, Any], own_module_names: set[str], blocked: Any
+    ) -> str:
+        """Render the execution scope as a Python stub (`.pyi`-style).
+
+        Symbols are rendered as the top of a module would be: ``import`` lines
+        for dependencies, and ``class X: ...`` / ``def f(...) -> T: ...`` stubs
+        for things defined in the agent's own (or an ancestor) module. Functions
+        are rendered uniformly — whether a function is LLM-backed (a ``@strategy``
+        standalone) or plain Python is an implementation detail; the ``async``
+        keyword in the signature already carries the calling contract.
+        """
+        import sys
+
+        from nemo_oo_agents.runtime.restrictions import is_from_blocked_module
+
+        module_lines: list[str] = []  # `import x` / `import x as y`
+        from_imports: dict[str, set[str]] = {}  # module -> {names} for imported symbols
+        in_scope_only: list[str] = []  # names with no faithful import path
+        defined_classes: list[tuple[str, Any]] = []  # (name, obj) defined in agent module
+        functions: list[tuple[str, Any]] = []  # (name, obj) — all callables, unified
+
+        def record_import(obj: Any, name: str) -> None:
+            """Add a `from <module> import <name>` if it's faithfully importable.
+
+            We only emit an import we know would actually resolve: the object
+            must be reachable as ``<module>.<name>``. Prefer the shortest public
+            path (``from pydantic import BaseModel`` over ``pydantic.main``) by
+            walking the dotted prefixes of ``__module__``. Type aliases and oddly
+            re-exported names (whose ``__module__`` doesn't actually expose them)
+            fall back to a plain in-scope listing rather than a fabricated,
+            unrunnable import.
+            """
+            mod = getattr(obj, "__module__", None)
+            if not mod:
+                in_scope_only.append(name)
+                return
+            parts_ = mod.split(".")
+            for i in range(1, len(parts_) + 1):
+                candidate = ".".join(parts_[:i])
+                if getattr(sys.modules.get(candidate), name, None) is obj:
+                    from_imports.setdefault(candidate, set()).add(name)
+                    return
+            in_scope_only.append(name)
 
         for name, obj in context.items():
             if is_from_blocked_module(obj, blocked):
                 continue
             if isinstance(obj, types.ModuleType):
                 actual_name = getattr(obj, "__name__", name)
-                if actual_name != name:
-                    modules.append(f"{actual_name} as {name}")
-                else:
-                    modules.append(name)
-            elif isinstance(obj, type):
-                obj_module = getattr(obj, "__module__", None)
-                if obj_module in own_module_names:
-                    types_defined.append(name)
-                else:
-                    imported_items.append(name)
+                module_lines.append(
+                    f"import {actual_name} as {name}" if actual_name != name else f"import {name}"
+                )
             elif callable(obj):
+                # Functions/classes defined in the agent's own or an ancestor
+                # module → stubs. `@strategy` generation standalones carry
+                # _needs_generation and belong with the agent's code even if
+                # their wrapper's __module__ differs, so they always render as
+                # stubs (async signature included). Everything else imported →
+                # an import line.
                 obj_module = getattr(obj, "__module__", None)
-                if obj_module in own_module_names:
-                    functions_defined.append(name)
+                defined_here = obj_module in own_module_names or getattr(
+                    obj, "_needs_generation", False
+                )
+                if isinstance(obj, type):
+                    if defined_here:
+                        defined_classes.append((name, obj))
+                    else:
+                        record_import(obj, name)
+                elif defined_here:
+                    functions.append((name, obj))
                 else:
-                    imported_items.append(name)
+                    record_import(obj, name)
+            else:
+                in_scope_only.append(name)
 
-        # Build documentation. The module / types / imports lists come
-        # first, immediately under the heading — the single most useful
-        # piece of information the LLM reads in this block is "what
-        # names can I reference", and prose buried above it loses that
-        # signal.
-        parts = ["## Execution Context", ""]
+        code: list[str] = []
 
-        if modules:
-            parts.append(f"**Imported modules**: {', '.join(sorted(modules))}")
+        for line in sorted(module_lines):
+            code.append(line)
+        for mod in sorted(from_imports):
+            names = ", ".join(sorted(from_imports[mod]))
+            code.append(f"from {mod} import {names}")
 
-        if types_defined:
-            parts.append(
-                "**Available types** (defined in agent or ancestor modules): "
-                f"{', '.join(sorted(types_defined))}"
-            )
-            parts.append(
-                f"  Tip: Use `doc({types_defined[0]})` to inspect fields before constructing"
-            )
+        if defined_classes:
+            if code:
+                code.append("")
+            for name, _ in sorted(defined_classes, key=lambda p: p[0]):
+                code.append(f"class {name}: ...")
 
-        if functions_defined:
-            parts.append(
-                "**Available functions** (defined in agent or ancestor modules): "
-                f"{', '.join(sorted(functions_defined))}"
-            )
+        if functions:
+            if code:
+                code.append("")
+            code.append(self._render_function_specs(functions))
 
-        if imported_items:
-            items = sorted(imported_items)
-            parts.append(f"**Imported items**: {', '.join(items)}")
+        parts = [
+            "## Execution Context",
+            "",
+            "These names are already in scope inside `execute_python()` (state "
+            "persists across cells) — call them, don't re-import or re-define. "
+            "Use `doc(name)` to inspect any type or function in detail.",
+            "",
+            "```python",
+            "\n".join(code) if code else "# (no module-level symbols)",
+            "```",
+        ]
+
+        if in_scope_only:
+            parts.append(f"Also in scope: {', '.join(sorted(in_scope_only))}.")
 
         parts.append(
-            "**Task decomposition**: `@strategy(PredictStrategy())` decorator, "
-            "`strategy`, `PredictStrategy`, `CodeActStrategy`"
-        )
-        parts.append("**Stdlib**: `asyncio`, `typing` (Literal, Annotated, etc.)")
-
-        parts.append("")
-        parts.append(
-            "**Always available**: `self`, `print()`, `pprint()`, `doc()`, `return_result()`, `reasoning()` method parameters"
+            "Always available without import: `self`, `print()`, `pprint()`, `doc()`, "
+            "`return_result()`, `reasoning()`, plus stdlib `asyncio` and `typing`."
         )
 
         return "\n".join(parts)
+
+    @staticmethod
+    def _render_function_specs(functions: list[tuple[str, Any]]) -> str:
+        """Render module-level functions as full signatures + docstrings.
+
+        Reuses ``agentdoc.doc()`` (the same machinery that renders method specs
+        in ``doc(type(self))``) so module-level functions — including
+        ``@strategy`` standalone generation functions — get an ``async`` marker,
+        a typed signature, and their docstring instead of a bare name.
+
+        ``inline_depth=0`` keeps the output to signatures + docstrings without
+        re-expanding referenced type bodies; those types already appear under
+        **Available types** / **Imported items**, so expanding them here would
+        only duplicate content.
+
+        Falls back to a bare comma-joined name list if ``doc()`` raises, so a
+        rendering failure can never break prompt construction.
+        """
+        ordered = sorted(functions, key=lambda pair: pair[0])
+        try:
+            from nemo_oo_agents.agentdoc import doc
+
+            return doc(*[obj for _, obj in ordered], inline_depth=0)
+        except Exception:
+            return ", ".join(name for name, _ in ordered)
 
     @strategy(TemplateStrategy())
     async def strategy_instructions(self, runtime: RuntimeServices) -> str:

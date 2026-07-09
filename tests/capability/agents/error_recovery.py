@@ -4,13 +4,14 @@ from contextvars import ContextVar
 
 from requests.models import Response
 
-from nemo_oo_agents import Agent
+from nemo_oo_agents import Agent, hidden
 
 # Task-scoped call counter: each asyncio.Task gets its own copy, so parallel
 # eval runs are isolated while instances within the same run share state.
 _api_call_count: ContextVar[int] = ContextVar("_api_call_count", default=0)
 
 
+@hidden
 def _call_weather_api() -> Response:
     """
     Simulates an unreliable weather API.

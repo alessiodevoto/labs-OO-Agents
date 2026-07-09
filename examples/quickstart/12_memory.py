@@ -17,7 +17,7 @@ Demonstrates the additive memory subsystem end to end WITHOUT needing an LLM
 
 import time
 
-from nemo_oo_agents import Agent
+from nemo_oo_agents import Agent, hidden
 from nemo_oo_agents.events import Task
 from nemo_oo_agents.memory import (
     Memory,
@@ -36,6 +36,7 @@ class AssistantAgent(MemoryToolsMixin, Agent, llm=FakeLLMClient()):
     """A plain agent that has opted into the memory tools via the mixin."""
 
 
+@hidden  # harness glue, not an agent tool — keep it out of the execution context
 def main() -> None:
     agent = AssistantAgent()
 
