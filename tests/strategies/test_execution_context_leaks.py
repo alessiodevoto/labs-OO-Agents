@@ -249,7 +249,98 @@ class TestModuleLevelFunctionsVisible:
         agent, _ = _make_func_agent_in_fresh_module()
         data = await build_prompt_data(agent.run)
         ec = TestExecutionContextRendering._extract_execution_context(data.system_prompt)
-        assert "Available functions" in ec
         assert "classify_item" in ec
         assert "plain_helper" in ec
         assert "secret_helper" not in ec
+
+
+# ---------------------------------------------------------------------------
+# 5. Module-level functions render with FULL signatures + docstrings (issue
+#    227), as a Python stub (default "stub" style). Functions are rendered
+#    uniformly — no plain-vs-generation split; the `async` keyword in the
+#    signature is the only calling-convention signal the LLM needs.
+# ---------------------------------------------------------------------------
+
+
+class TestModuleLevelFunctionSignatures:
+    """In the default stub style, module-level functions render with the same
+    fidelity agent methods get (signature + return type + docstring), inside a
+    Python code fence, with no plain-vs-generation distinction exposed."""
+
+    @pytest.mark.asyncio
+    async def test_generation_function_rendered_with_signature(self):
+        """A @strategy standalone renders as a full async signature + docstring."""
+        agent, _ = _make_func_agent_in_fresh_module()
+        data = await build_prompt_data(agent.run)
+        ec = TestExecutionContextRendering._extract_execution_context(data.system_prompt)
+        # Full async signature + return type, not a bare name.
+        assert "async def classify_item(text: str) -> Literal[a, b]:" in ec
+        # Docstring carried through.
+        assert "Classify the item." in ec
+
+    @pytest.mark.asyncio
+    async def test_rendered_as_python_code_fence(self):
+        """The scope is rendered inside a ```python fence (stub style)."""
+        agent, _ = _make_func_agent_in_fresh_module()
+        data = await build_prompt_data(agent.run)
+        ec = TestExecutionContextRendering._extract_execution_context(data.system_prompt)
+        assert "```python" in ec
+
+    @pytest.mark.asyncio
+    async def test_no_plain_vs_generation_split(self):
+        """Functions render uniformly; the generation-vs-plain distinction is an
+        implementation detail and is never exposed (async signal is the keyword)."""
+        agent, _ = _make_func_agent_in_fresh_module()
+        data = await build_prompt_data(agent.run)
+        ec = TestExecutionContextRendering._extract_execution_context(data.system_prompt)
+        # The generation/plain distinction is an implementation detail and must
+        # NOT be exposed. Both functions appear; the only async signal is the
+        # `async def` keyword in the signature itself.
+        assert "LLM-backed generation functions" not in ec
+        assert "Plain helpers" not in ec
+        assert "async def classify_item(" in ec  # async signal via the signature
+        assert "def plain_helper(" in ec
+
+    @pytest.mark.asyncio
+    async def test_plain_helper_rendered_with_signature(self):
+        """A plain module-level helper renders with a typed signature, not a bare name."""
+        agent, _ = _make_func_agent_in_fresh_module()
+        data = await build_prompt_data(agent.run)
+        ec = TestExecutionContextRendering._extract_execution_context(data.system_prompt)
+        # Plain helper gets a typed signature, not just its bare name.
+        # (The fixture's plain_helper has no docstring, so only the signature
+        # is asserted here.)
+        assert "def plain_helper(x: int) -> int:" in ec
+
+    @pytest.mark.asyncio
+    async def test_imported_symbols_as_import_lines(self):
+        """Dependencies render as runnable import statements, not a prose list."""
+        agent, _ = _make_func_agent_in_fresh_module()
+        data = await build_prompt_data(agent.run)
+        ec = TestExecutionContextRendering._extract_execution_context(data.system_prompt)
+        # Dependencies render as runnable import statements, not a prose list.
+        assert "from nemo_oo_agents import" in ec
+        assert "Agent" in ec
+
+    @pytest.mark.asyncio
+    async def test_doc_hint_present(self):
+        """The block nudges the LLM to use doc(name) for full detail."""
+        agent, _ = _make_func_agent_in_fresh_module()
+        data = await build_prompt_data(agent.run)
+        ec = TestExecutionContextRendering._extract_execution_context(data.system_prompt)
+        assert "doc(name)" in ec
+
+    def test_render_function_specs_fallback_to_names(self):
+        """If doc() raises, rendering falls back to a bare name list rather
+        than breaking prompt construction."""
+        from unittest.mock import patch
+
+        def boom(*_a, **_k):
+            raise RuntimeError("doc exploded")
+
+        with patch("nemo_oo_agents.agentdoc.doc", side_effect=boom):
+            out = CodeActStrategy._render_function_specs(
+                [("beta", lambda: None), ("alpha", lambda: None)]
+            )
+        # Sorted bare names, no exception propagated.
+        assert out == "alpha, beta"
