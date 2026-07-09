@@ -17,11 +17,11 @@ Usage:
 from pathlib import Path
 
 try:
-    from nemo_oo_agents.mcp import MCPManager
+    from nooa.mcp import MCPManager
 except ImportError as e:
     raise ImportError("mcp-nemo-oo-agents not installed. Run: uv sync --extra mcp") from e
 
-from nemo_oo_agents.util.quickstart import *
+from nooa.util.quickstart import *
 
 # .mcp.json lives next to this script — tells MCPManager how to launch "wiki"
 MCP_CONFIG = Path(__file__).parent / ".mcp.json"

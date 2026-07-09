@@ -19,7 +19,7 @@ The current API exposes confusing internal concepts (`set_static` vs `set_dynami
 ### One unified value type: `Context`
 
 ```python
-from nemo_oo_agents import Context
+from nooa import Context
 
 context={
     "role": "You are a security expert",                       # bare str = suffix, literal

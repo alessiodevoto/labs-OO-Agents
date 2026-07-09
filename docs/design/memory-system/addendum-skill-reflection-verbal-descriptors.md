@@ -2,7 +2,7 @@
 
 **Three independent changes to the existing memory subsystem:**
 
-- **A. Skill interface layer** — expose the memory system as a registerable *skill* plugin (like those in `nemo-oo-skills/`), as a **thin external adapter** over the existing `MemoryManager`. **No internal architecture change.**
+- **A. Skill interface layer** — expose the memory system as a registerable *skill* plugin (like those in `nooa-skills/`), as a **thin external adapter** over the existing `MemoryManager`. **No internal architecture change.**
 - **B. `DreamEngine` → `ReflectionEngine`** — rename `dream` → `reflection` everywhere (a better term), with no back-compat shims.
 - **C. Verbal ordered descriptors** — replace the agent-facing numeric descriptors in `schema.py` (importance, …) with **ALL-CAPS ordered verbal ladders**; internal calculations stay numeric.
 
@@ -26,12 +26,12 @@ Analysis was done with a 4-agent `/workflows` pass over the skill mechanism, the
 
 ### A.1 How the skill mechanism works
 
-A "skill" is a Python package registered via the **`nemo_oo_agents.skills` entry-point group** (not a `SKILL.md`). Contract (`src/nemo_oo_agents/skill.py`, `src/nemo_oo_agents/skill_registry.py`):
+A "skill" is a Python package registered via the **`nooa.skills` entry-point group** (not a `SKILL.md`). Contract (`src/nooa/skill.py`, `src/nooa/skill_registry.py`):
 
-- A skill subclasses **`nemo_oo_agents.skill.Skill`** with a **zero-arg `__init__`** (discovery instantiates `skill_cls()`, `skill_registry.py:343`; classes whose `__init__` needs args are skipped, `:84-92`). Do **not** call `Skill.__init__` from a subclass — it raises unless given `obj/content` (`skill.py:303`); existing skills (`agent_mesh`, `TraceExplorerTools`) define their own `__init__` and never call super.
+- A skill subclasses **`nooa.skill.Skill`** with a **zero-arg `__init__`** (discovery instantiates `skill_cls()`, `skill_registry.py:343`; classes whose `__init__` needs args are skipped, `:84-92`). Do **not** call `Skill.__init__` from a subclass — it raises unless given `obj/content` (`skill.py:303`); existing skills (`agent_mesh`, `TraceExplorerTools`) define their own `__init__` and never call super.
 - **`attach(self, agent)`** (`skill.py:314`) is the agent-dependent setup hook — base sets `self._agent = agent`; the registry calls it right after `setattr(agent, attr, skill)` (`skill_registry.py:362-363`). **`detach(self)`** (`skill.py:321`) tears down.
 - The registry sets the skill on the agent as `attr = name.split('.')[-1]` (`skill_registry.py:349`), so entry point **`nvzurich.memory` → `self.memory`**, and every public method is reachable as `self.memory.<method>` in agent-generated code and rendered via `doc(self.memory)`. The **class docstring is the LLM-facing description**.
-- Lifecycle: **discover** (`entry_points(group="nemo_oo_agents.skills")`, `:170-181`, or `discover_libs` over `libs_dirs` in `.nemo_oo_agents/config.toml`) → **load** (instantiate + `setattr` + `attach`) → **activate** (`_unhide_skill` via `spec(agent, attr, hidden=False)` so it shows in `doc(self)`; resolve `requires`; refresh `@slash_command`s).
+- Lifecycle: **discover** (`entry_points(group="nooa.skills")`, `:170-181`, or `discover_libs` over `libs_dirs` in `.nooa/config.toml`) → **load** (instantiate + `setattr` + `attach`) → **activate** (`_unhide_skill` via `spec(agent, attr, hidden=False)` so it shows in `doc(self)`; resolve `requires`; refresh `@slash_command`s).
 - Inside skill code, the agent is reached via `self._agent` (`self._agent.queue_manager`, `.event_manager`, …). Optional: `requires: tuple[str,...]` (hard deps), `context_block` (dynamic context), `@slash_command` (user-invocable).
 
 ### A.2 Design — `MemorySkill`
@@ -39,13 +39,13 @@ A "skill" is a Python package registered via the **`nemo_oo_agents.skills` entry
 The existing six conscious-tool bodies (`remember`/`recall`/`search`/`update_memory`/`forget`/`associate`) live **once** in `MemoryToolsMixin` (`manager.py:487-575`), with validation (`_tool_enabled`), coercion (`_as_type`) and the disabled-tool guard. The skill **reuses them by inheritance** and overrides only the host-resolution hook — **zero duplication (guideline 3)**:
 
 ```python
-# nemo-oo-skills/memory/__init__.py
+# nooa-skills/memory/__init__.py
 from typing import Any
-from nemo_oo_agents.skill import Skill
-from nemo_oo_agents.memory import MemoryManager, MemoryConfig
-from nemo_oo_agents.memory.manager import MemoryToolsMixin
-from nemo_oo_agents.memory.reflection import ReflectionReport   # post-Workstream B
-from nemo_oo_agents.memory.monitoring import MemoryStats
+from nooa.skill import Skill
+from nooa.memory import MemoryManager, MemoryConfig
+from nooa.memory.manager import MemoryToolsMixin
+from nooa.memory.reflection import ReflectionReport   # post-Workstream B
+from nooa.memory.monitoring import MemoryStats
 
 
 class MemorySkill(MemoryToolsMixin, Skill):
@@ -102,29 +102,29 @@ Why this is correct under the guidelines:
 ### A.3 Packaging
 
 > **Implemented as (supersedes the submodule plan below):** the skill ships **in‑core**
-> as a built‑in, alongside the other `nemo.*` skills — `src/nemo_oo_agents/memory/memory_skill/`
-> registered in the **core `pyproject.toml`** as `"nemo.memory" = "nemo_oo_agents.memory.memory_skill:MemorySkill"`
+> as a built‑in, alongside the other `nemo.*` skills — `src/nooa/memory/memory_skill/`
+> registered in the **core `pyproject.toml`** as `"nemo.memory" = "nooa.memory.memory_skill:MemorySkill"`
 > → attr `self.memory`, activated with `self.skills.activate(["nemo.memory"])`. This avoids a
 > submodule/gitlink dependency; the skill is still a thin external adapter (no memory‑internal
 > change). The original "external submodule package" plan is kept below for context.
 
-In the **`nemo-oo-skills` submodule** (separation of concerns — every distributable skill lives there; the core `src/` ships the *architecture*, not skill packages):
+In the **`nooa-skills` submodule** (separation of concerns — every distributable skill lives there; the core `src/` ships the *architecture*, not skill packages):
 
 ```
-nemo-oo-skills/memory/
+nooa-skills/memory/
 ├── __init__.py        # MemorySkill (above)
 └── pyproject.toml
 ```
 
 ```toml
-# nemo-oo-skills/memory/pyproject.toml
+# nooa-skills/memory/pyproject.toml
 [project]
 name = "memory"
 version = "0.1.0"
 description = "Long-term memory skill: remember/recall/search/update_memory/forget/associate + reflect."
-dependencies = []                       # nemo_oo_agents.memory ships in core
+dependencies = []                       # nooa.memory ships in core
 
-[project.entry-points."nemo_oo_agents.skills"]
+[project.entry-points."nooa.skills"]
 "nvzurich.memory" = "memory:MemorySkill"
 ```
 
@@ -160,7 +160,7 @@ A **hard, mechanical rename** with **no aliases** (guideline 2) — net-neutral 
 
 ### B.2 File renames
 
-- `src/nemo_oo_agents/memory/dream.py` → `reflection.py`
+- `src/nooa/memory/dream.py` → `reflection.py`
 - `tests/memory/test_memory_dream.py` → `test_memory_reflection.py`
 - `examples/memory_bench/dreaming.py` → `reflecting.py` (update `from dreaming import make_llm_reasoner` → `from reflecting import …` in `locomo.py`, `longmemeval.py`, `test_memory_dreaming_reasoner.py`)
 
@@ -230,7 +230,7 @@ Rewrite `remember`'s docstring and `MEMORY_SCHEMA_GUIDE` (`manager.py:57`, line 
 
 1. **B (rename)** first — mechanical, unblocks everything (the skill imports `reflect`/`ReflectionReport`). Verify zero `Dream*` grep hits + tests green.
 2. **C (verbal descriptors)** — add `descriptors.py`, `Memory.*_label()`, switch the mixin boundary to verbal, raise on unknown labels/types, rewrite `MEMORY_SCHEMA_GUIDE`.
-3. **A (skill)** — add `nemo-oo-skills/memory/`; it reuses B's `reflect()` and C's verbal mixin automatically.
+3. **A (skill)** — add `nooa-skills/memory/`; it reuses B's `reflect()` and C's verbal mixin automatically.
 
 ---
 

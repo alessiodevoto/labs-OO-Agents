@@ -10,7 +10,7 @@ import asyncio
 
 import pytest
 
-from nemo_oo_agents.tracing._session import get_session, set_session
+from nooa.tracing._session import get_session, set_session
 
 
 class TestSessionIsolation:

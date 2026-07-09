@@ -186,7 +186,7 @@ async def process_sample(
 
     # Set session for this async context (supports concurrent samples)
     try:
-        from nemo_oo_agents.tracing import set_session
+        from nooa.tracing import set_session
 
         config.trace_dir.mkdir(parents=True, exist_ok=True)
         set_session(session_id)
@@ -212,7 +212,7 @@ async def process_sample(
 
         _trace = None
         try:
-            from nemo_oo_agents.tracing import flush_traces
+            from nooa.tracing import flush_traces
 
             flush_traces()
         except ImportError:
@@ -231,7 +231,7 @@ async def process_sample(
             except Exception:
                 pass
             try:
-                from nemo_oo_agents.trace_explorer import TraceExplorer
+                from nooa.trace_explorer import TraceExplorer
 
                 _trace = await TraceExplorer.from_viewer(config.otlp_base_url, session_id)
             except Exception as e:
@@ -243,7 +243,7 @@ async def process_sample(
                 )
         elif result.trace_file is not None:
             try:
-                from nemo_oo_agents.trace_explorer import TraceExplorer
+                from nooa.trace_explorer import TraceExplorer
 
                 _trace = await TraceExplorer.from_file(str(result.trace_file))
             except Exception:
@@ -251,7 +251,7 @@ async def process_sample(
     finally:
         if config.use_otlp:
             try:
-                from nemo_oo_agents.tracing import set_session
+                from nooa.tracing import set_session
 
                 set_session(None)
             except ImportError:
@@ -268,7 +268,7 @@ async def process_sample(
         # JSONL-only mode: flush then confirm the file landed on disk.
         trace_file_str = str(trace_file)
         try:
-            from nemo_oo_agents.tracing import flush_traces
+            from nooa.tracing import flush_traces
 
             flush_traces()
             await asyncio.sleep(0.1)

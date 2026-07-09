@@ -5,11 +5,11 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
-from nemo_oo_agents import Agent
-from nemo_oo_agents.context_blocks import Metadata
-from nemo_oo_agents.runtime.event_manager import EventManager
-from nemo_oo_agents.storage import SQLiteStorageManager
-from nemo_oo_agents.unifiedllm import CompletionClient
+from nooa import Agent
+from nooa.context_blocks import Metadata
+from nooa.runtime.event_manager import EventManager
+from nooa.storage import SQLiteStorageManager
+from nooa.unifiedllm import CompletionClient
 
 
 class _TestAgent(Agent, llm=CompletionClient(model="openai/gpt-4o-mini", api_key="test")):

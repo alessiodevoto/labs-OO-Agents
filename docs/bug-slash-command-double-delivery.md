@@ -14,7 +14,7 @@ Observed mid-task:
 ```
 
 ## Root cause
-`packages/nemo-oo-agents-cli/src/nemo_oo_agents_cli/tui/session.py`, ~lines 712-724:
+`packages/nemo-labs-oo-agents-cli/src/nooa_cli/tui/session.py`, ~lines 712-724:
 
 ```python
 if result.slash_result is not None:

@@ -10,7 +10,7 @@ from typing import Annotated
 
 from pydantic import Field, create_model
 
-from nemo_oo_agents.unifiedllm import Tool
+from nooa.unifiedllm import Tool
 
 
 class TestAnnotatedReturnTypes:

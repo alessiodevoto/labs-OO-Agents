@@ -1,6 +1,6 @@
 # Harbor config for Terminal Bench 2.0 full run — benchagent × nemotron-3-ultra (GA)
 # Fixed: added NEMO_OO_LLM_CONFIG + OTLP_ENDPOINT, switched to short model name resolved via registry.
-# Run from /localhome/local-rcabral/rcabral/nemo_oo_agents:
+# Run from /localhome/local-rcabral/rcabral/nooa:
 #   source .env
 #   harbor run --config util/harbor/terminal_bench_2_colossus_ultra_fixed.yaml
 
@@ -20,7 +20,7 @@ environment:
   type: docker
   env:
     NVIDIA_INTERNAL_API_KEY: "${NVIDIA_INTERNAL_API_KEY}"
-    NEMO_OO_LLM_CONFIG: "/installed-agent/nemo_oo_agents/llm_config.yaml"
+    NEMO_OO_LLM_CONFIG: "/installed-agent/nooa/llm_config.yaml"
     OTLP_ENDPOINT: "http://10.87.108.113:5001/v1/traces"
     SHELL_VARIANT: "3"
     NEMO_OO_AGENTS_GIT_URL: "${NEMO_OO_AGENTS_GIT_URL}"
@@ -31,7 +31,7 @@ environment:
       target: /installed-agent
 
 agents:
-  - import_path: util.harbor.nemo_oo_harbor_agent:NemoOoAgentsHarborAgent
+  - import_path: util.harbor.nooa_harbor_agent:NemoOoAgentsHarborAgent
     model_name: nemotron-3-ultra
     kwargs:
       agent_type: swebench/todo

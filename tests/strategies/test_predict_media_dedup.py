@@ -10,9 +10,9 @@ Image/Audio/File twice. Each effective input must be attached exactly once.
 
 from pydantic import BaseModel
 
-from nemo_oo_agents.media import Image, Media
-from nemo_oo_agents.runtime.media_capture import media_to_content_block
-from nemo_oo_agents.strategies.current_call import CurrentCall
+from nooa.media import Image, Media
+from nooa.runtime.media_capture import media_to_content_block
+from nooa.strategies.current_call import CurrentCall
 
 
 class Result(BaseModel):

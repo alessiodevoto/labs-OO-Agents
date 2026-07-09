@@ -20,9 +20,9 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
-from nemo_oo_agents.strategies.codeact import CodeActStrategy
-from nemo_oo_agents.strategies.predict import PredictStrategy
-from nemo_oo_agents.unifiedllm.unifiedllm import (
+from nooa.strategies.codeact import CodeActStrategy
+from nooa.strategies.predict import PredictStrategy
+from nooa.unifiedllm.unifiedllm import (
     _loose_response_schema,
     _maybe_sanitize_response_format,
     _resolve_schema_refs,
@@ -333,7 +333,7 @@ class TestResponsesToolSchemaFallback:
     """The return_result tool for tuple/set must yield a Responses-API-safe schema."""
 
     def _convert(self, return_type):
-        from nemo_oo_agents.unifiedllm.unifiedllm import ResponsesClient
+        from nooa.unifiedllm.unifiedllm import ResponsesClient
 
         tool = CodeActStrategy()._build_return_result_tool(return_type, "meth")
         # _convert_tool_to_schema is a plain method using only `self`-free helpers.

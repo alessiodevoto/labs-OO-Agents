@@ -8,9 +8,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from nemo_oo_agents.library_manager import LibraryManager
-from nemo_oo_agents.skill import Skill
-from nemo_oo_agents.tools.library_writing_lib import LintReport, SkillWriting
+from nooa.library_manager import LibraryManager
+from nooa.skill import Skill
+from nooa.tools.library_writing_lib import LintReport, SkillWriting
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -23,7 +23,7 @@ class _FakeShell:
     async def edit(self, path, old_str, new_str):
         from pathlib import Path
 
-        from nemo_oo_agents.tools._results import EditResult
+        from nooa.tools._results import EditResult
 
         p = Path(path)
         content = p.read_text()
@@ -35,7 +35,7 @@ class _FakeShell:
     async def grep(self, pattern, path=".", **kwargs):
         import subprocess
 
-        from nemo_oo_agents.tools._results import SearchResult
+        from nooa.tools._results import SearchResult
 
         r = subprocess.run(
             ["grep", "-rn", pattern, path],
@@ -49,7 +49,7 @@ class _FakeShell:
     async def find(self, pattern, path=".", **kwargs):
         import subprocess
 
-        from nemo_oo_agents.tools._results import SearchResult
+        from nooa.tools._results import SearchResult
 
         r = subprocess.run(
             ["find", path, "-name", pattern, "-not", "-path", "*/.*"],
@@ -63,7 +63,7 @@ class _FakeShell:
     async def run(self, command, timeout=120.0):
         import subprocess
 
-        from nemo_oo_agents.tools._results import RunResult
+        from nooa.tools._results import RunResult
 
         r = subprocess.run(
             command,
@@ -283,7 +283,7 @@ async def test_create_writes_pyproject_and_init(tmp_path: Path):
 
     init_py = (tmp_path / "mylib" / "__init__.py").read_text()
     assert DESCRIPTION in init_py
-    assert "from nemo_oo_agents.skill import Skill" in init_py
+    assert "from nooa.skill import Skill" in init_py
     assert "class Mylib(Skill):" in init_py
 
 

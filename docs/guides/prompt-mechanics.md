@@ -1,4 +1,4 @@
-# How Prompts Work in nemo_oo_agents
+# How Prompts Work in nooa
 
 ## The Ellipsis IS the Key
 

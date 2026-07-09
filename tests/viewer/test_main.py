@@ -14,9 +14,9 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 from starlette.testclient import TestClient
 
-from nemo_oo_agents.viewer import main as main_module
-from nemo_oo_agents.viewer import otlp_store
-from nemo_oo_agents.viewer.main import app
+from nooa.viewer import main as main_module
+from nooa.viewer import otlp_store
+from nooa.viewer.main import app
 
 # ---------------------------------------------------------------------------
 # Helpers

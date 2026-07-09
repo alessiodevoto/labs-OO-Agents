@@ -26,7 +26,7 @@ from pydantic import BaseModel, ConfigDict, DirectoryPath, Field, FilePath
 logger = logging.getLogger(__name__)
 
 # Framework identifier for LLM client registry
-NEMO_OO_AGENTS_FRAMEWORK = "nemo_oo_agents"
+NEMO_OO_AGENTS_FRAMEWORK = "nooa"
 
 
 # ---------------------------------------------------------------------------
@@ -48,13 +48,13 @@ class NemoOOAgentsWrapperOutput(BaseModel):
     content: str
 
 
-class NemoOOAgentsWrapperConfig(FunctionBaseConfig, name="nemo_oo_agents_wrapper"):
+class NemoOOAgentsWrapperConfig(FunctionBaseConfig, name="nooa_wrapper"):
     """Configuration model for the NeMo OO Agents wrapper.
 
     Example YAML::
 
         workflow:
-          _type: nemo_oo_agents_wrapper
+          _type: nooa_wrapper
           agent: path/to/module.py:ClassName
           method: chat
           dependencies:
@@ -236,7 +236,7 @@ async def register(config: NemoOOAgentsWrapperConfig, b: Builder):
             # Enable NeMo OO Agents's own tracing first -- this creates the TracerProvider
             # with full resource metadata (including tags) attached.
             try:
-                from nemo_oo_agents.tracing import enable_tracing
+                from nooa.tracing import enable_tracing
 
                 enable_tracing(
                     extra_resource_attrs={"tags": ["nat_integration"]},
@@ -260,7 +260,7 @@ async def register(config: NemoOOAgentsWrapperConfig, b: Builder):
             )
 
         module_path, class_name = config.agent.rsplit(":", 1)
-        unique_module_name = f"nemo_oo_agents_wrapper_{uuid.uuid4().hex[:8]}"
+        unique_module_name = f"nooa_wrapper_{uuid.uuid4().hex[:8]}"
 
         spec = importlib.util.spec_from_file_location(unique_module_name, module_path)
         if spec is None:

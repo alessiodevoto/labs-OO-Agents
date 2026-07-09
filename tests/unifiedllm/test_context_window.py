@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-from nemo_oo_agents.unifiedllm import CompletionClient
+from nooa.unifiedllm import CompletionClient
 
 
 def test_completion_client_context_window_config_is_honored():

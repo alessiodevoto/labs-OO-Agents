@@ -1,6 +1,6 @@
 # Harbor config for Terminal Bench 1.0 full run — benchagent × nemotron-3-ultra (GA)
 # Fixed: NEMO_OO_LLM_CONFIG + OTLP_ENDPOINT + OPENAI_BASE_URL for litellm routing.
-# Run from /localhome/local-rcabral/rcabral/nemo_oo_agents:
+# Run from /localhome/local-rcabral/rcabral/nooa:
 #   source .env
 #   harbor run --config util/harbor/terminal_bench_colossus_ultra_full_fixed.yaml
 
@@ -20,7 +20,7 @@ environment:
   type: docker
   env:
     NVIDIA_INTERNAL_API_KEY: "${NVIDIA_INTERNAL_API_KEY}"
-    NEMO_OO_LLM_CONFIG: "/installed-agent/nemo_oo_agents/llm_config.yaml"
+    NEMO_OO_LLM_CONFIG: "/installed-agent/nooa/llm_config.yaml"
     OTLP_ENDPOINT: "http://10.87.108.113:5001/v1/traces"
     SHELL_VARIANT: "3"
     OPENAI_BASE_URL: "https://inference-api.nvidia.com/v1"

@@ -113,7 +113,7 @@ async def run_task(task_input: SubprocessTaskInput) -> EvalTestResult:
     # Set up tracing (fresh process — no inherited state)
     if task_input.use_otlp:
         try:
-            from nemo_oo_agents.tracing import (
+            from nooa.tracing import (
                 enable_tracing,
                 exporters,
                 set_session,
@@ -165,7 +165,7 @@ async def run_task(task_input: SubprocessTaskInput) -> EvalTestResult:
     # all tracing data because shutdown_traces() silently drops un-ended spans.
     if _execute_error is not None or (result and result.error):
         try:
-            from nemo_oo_agents.tracing import end_active_spans
+            from nooa.tracing import end_active_spans
 
             _reason = str(_execute_error) if _execute_error else result.error
             end_active_spans(_reason)
@@ -184,7 +184,7 @@ async def run_task(task_input: SubprocessTaskInput) -> EvalTestResult:
     # BSP flush.  Blocking the event loop thread directly causes LiteLLM's
     # LoggingWorker asyncio.wait_for() to time out (CancelledError → TimeoutError).
     try:
-        from nemo_oo_agents.tracing import shutdown_traces
+        from nooa.tracing import shutdown_traces
 
         await asyncio.get_event_loop().run_in_executor(None, shutdown_traces)
     except Exception as e:
@@ -219,14 +219,14 @@ async def run_task(task_input: SubprocessTaskInput) -> EvalTestResult:
         except Exception:
             pass
         try:
-            from nemo_oo_agents.trace_explorer import TraceExplorer
+            from nooa.trace_explorer import TraceExplorer
 
             _trace = await TraceExplorer.from_viewer(_viewer_base, session_id)
         except Exception as e:
             log.warning(f"Failed to load trace for session {session_id}: {e}")
     elif result.trace_file is not None:
         try:
-            from nemo_oo_agents.trace_explorer import TraceExplorer
+            from nooa.trace_explorer import TraceExplorer
 
             _trace = await TraceExplorer.from_file(str(result.trace_file))
         except Exception:
@@ -235,7 +235,7 @@ async def run_task(task_input: SubprocessTaskInput) -> EvalTestResult:
     # Clean up session
     if task_input.use_otlp:
         try:
-            from nemo_oo_agents.tracing import set_session
+            from nooa.tracing import set_session
 
             set_session(None)
         except Exception:

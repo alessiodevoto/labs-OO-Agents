@@ -32,7 +32,7 @@ environment:
     OPENAI_API_BASE: "https://inference-api.nvidia.com/v1"
     OPENAI_BASE_URL: "https://inference-api.nvidia.com/v1"
     NEMO_OO_AGENTS_GIT_URL: "${NEMO_OO_AGENTS_GIT_URL}"
-    NEMO_OO_LLM_CONFIG: "/installed-agent/nemo_oo_agents/llm_config.yaml"
+    NEMO_OO_LLM_CONFIG: "/installed-agent/nooa/llm_config.yaml"
     OTLP_ENDPOINT: "${OTLP_ENDPOINT:-}"
     PATH: "/opt/harbor/cpython312/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
   mounts_json:

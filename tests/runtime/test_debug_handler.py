@@ -1,4 +1,4 @@
-"""Tests for nemo_oo_agents.runtime.debug_handler.
+"""Tests for nooa.runtime.debug_handler.
 
 Covers:
 - register_llm_call / unregister_llm_call
@@ -31,7 +31,7 @@ def _reset_module_state():
     """Reset module-level globals to clean state between tests."""
     from pathlib import Path
 
-    import nemo_oo_agents.runtime.debug_handler as dh
+    import nooa.runtime.debug_handler as dh
 
     dh._pending_llm_calls.clear()
     dh._llm_call_counter = 0
@@ -54,13 +54,13 @@ class TestRegisterUnregisterLlmCall:
         _reset_module_state()
 
     def test_register_returns_call_id(self):
-        from nemo_oo_agents.runtime.debug_handler import register_llm_call
+        from nooa.runtime.debug_handler import register_llm_call
 
         call_id = register_llm_call("gpt-4")
         assert call_id.startswith("llm_")
 
     def test_register_increments_counter(self):
-        from nemo_oo_agents.runtime.debug_handler import _pending_llm_calls, register_llm_call
+        from nooa.runtime.debug_handler import _pending_llm_calls, register_llm_call
 
         id1 = register_llm_call("gpt-4")
         id2 = register_llm_call("claude-3")
@@ -68,7 +68,7 @@ class TestRegisterUnregisterLlmCall:
         assert len(_pending_llm_calls) == 2
 
     def test_register_stores_metadata(self):
-        from nemo_oo_agents.runtime.debug_handler import _pending_llm_calls, register_llm_call
+        from nooa.runtime.debug_handler import _pending_llm_calls, register_llm_call
 
         call_id = register_llm_call("gpt-4", prompt_tokens=1500, endpoint="https://api.openai.com")
         info = _pending_llm_calls[call_id]
@@ -80,14 +80,14 @@ class TestRegisterUnregisterLlmCall:
         assert "thread" in info
 
     def test_register_stores_extra_metadata(self):
-        from nemo_oo_agents.runtime.debug_handler import _pending_llm_calls, register_llm_call
+        from nooa.runtime.debug_handler import _pending_llm_calls, register_llm_call
 
         call_id = register_llm_call("gpt-4", custom_key="custom_value")
         info = _pending_llm_calls[call_id]
         assert info["custom_key"] == "custom_value"
 
     def test_unregister_removes_call(self):
-        from nemo_oo_agents.runtime.debug_handler import (
+        from nooa.runtime.debug_handler import (
             _pending_llm_calls,
             register_llm_call,
             unregister_llm_call,
@@ -99,13 +99,13 @@ class TestRegisterUnregisterLlmCall:
         assert call_id not in _pending_llm_calls
 
     def test_unregister_nonexistent_no_error(self):
-        from nemo_oo_agents.runtime.debug_handler import unregister_llm_call
+        from nooa.runtime.debug_handler import unregister_llm_call
 
         # Should not raise
         unregister_llm_call("nonexistent_id")
 
     def test_register_optional_fields_none(self):
-        from nemo_oo_agents.runtime.debug_handler import _pending_llm_calls, register_llm_call
+        from nooa.runtime.debug_handler import _pending_llm_calls, register_llm_call
 
         call_id = register_llm_call("gpt-4")
         info = _pending_llm_calls[call_id]
@@ -113,14 +113,14 @@ class TestRegisterUnregisterLlmCall:
         assert info["endpoint"] is None
 
     def test_thread_name_recorded(self):
-        from nemo_oo_agents.runtime.debug_handler import _pending_llm_calls, register_llm_call
+        from nooa.runtime.debug_handler import _pending_llm_calls, register_llm_call
 
         call_id = register_llm_call("gpt-4")
         info = _pending_llm_calls[call_id]
         assert info["thread"] == threading.current_thread().name
 
     def test_concurrent_register_unique_ids(self):
-        from nemo_oo_agents.runtime.debug_handler import register_llm_call
+        from nooa.runtime.debug_handler import register_llm_call
 
         ids = []
         errors = []
@@ -155,20 +155,20 @@ class TestLlmCallContext:
         _reset_module_state()
 
     def test_registers_and_unregisters(self):
-        from nemo_oo_agents.runtime.debug_handler import _pending_llm_calls, llm_call_context
+        from nooa.runtime.debug_handler import _pending_llm_calls, llm_call_context
 
         with llm_call_context(model="gpt-4") as call_id:
             assert call_id in _pending_llm_calls
         assert call_id not in _pending_llm_calls
 
     def test_yields_call_id(self):
-        from nemo_oo_agents.runtime.debug_handler import llm_call_context
+        from nooa.runtime.debug_handler import llm_call_context
 
         with llm_call_context(model="gpt-4") as call_id:
             assert call_id.startswith("llm_")
 
     def test_unregisters_on_exception(self):
-        from nemo_oo_agents.runtime.debug_handler import _pending_llm_calls, llm_call_context
+        from nooa.runtime.debug_handler import _pending_llm_calls, llm_call_context
 
         call_id_holder = []
         with pytest.raises(ValueError):
@@ -179,7 +179,7 @@ class TestLlmCallContext:
         assert call_id_holder[0] not in _pending_llm_calls
 
     def test_passes_metadata(self):
-        from nemo_oo_agents.runtime.debug_handler import _pending_llm_calls, llm_call_context
+        from nooa.runtime.debug_handler import _pending_llm_calls, llm_call_context
 
         with llm_call_context(
             model="claude-3", prompt_tokens=500, endpoint="https://api.anthropic.com"
@@ -203,21 +203,21 @@ class TestDumpPendingLlmCalls:
         _reset_module_state()
 
     def test_no_calls_message(self):
-        from nemo_oo_agents.runtime.debug_handler import _dump_pending_llm_calls
+        from nooa.runtime.debug_handler import _dump_pending_llm_calls
 
         out = io.StringIO()
         _dump_pending_llm_calls(out)
         assert "No pending LLM calls" in out.getvalue()
 
     def test_uses_stderr_by_default(self, capsys):
-        from nemo_oo_agents.runtime.debug_handler import _dump_pending_llm_calls
+        from nooa.runtime.debug_handler import _dump_pending_llm_calls
 
         _dump_pending_llm_calls()
         captured = capsys.readouterr()
         assert "PENDING LLM CALLS" in captured.err
 
     def test_shows_call_info(self):
-        from nemo_oo_agents.runtime.debug_handler import _dump_pending_llm_calls, register_llm_call
+        from nooa.runtime.debug_handler import _dump_pending_llm_calls, register_llm_call
 
         call_id = register_llm_call("gpt-4", prompt_tokens=1000, endpoint="https://api.openai.com")
         out = io.StringIO()
@@ -229,7 +229,7 @@ class TestDumpPendingLlmCalls:
         assert call_id in content
 
     def test_shows_elapsed_time(self):
-        from nemo_oo_agents.runtime.debug_handler import _dump_pending_llm_calls, register_llm_call
+        from nooa.runtime.debug_handler import _dump_pending_llm_calls, register_llm_call
 
         register_llm_call("gpt-4")
         out = io.StringIO()
@@ -237,7 +237,7 @@ class TestDumpPendingLlmCalls:
         assert "Waiting:" in out.getvalue()
 
     def test_no_tokens_line_when_none(self):
-        from nemo_oo_agents.runtime.debug_handler import _dump_pending_llm_calls, register_llm_call
+        from nooa.runtime.debug_handler import _dump_pending_llm_calls, register_llm_call
 
         register_llm_call("gpt-4")  # No prompt_tokens
         out = io.StringIO()
@@ -245,7 +245,7 @@ class TestDumpPendingLlmCalls:
         assert "Prompt tokens" not in out.getvalue()
 
     def test_no_endpoint_line_when_none(self):
-        from nemo_oo_agents.runtime.debug_handler import _dump_pending_llm_calls, register_llm_call
+        from nooa.runtime.debug_handler import _dump_pending_llm_calls, register_llm_call
 
         register_llm_call("gpt-4")  # No endpoint
         out = io.StringIO()
@@ -253,7 +253,7 @@ class TestDumpPendingLlmCalls:
         assert "Endpoint:" not in out.getvalue()
 
     def test_multiple_calls(self):
-        from nemo_oo_agents.runtime.debug_handler import _dump_pending_llm_calls, register_llm_call
+        from nooa.runtime.debug_handler import _dump_pending_llm_calls, register_llm_call
 
         register_llm_call("gpt-4")
         register_llm_call("claude-3")
@@ -271,7 +271,7 @@ class TestDumpPendingLlmCalls:
 
 class TestDetectLlmInStack:
     def test_returns_empty_for_normal_frame(self):
-        from nemo_oo_agents.runtime.debug_handler import _detect_llm_in_stack
+        from nooa.runtime.debug_handler import _detect_llm_in_stack
 
         frame = sys._getframe()
         result = _detect_llm_in_stack(frame)
@@ -279,7 +279,7 @@ class TestDetectLlmInStack:
         assert isinstance(result, list)
 
     def test_detects_pattern_in_fake_frame(self):
-        from nemo_oo_agents.runtime.debug_handler import _detect_llm_in_stack
+        from nooa.runtime.debug_handler import _detect_llm_in_stack
 
         # Build a fake frame chain where the filename contains 'httpx'
         fake_frame = MagicMock()
@@ -292,7 +292,7 @@ class TestDetectLlmInStack:
         assert any("httpx" in item.lower() for item in result)
 
     def test_no_duplicates_for_same_pattern(self):
-        from nemo_oo_agents.runtime.debug_handler import _detect_llm_in_stack
+        from nooa.runtime.debug_handler import _detect_llm_in_stack
 
         frame2 = MagicMock()
         frame2.f_code.co_filename = "/site-packages/httpx/_transport.py"
@@ -312,13 +312,13 @@ class TestDetectLlmInStack:
         assert descriptions.count("HTTP client (httpx)") == 1
 
     def test_handles_none_frame(self):
-        from nemo_oo_agents.runtime.debug_handler import _detect_llm_in_stack
+        from nooa.runtime.debug_handler import _detect_llm_in_stack
 
         result = _detect_llm_in_stack(None)
         assert result == []
 
     def test_handles_exception_gracefully(self):
-        from nemo_oo_agents.runtime.debug_handler import _detect_llm_in_stack
+        from nooa.runtime.debug_handler import _detect_llm_in_stack
 
         bad_frame = MagicMock()
         bad_frame.f_code.co_filename = "/site-packages/litellm/main.py"
@@ -339,7 +339,7 @@ class TestDetectLlmInStack:
 
 class TestGetDebugDumpPath:
     def test_returns_path_with_pid(self):
-        from nemo_oo_agents.runtime.debug_handler import _get_debug_dump_path
+        from nooa.runtime.debug_handler import _get_debug_dump_path
 
         path = _get_debug_dump_path()
         assert str(os.getpid()) in path.name
@@ -347,7 +347,7 @@ class TestGetDebugDumpPath:
         assert path.suffix == ".txt"
 
     def test_uses_dump_dir(self, tmp_path):
-        import nemo_oo_agents.runtime.debug_handler as dh
+        import nooa.runtime.debug_handler as dh
 
         original = dh._dump_dir
         try:
@@ -376,21 +376,21 @@ class TestDumpCellCode:
                 del linecache.cache[k]
 
     def test_no_cells_message(self):
-        from nemo_oo_agents.runtime.debug_handler import _dump_cell_code
+        from nooa.runtime.debug_handler import _dump_cell_code
 
         out = io.StringIO()
         _dump_cell_code(out)
         assert "No Cell code" in out.getvalue()
 
     def test_uses_stderr_by_default(self, capsys):
-        from nemo_oo_agents.runtime.debug_handler import _dump_cell_code
+        from nooa.runtime.debug_handler import _dump_cell_code
 
         _dump_cell_code()
         captured = capsys.readouterr()
         assert "REGISTERED CELL CODE" in captured.err
 
     def test_dumps_cell_entries(self):
-        from nemo_oo_agents.runtime.debug_handler import _dump_cell_code
+        from nooa.runtime.debug_handler import _dump_cell_code
 
         lines = ["x = 1\n", "y = 2\n"]
         linecache.cache["Cell exec_1[0]"] = (len("".join(lines)), None, lines, "Cell exec_1[0]")
@@ -403,7 +403,7 @@ class TestDumpCellCode:
         assert "y = 2" in content
 
     def test_shows_line_count(self):
-        from nemo_oo_agents.runtime.debug_handler import _dump_cell_code
+        from nooa.runtime.debug_handler import _dump_cell_code
 
         lines = ["a = 1\n", "b = 2\n", "c = 3\n"]
         linecache.cache["Cell exec_2[0]"] = (len("".join(lines)), None, lines, "Cell exec_2[0]")
@@ -426,13 +426,13 @@ class TestDebugSignalHandler:
         _reset_module_state()
 
     def test_writes_dump_file(self, tmp_path):
-        from nemo_oo_agents.runtime.debug_handler import _debug_signal_handler
+        from nooa.runtime.debug_handler import _debug_signal_handler
 
         dump_path = tmp_path / "debug_dump_test.txt"
         frame = sys._getframe()
 
         with patch(
-            "nemo_oo_agents.runtime.debug_handler._get_debug_dump_path",
+            "nooa.runtime.debug_handler._get_debug_dump_path",
             return_value=dump_path,
         ):
             _debug_signal_handler(signal.SIGUSR2, frame)
@@ -442,13 +442,13 @@ class TestDebugSignalHandler:
         assert "DEBUG DUMP" in content
 
     def test_writes_signal_number(self, tmp_path):
-        from nemo_oo_agents.runtime.debug_handler import _debug_signal_handler
+        from nooa.runtime.debug_handler import _debug_signal_handler
 
         dump_path = tmp_path / "debug_dump_test.txt"
         frame = sys._getframe()
 
         with patch(
-            "nemo_oo_agents.runtime.debug_handler._get_debug_dump_path",
+            "nooa.runtime.debug_handler._get_debug_dump_path",
             return_value=dump_path,
         ):
             _debug_signal_handler(12, frame)
@@ -457,13 +457,13 @@ class TestDebugSignalHandler:
         assert "12" in content
 
     def test_writes_to_stderr(self, tmp_path, capsys):
-        from nemo_oo_agents.runtime.debug_handler import _debug_signal_handler
+        from nooa.runtime.debug_handler import _debug_signal_handler
 
         dump_path = tmp_path / "debug_dump_test.txt"
         frame = sys._getframe()
 
         with patch(
-            "nemo_oo_agents.runtime.debug_handler._get_debug_dump_path",
+            "nooa.runtime.debug_handler._get_debug_dump_path",
             return_value=dump_path,
         ):
             _debug_signal_handler(signal.SIGUSR2, frame)
@@ -472,7 +472,7 @@ class TestDebugSignalHandler:
         assert "DEBUG DUMP" in captured.err
 
     def test_includes_pending_llm_calls(self, tmp_path):
-        from nemo_oo_agents.runtime.debug_handler import (
+        from nooa.runtime.debug_handler import (
             _debug_signal_handler,
             register_llm_call,
         )
@@ -482,7 +482,7 @@ class TestDebugSignalHandler:
         frame = sys._getframe()
 
         with patch(
-            "nemo_oo_agents.runtime.debug_handler._get_debug_dump_path",
+            "nooa.runtime.debug_handler._get_debug_dump_path",
             return_value=dump_path,
         ):
             _debug_signal_handler(signal.SIGUSR2, frame)
@@ -492,7 +492,7 @@ class TestDebugSignalHandler:
         assert "gpt-4" in content
 
     def test_handles_file_write_error(self, tmp_path, capsys):
-        from nemo_oo_agents.runtime.debug_handler import _debug_signal_handler
+        from nooa.runtime.debug_handler import _debug_signal_handler
 
         dump_path = tmp_path / "debug_dump_test.txt"
         frame = sys._getframe()
@@ -500,7 +500,7 @@ class TestDebugSignalHandler:
         # The error path is triggered when open() raises inside the try block
         with (
             patch(
-                "nemo_oo_agents.runtime.debug_handler._get_debug_dump_path",
+                "nooa.runtime.debug_handler._get_debug_dump_path",
                 return_value=dump_path,
             ),
             patch("builtins.open", side_effect=OSError("permission denied")),
@@ -512,7 +512,7 @@ class TestDebugSignalHandler:
         assert "Debug dump error" in captured.err
 
     def test_shows_llm_stuck_warning_when_pending_calls(self, tmp_path):
-        from nemo_oo_agents.runtime.debug_handler import (
+        from nooa.runtime.debug_handler import (
             _debug_signal_handler,
             register_llm_call,
         )
@@ -522,7 +522,7 @@ class TestDebugSignalHandler:
         frame = sys._getframe()
 
         with patch(
-            "nemo_oo_agents.runtime.debug_handler._get_debug_dump_path",
+            "nooa.runtime.debug_handler._get_debug_dump_path",
             return_value=dump_path,
         ):
             _debug_signal_handler(signal.SIGUSR2, frame)
@@ -531,7 +531,7 @@ class TestDebugSignalHandler:
         assert "STUCK IN LLM CALL" in content
 
     def test_shows_llm_stuck_when_detected_in_stack(self, tmp_path):
-        from nemo_oo_agents.runtime.debug_handler import _debug_signal_handler
+        from nooa.runtime.debug_handler import _debug_signal_handler
 
         dump_path = tmp_path / "debug_dump_test.txt"
         frame = sys._getframe()
@@ -540,11 +540,11 @@ class TestDebugSignalHandler:
 
         with (
             patch(
-                "nemo_oo_agents.runtime.debug_handler._get_debug_dump_path",
+                "nooa.runtime.debug_handler._get_debug_dump_path",
                 return_value=dump_path,
             ),
             patch(
-                "nemo_oo_agents.runtime.debug_handler._detect_llm_in_stack",
+                "nooa.runtime.debug_handler._detect_llm_in_stack",
                 return_value=detected_items,
             ),
         ):
@@ -573,13 +573,13 @@ class TestInstallDebugHandler:
             pass
 
     def test_install_sets_handler_installed(self):
-        import nemo_oo_agents.runtime.debug_handler as dh
+        import nooa.runtime.debug_handler as dh
 
         dh.install_debug_handler()
         assert dh._handler_installed is True
 
     def test_install_idempotent(self):
-        import nemo_oo_agents.runtime.debug_handler as dh
+        import nooa.runtime.debug_handler as dh
 
         dh.install_debug_handler()
         # Call again — should not re-install
@@ -589,14 +589,14 @@ class TestInstallDebugHandler:
 
     def test_install_enables_faulthandler(self):
 
-        import nemo_oo_agents.runtime.debug_handler as dh
+        import nooa.runtime.debug_handler as dh
 
         with patch("faulthandler.enable") as mock_fh:
             dh.install_debug_handler()
             mock_fh.assert_called_once()
 
     def test_install_handles_signal_error_gracefully(self):
-        import nemo_oo_agents.runtime.debug_handler as dh
+        import nooa.runtime.debug_handler as dh
 
         with (
             patch("signal.signal", side_effect=ValueError("not main thread")),
@@ -608,7 +608,7 @@ class TestInstallDebugHandler:
         assert dh._handler_installed is False
 
     def test_install_handles_os_error(self):
-        import nemo_oo_agents.runtime.debug_handler as dh
+        import nooa.runtime.debug_handler as dh
 
         with (
             patch("signal.signal", side_effect=OSError("platform error")),
@@ -618,7 +618,7 @@ class TestInstallDebugHandler:
         assert dh._handler_installed is False
 
     def test_dump_dir_arg_sets_module_state(self, tmp_path):
-        import nemo_oo_agents.runtime.debug_handler as dh
+        import nooa.runtime.debug_handler as dh
 
         dh.install_debug_handler(dump_dir=tmp_path)
         assert dh._dump_dir == tmp_path
@@ -637,7 +637,7 @@ class TestDumpDebugInfo:
         _reset_module_state()
 
     def test_writes_to_provided_file(self):
-        from nemo_oo_agents.runtime.debug_handler import dump_debug_info
+        from nooa.runtime.debug_handler import dump_debug_info
 
         out = io.StringIO()
         dump_debug_info(out)
@@ -645,14 +645,14 @@ class TestDumpDebugInfo:
         assert "Manual debug dump" in content
 
     def test_writes_to_stderr_by_default(self, capsys):
-        from nemo_oo_agents.runtime.debug_handler import dump_debug_info
+        from nooa.runtime.debug_handler import dump_debug_info
 
         dump_debug_info()
         captured = capsys.readouterr()
         assert "Manual debug dump" in captured.err
 
     def test_includes_pending_calls(self):
-        from nemo_oo_agents.runtime.debug_handler import dump_debug_info, register_llm_call
+        from nooa.runtime.debug_handler import dump_debug_info, register_llm_call
 
         register_llm_call("gpt-4")
         out = io.StringIO()
@@ -660,7 +660,7 @@ class TestDumpDebugInfo:
         assert "gpt-4" in out.getvalue()
 
     def test_includes_cell_code_section(self):
-        from nemo_oo_agents.runtime.debug_handler import dump_debug_info
+        from nooa.runtime.debug_handler import dump_debug_info
 
         out = io.StringIO()
         dump_debug_info(out)
@@ -681,7 +681,7 @@ class TestCodeExecTracking:
 
     def test_register_unregister_code_exec(self):
         """register/unregister add and remove a code-exec entry with a preview."""
-        from nemo_oo_agents.runtime.debug_handler import (
+        from nooa.runtime.debug_handler import (
             get_pending_code_execs,
             register_code_exec,
             unregister_code_exec,
@@ -699,7 +699,7 @@ class TestCodeExecTracking:
 
     def test_code_exec_context_clears_on_exit(self):
         """code_exec_context registers on enter and clears on normal exit."""
-        from nemo_oo_agents.runtime.debug_handler import (
+        from nooa.runtime.debug_handler import (
             code_exec_context,
             get_pending_code_execs,
         )
@@ -710,7 +710,7 @@ class TestCodeExecTracking:
 
     def test_code_exec_context_clears_on_exception(self):
         """code_exec_context clears the entry even if the body raises."""
-        from nemo_oo_agents.runtime.debug_handler import (
+        from nooa.runtime.debug_handler import (
             code_exec_context,
             get_pending_code_execs,
         )
@@ -723,7 +723,7 @@ class TestCodeExecTracking:
 
     def test_preview_blank_for_empty_code(self):
         """Empty or None code yields a blank preview, never an index error."""
-        from nemo_oo_agents.runtime.debug_handler import (
+        from nooa.runtime.debug_handler import (
             get_pending_code_execs,
             register_code_exec,
         )
@@ -743,7 +743,7 @@ class TestGetActivity:
 
     def test_idle_when_nothing_in_flight(self):
         """get_activity reports idle with empty lists when nothing runs."""
-        from nemo_oo_agents.runtime.debug_handler import get_activity
+        from nooa.runtime.debug_handler import get_activity
 
         activity = get_activity()
         assert activity["phase"] == "idle"
@@ -752,7 +752,7 @@ class TestGetActivity:
 
     def test_executing_python_phase(self):
         """An open code-exec context makes get_activity report executing_python."""
-        from nemo_oo_agents.runtime.debug_handler import code_exec_context, get_activity
+        from nooa.runtime.debug_handler import code_exec_context, get_activity
 
         with code_exec_context("y = 3"):
             activity = get_activity()
@@ -761,7 +761,7 @@ class TestGetActivity:
 
     def test_waiting_llm_phase(self):
         """An in-flight LLM call makes get_activity report waiting_llm."""
-        from nemo_oo_agents.runtime.debug_handler import get_activity, llm_call_context
+        from nooa.runtime.debug_handler import get_activity, llm_call_context
 
         with llm_call_context(model="gpt-test"):
             activity = get_activity()
@@ -770,7 +770,7 @@ class TestGetActivity:
 
     def test_python_wins_when_llm_call_made_from_cell(self):
         """A cell that is itself blocked on an LLM call still reports executing_python."""
-        from nemo_oo_agents.runtime.debug_handler import (
+        from nooa.runtime.debug_handler import (
             code_exec_context,
             get_activity,
             llm_call_context,
@@ -790,12 +790,12 @@ class TestGetActivity:
 
 
 def test_attach_activity_tracking_reflects_llm_calls():
-    from nemo_oo_agents.events import LLMCallEnd, LLMCallStart
-    from nemo_oo_agents.runtime.debug_handler import (
+    from nooa.events import LLMCallEnd, LLMCallStart
+    from nooa.runtime.debug_handler import (
         attach_activity_tracking,
         get_activity,
     )
-    from nemo_oo_agents.runtime.event_manager import EventManager
+    from nooa.runtime.event_manager import EventManager
 
     em = EventManager()
     unsub = attach_activity_tracking(em)
@@ -822,12 +822,12 @@ def test_attach_activity_tracking_reflects_llm_calls():
 
 
 def test_attach_activity_tracking_clears_on_unsubscribe():
-    from nemo_oo_agents.events import LLMCallStart
-    from nemo_oo_agents.runtime.debug_handler import (
+    from nooa.events import LLMCallStart
+    from nooa.runtime.debug_handler import (
         attach_activity_tracking,
         get_activity,
     )
-    from nemo_oo_agents.runtime.event_manager import EventManager
+    from nooa.runtime.event_manager import EventManager
 
     em = EventManager()
     unsub = attach_activity_tracking(em)

@@ -9,7 +9,7 @@ different skill — can read the history without re-deriving it.
 
 import pytest
 
-from nemo_oo_agents.tools.todo import TodoComment, TodoManager
+from nooa.tools.todo import TodoComment, TodoManager
 
 
 def test_comment_returns_stored_instance():

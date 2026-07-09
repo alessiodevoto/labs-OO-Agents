@@ -19,7 +19,7 @@ import yaml
 from dotenv import find_dotenv, load_dotenv
 
 if TYPE_CHECKING:
-    from nemo_oo_agents.unifiedllm import UnifiedLLM
+    from nooa.unifiedllm import UnifiedLLM
 
 # Load .env with override=True to ensure .env values take precedence
 # over any pre-existing shell environment variables
@@ -128,8 +128,8 @@ def client(model_id: str, **kwargs) -> UnifiedLLM:
     # The registry lazily auto-loads on first use, so trigger ensure_loaded()
     # before the membership check (MODELS is empty until then).
     try:
-        from nemo_oo_agents.unifiedllm.registry import MODELS as _REGISTRY
-        from nemo_oo_agents.unifiedllm.registry import ensure_loaded, get_llm_client
+        from nooa.unifiedllm.registry import MODELS as _REGISTRY
+        from nooa.unifiedllm.registry import ensure_loaded, get_llm_client
 
         ensure_loaded()
         if model_id in _REGISTRY:
@@ -138,7 +138,7 @@ def client(model_id: str, **kwargs) -> UnifiedLLM:
         pass
     import litellm
 
-    from nemo_oo_agents.unifiedllm import CompletionClient, RetryConfig
+    from nooa.unifiedllm import CompletionClient, RetryConfig
 
     # Drop unsupported params (e.g., tool_choice for some Azure models via NVIDIA)
     litellm.drop_params = True
@@ -146,7 +146,7 @@ def client(model_id: str, **kwargs) -> UnifiedLLM:
     # Enable error capture if CAPTURE_LLM_ERRORS is set (only once globally)
     global _error_capture_enabled
     if not _error_capture_enabled and os.getenv("CAPTURE_LLM_ERRORS"):
-        from nemo_oo_agents.unifiedllm.http_logging import enable_http_request_logging
+        from nooa.unifiedllm.http_logging import enable_http_request_logging
 
         # Determine output directory - use CAPTURE_LLM_ERRORS value if it's a path
         capture_setting = os.getenv("CAPTURE_LLM_ERRORS")

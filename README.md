@@ -1,6 +1,6 @@
 # NeMo OO Agents
 
-> **Renaming notice:** NeMo OO Agents is being renamed to **NeMo Object-Oriented Agents** (`nemo_oo_agents`). The new name will take effect in an upcoming release.
+> **Renaming notice:** NeMo OO Agents is being renamed to **NeMo Object-Oriented Agents** (`nooa`). The new name will take effect in an upcoming release.
 
 **What if your Python methods could think?** With NeMo OO Agents, they can. Write AI agents using familiar Python OOP—no new paradigms to learn. Define method signatures with type hints and docstrings, and your methods automatically become intelligent agents that can reason, execute code, and even create new methods to decompose complex tasks.
 
@@ -22,12 +22,12 @@
 ### Just want the OO CLI/TUI?
 
 ```bash
-curl -LsSf https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents/-/raw/main/scripts/install.sh | sh
+curl -LsSf https://gitlab-master.nvidia.com/interactive-agents/nooa/-/raw/main/scripts/install.sh | sh
 exec $SHELL          # pick up the ~/.local/bin PATH change
-nemo-oo tui          # launch the interactive agent REPL
+nooa tui          # launch the interactive agent REPL
 ```
 
-The script installs `uv`, a managed Python, and the three lockstep packages (CLI + core + the `nemo-oo-agents-nvidia` aliases), then prompts for your `NVIDIA_INTERNAL_API_KEY` and saves it to `~/.config/nemo_oo/secrets.yaml`. Upgrade later with `uv tool upgrade nemo-oo-agents-cli`.
+The script installs `uv`, a managed Python, and the three lockstep packages (CLI + core + the `nemo-oo-agents-nvidia` aliases), then prompts for your `NVIDIA_INTERNAL_API_KEY` and saves it to `~/.config/nooa/secrets.yaml`. Upgrade later with `uv tool upgrade nemo-labs-oo-agents-cli`.
 
 ### Use as a library
 
@@ -40,29 +40,29 @@ cd my-agent-project
 
 # Core framework + NVIDIA-gateway model aliases (claude-haiku, nemotron3-nano-30b,
 # gpt-5.2, …). External users who don't want the NVIDIA aliases drop the second `uv add`.
-uv add "nemo-oo-agents @ git+https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents.git@main"
-uv add "nemo-oo-agents-nvidia @ git+https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents.git@main#subdirectory=packages/nemo-oo-agents-nvidia"
+uv add "nemo-oo-agents @ git+https://gitlab-master.nvidia.com/interactive-agents/nooa.git@main"
+uv add "nemo-oo-agents-nvidia @ git+https://gitlab-master.nvidia.com/interactive-agents/nooa.git@main#subdirectory=packages/nemo-oo-agents-nvidia"
 
-# Optional: CLI + TUI (`nemo-oo` command, web terminal, agent REPL)
-uv add "nemo-oo-agents-cli @ git+https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents.git@main#subdirectory=packages/nemo-oo-agents-cli"
+# Optional: CLI + TUI (`nooa` command, web terminal, agent REPL)
+uv add "nemo-labs-oo-agents-cli @ git+https://gitlab-master.nvidia.com/interactive-agents/nooa.git@main#subdirectory=packages/nemo-labs-oo-agents-cli"
 
 # Optional: benchmark harness (SWE-bench, Terminal Bench, LoCoMo, Tau Bench, DABStep)
-uv add "nemo-oo-agents-benchmarks @ git+https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents.git@main#subdirectory=packages/nemo-oo-agents-benchmarks"
+uv add "nemo-oo-agents-benchmarks @ git+https://gitlab-master.nvidia.com/interactive-agents/nooa.git@main#subdirectory=packages/nemo-oo-agents-benchmarks"
 ```
 
 NeMo OO Agents ships as four lockstep packages from this repo:
 
 - **`nemo-oo-agents`** — the core framework. Includes the agent runtime, context blocks, and the unified LLM client. Optional extras: `[tracing]` (OpenTelemetry exporters), `[viewer]` (FastAPI trace viewer), `[mcp]`, `[nemo-flow]`.
-- **`nemo-oo-agents-cli`** — the `nemo-oo` command and agent TUI. Optional `[datascience]` extra pre-loads numpy/pandas/plotly/scipy/sklearn into the LLM REPL execution namespace; `[web]` adds the `nemo-oo term` web frontend.
+- **`nemo-labs-oo-agents-cli`** — the `nooa` command and agent TUI. Optional `[datascience]` extra pre-loads numpy/pandas/plotly/scipy/sklearn into the LLM REPL execution namespace; `[web]` adds the `nooa term` web frontend.
 - **`nemo-oo-agents-benchmarks`** — eval harness (SWE-bench, Terminal Bench, LoCoMo, Tau Bench, DABStep) and the `nemo-harbor` runner.
-- **`nemo-oo-agents-nvidia`** — opt-in NVIDIA-gateway model aliases. Registers via the `nemo_oo_agents.bundled_configs` entry-point group; install to add the aliases, omit for an OSS-only registry.
+- **`nemo-oo-agents-nvidia`** — opt-in NVIDIA-gateway model aliases. Registers via the `nooa.bundled_configs` entry-point group; install to add the aliases, omit for an OSS-only registry.
 
 ### API Keys
 
-Keys are read from `~/.config/nemo_oo/secrets.yaml` unless already exported in your shell (the export wins). The installer writes this file; you can also edit it by hand:
+Keys are read from `~/.config/nooa/secrets.yaml` unless already exported in your shell (the export wins). The installer writes this file; you can also edit it by hand:
 
 ```yaml
-# ~/.config/nemo_oo/secrets.yaml   (chmod 600; gitignore the project-local one)
+# ~/.config/nooa/secrets.yaml   (chmod 600; gitignore the project-local one)
 env:
   NVIDIA_INTERNAL_API_KEY: your-api-key-here
   # ANTHROPIC_API_KEY: sk-ant-...
@@ -74,7 +74,7 @@ For **library use** (not the CLI), drop a `.env` in your project directory inste
 echo 'NVIDIA_INTERNAL_API_KEY=your-api-key-here' > .env
 ```
 
-Run `nemo-oo config show` to see which `secrets.yaml` / `settings.yaml` / `llm_config.yaml` layers are loading (secret values are redacted — only key names are shown).
+Run `nooa config show` to see which `secrets.yaml` / `settings.yaml` / `llm_config.yaml` layers are loading (secret values are redacted — only key names are shown).
 
 - **NVIDIA Inference HUB**: All the quickstart examples and bundled aliases route through inference.nvidia.com. Get your key at [inference.nvidia.com](https://inference.nvidia.com) → `NVIDIA_INTERNAL_API_KEY`.
 
@@ -86,8 +86,8 @@ Run `nemo-oo config show` to see which `secrets.yaml` / `settings.yaml` / `llm_c
 If you want to contribute to NeMo OO Agents or change code of the library, use the following steps.
 
 ```bash
-git clone ssh://git@gitlab-master.nvidia.com:12051/interactive-agents/nemo_oo_agents.git
-cd nemo_oo_agents/
+git clone ssh://git@gitlab-master.nvidia.com:12051/interactive-agents/nooa.git
+cd nooa/
 ./setup.sh  # Sets up venv, installs dependencies, copies .env template
 # Then create .env with your API key (see API Keys above)
 ```
@@ -100,15 +100,15 @@ cd nemo_oo_agents/
 
 NeMo OO Agents's key strength is that you can start with zero boilerplate and progressively add structure only when you need it.
 
-> **Note**: The examples below use `from nemo_oo_agents.util.quickstart import *` which provides common imports (`Agent`, `llm`, `BaseModel`, `strategy`, `autorun`, etc.) for brevity. Each example is copy-paste runnable.
+> **Note**: The examples below use `from nooa.util.quickstart import *` which provides common imports (`Agent`, `llm`, `BaseModel`, `strategy`, `autorun`, etc.) for brevity. Each example is copy-paste runnable.
 
 ### Step 1: Your First Generation Method
 
 Methods with `...` bodies are called **generation methods** - they're implemented by agentic strategy using LLMs at runtime. The method signature defines the contract (inputs/outputs), and the **docstring provides instructions** to guide the LLM:
 
 ```python
-from nemo_oo_agents.util.quickstart import *
-from nemo_oo_agents.unifiedllm import get_llm_client
+from nooa.util.quickstart import *
+from nooa.unifiedllm import get_llm_client
 
 # Pick whichever you have credentials for. The NVIDIA aliases below require
 # `nemo-oo-agents-nvidia` (installed by default per the Installation section)
@@ -139,16 +139,16 @@ llm = get_llm_client("claude-sonnet-4-5-20250514") # Anthropic (needs ANTHROPIC_
 llm = get_llm_client("gemini/gemini-2.5-flash")    # Google (needs GEMINI_API_KEY)
 ```
 
-If you installed `nemo-oo-agents-nvidia` (the Installation section above includes it), an extra set of NVIDIA-gateway aliases (claude-*, nemotron-*, qwen-*, gemini-*, gpt-*, llama-*) is registered automatically via the `nemo_oo_agents.bundled_configs` entry-point group:
+If you installed `nemo-oo-agents-nvidia` (the Installation section above includes it), an extra set of NVIDIA-gateway aliases (claude-*, nemotron-*, qwen-*, gemini-*, gpt-*, llama-*) is registered automatically via the `nooa.bundled_configs` entry-point group:
 
 ```python
 llm = get_llm_client("claude-haiku")          # NVIDIA-gateway Claude Haiku
 llm = get_llm_client("nemotron3-nano-30b")    # NVIDIA Nemotron Nano
 ```
 
-Set `NVIDIA_INTERNAL_API_KEY` (or `NVIDIA_API_KEY` for the public NIM endpoint) and they Just Work. External users who don't install `nemo-oo-agents-nvidia` see an OSS-only registry. To customize, run `nemo-oo config eject` (writes to `~/.config/nemo_oo/llm_config.yaml`), drop an `llm_config.yaml` in your project's `.nemo_oo/` dir, or point `NEMO_OO_LLM_CONFIG` at one or more YAML files. Run `nemo-oo config show` to inspect which files are loading.
+Set `NVIDIA_INTERNAL_API_KEY` (or `NVIDIA_API_KEY` for the public NIM endpoint) and they Just Work. External users who don't install `nemo-oo-agents-nvidia` see an OSS-only registry. To customize, run `nooa config eject` (writes to `~/.config/nooa/llm_config.yaml`), drop an `llm_config.yaml` in your project's `.nooa/` dir, or point `NEMO_OO_LLM_CONFIG` at one or more YAML files. Run `nooa config show` to inspect which files are loading.
 
-See [`src/nemo_oo_agents/unifiedllm/registry.py`](src/nemo_oo_agents/unifiedllm/registry.py) for the YAML schema, or `CompletionClient()` directly for full control.
+See [`src/nooa/unifiedllm/registry.py`](src/nooa/unifiedllm/registry.py) for the YAML schema, or `CompletionClient()` directly for full control.
 
 > **Key insight**: In NeMo OO Agents, your method name, parameters, and docstring ARE the prompt. Try renaming `analyze_feedback` to `analyze_feedback_briefly` or `give_detailed_feedback_analysis`—the output changes accordingly, without modifying any other code. This is the fundamental paradigm shift: code structure drives LLM behavior.
 
@@ -167,7 +167,7 @@ Use any Pydantic model as a return type. NeMo OO Agents automatically validates 
 ```python
 from typing import Literal
 
-from nemo_oo_agents.util.quickstart import *
+from nooa.util.quickstart import *
 
 
 class FeedbackAnalysis(BaseModel):
@@ -210,7 +210,7 @@ In NeMo OO Agents, you don't need a separate "tool" abstraction—**your regular
 ```python
 from typing import TypedDict
 
-from nemo_oo_agents.util.quickstart import *
+from nooa.util.quickstart import *
 
 
 class Result(TypedDict):
@@ -269,9 +269,9 @@ Use `@strategy` to control reasoning style (agentic strategy) per-method. You ca
 ```python
 from typing import Annotated
 
-from nemo_oo_agents.config import CodeActConfig
-from nemo_oo_agents.tools.bash_tool import BashTool
-from nemo_oo_agents.util.quickstart import *
+from nooa.config import CodeActConfig
+from nooa.tools.bash_tool import BashTool
+from nooa.util.quickstart import *
 
 
 class AnalysisAgent(Agent, llm=llm):
@@ -336,7 +336,7 @@ LLMs can use `doc()` to explore unknown objects. This is powerful when working w
 ```python
 from typing import Any
 
-from nemo_oo_agents.util.quickstart import *
+from nooa.util.quickstart import *
 
 _WAREHOUSE = {
     "ART-001": Artwork("Starry Night Print", "Van Gogh Studio", appraised_value=15000.0),
@@ -394,12 +394,12 @@ uv run python examples/quickstart/05_progressive_disclosure.py
 Tracing is automatic. Start the development server and all agent method calls are traced — orchestrators, LLM methods, and private helpers — with parent-child relationships preserved:
 
 ```bash
-nemo-oo start-dev   # start trace viewer on http://localhost:5001
+nooa start-dev   # start trace viewer on http://localhost:5001
 ```
 
 ```python
-from nemo_oo_agents import hidden
-from nemo_oo_agents.util.quickstart import *
+from nooa import hidden
+from nooa.util.quickstart import *
 
 
 class MathAgent(Agent, llm=llm):
@@ -448,7 +448,7 @@ uv run python examples/quickstart/06_tracing.py
 Use `{self.attribute}` in docstrings to inject specific runtime values in your prompts:
 
 ```python
-from nemo_oo_agents.util.quickstart import *
+from nooa.util.quickstart import *
 
 
 class TranslatorAgent(Agent, llm=llm):
@@ -510,8 +510,8 @@ uv run python examples/quickstart/07_dynamic_prompts.py
 Context blocks let you pin information directly into the LLM's system prompt—so it's always visible without re-passing it in every method call. Static blocks hold a fixed value; dynamic blocks re-evaluate an expression each turn so the LLM always sees live state:
 
 ```python
-from nemo_oo_agents.util.quickstart import *
-from nemo_oo_agents.agentdoc import spec
+from nooa.util.quickstart import *
+from nooa.agentdoc import spec
 
 
 class NoteTakingAgent(Agent, llm=llm):
@@ -579,10 +579,10 @@ uv run python examples/quickstart/08_context_blocks.py
 Each exchange in a multi-turn conversation adds events to the agent's history. Left unchecked, this eventually fills the model's context window. `TokenBudgetSummarizer` compresses older turns automatically when a budget threshold is crossed—keeping history bounded so the conversation can run indefinitely.
 
 ```python
-from nemo_oo_agents.agents import TokenBudgetSummarizer
-from nemo_oo_agents.config import TokenBudgetConfig
-from nemo_oo_agents.util.quickstart import *
-from nemo_oo_agents.agentdoc import spec
+from nooa.agents import TokenBudgetSummarizer
+from nooa.config import TokenBudgetConfig
+from nooa.util.quickstart import *
+from nooa.agentdoc import spec
 
 
 class InterviewAgent(Agent, llm=llm):
@@ -633,7 +633,7 @@ async def main():
 For agents that process discrete batches rather than open-ended conversations, `MethodSummarizer` compresses each completed method call's history instead:
 
 ```python
-from nemo_oo_agents.agents import MethodSummarizer
+from nooa.agents import MethodSummarizer
 
 MethodSummarizer.install(agent)  # Compress after each method call completes
 ```
@@ -659,8 +659,8 @@ Attach a skill as an instance attribute—every instance automatically gets that
 ```python
 from pathlib import Path
 
-from nemo_oo_agents import SkillManager, TextSkill
-from nemo_oo_agents.util.quickstart import *
+from nooa import SkillManager, TextSkill
+from nooa.util.quickstart import *
 
 ASSETS = Path("path/to/skills")  # directory containing skill folders
 
@@ -696,10 +696,10 @@ uv run python examples/quickstart/10_skills.py
 
 ### MCP Tools
 
-MCP (Model Context Protocol) tools let your agent call external services through a standard interface. The TUI (`nemo-oo-agents-cli`) ships MCP support out of the box — it's a hard dependency, so `self.mcp` and the `/mcp` command are always available. In the **core** `nemo-oo-agents` library MCP stays an optional extra (for glibc<2.28 hosts): install with `uv sync --extra mcp` (or `uv add 'nemo-oo-agents[mcp]'`).
+MCP (Model Context Protocol) tools let your agent call external services through a standard interface. The TUI (`nemo-labs-oo-agents-cli`) ships MCP support out of the box — it's a hard dependency, so `self.mcp` and the `/mcp` command are always available. In the **core** `nemo-oo-agents` library MCP stays an optional extra (for glibc<2.28 hosts): install with `uv sync --extra mcp` (or `uv add 'nemo-oo-agents[mcp]'`).
 
 For the TUI, declare MCP servers in the same project config file used for
-models, skills, and other TUI settings: `.nemo_oo_agents/config.toml`. Use
+models, skills, and other TUI settings: `.nooa/config.toml`. Use
 environment variables for secrets; string values are expanded when the server is
 connected.
 
@@ -746,9 +746,9 @@ Outside the TUI (library use), there's no `self.mcp` — call the stateless
 `MCPManager` factory directly. Reference the server by name in your agent:
 
 ```python
-from nemo_oo_agents.mcp import MCPManager
+from nooa.mcp import MCPManager
 
-from nemo_oo_agents.util.quickstart import *
+from nooa.util.quickstart import *
 
 
 class ConfluenceAgent(Agent, llm=llm):
@@ -794,10 +794,10 @@ uv run python examples/quickstart/11_mcp.py
 Run agents in isolated, ephemeral compute environments. Install the optional `sandbox` extra first:
 
 ```bash
-uv add git+https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents.git[sandbox] --branch main
+uv add git+https://gitlab-master.nvidia.com/interactive-agents/nooa.git[sandbox] --branch main
 ```
 
-This installs `openshell` and the `nemo_oo_agents sandbox` CLI wrapper. All sandbox infrastructure is handled automatically — credentials, policy, dependencies — so you can focus on your agent code.
+This installs `openshell` and the `nooa sandbox` CLI wrapper. All sandbox infrastructure is handled automatically — credentials, policy, dependencies — so you can focus on your agent code.
 
 To set up openshell:
 
@@ -810,15 +810,15 @@ Refer to the [openshell documentation](https://github.com/NVIDIA/OpenShell) for 
 **Usage:**
 
 ```bash
-nemo_oo_agents sandbox -- python agent.py    # run a script
-nemo_oo_agents sandbox -- nemo_oo_agents tui       # launch the TUI
-nemo_oo_agents sandbox -- bash               # open a shell
+nooa sandbox -- python agent.py    # run a script
+nooa sandbox -- nooa tui       # launch the TUI
+nooa sandbox -- bash               # open a shell
 ```
 
 Requires a `pyproject.toml` in the current directory. Before running your command, the sandbox always:
 
 1. Uploads the current directory
-2. Installs dependencies via `uv sync` (picks up the nemo_oo_agents version pinned in your project)
+2. Installs dependencies via `uv sync` (picks up the nooa version pinned in your project)
 
 **Uploads:**
 
@@ -826,10 +826,10 @@ Control what gets uploaded with `--upload` (repeatable). Append `:ro` for read-o
 
 ```bash
 # upload specific paths instead of the full cwd
-nemo_oo_agents sandbox --upload src --upload data -- python agent.py
+nooa sandbox --upload src --upload data -- python agent.py
 
 # make a directory read-only inside the sandbox
-nemo_oo_agents sandbox --upload src:ro --upload data -- python agent.py
+nooa sandbox --upload src:ro --upload data -- python agent.py
 ```
 
 `pyproject.toml` is always included so `uv sync` can run.
@@ -839,8 +839,8 @@ nemo_oo_agents sandbox --upload src:ro --upload data -- python agent.py
 Inject extra environment variables with `--env` (repeatable). A short-lived credential provider is created automatically and cleaned up after the sandbox exits:
 
 ```bash
-nemo_oo_agents sandbox --env HF_TOKEN=abc123 -- python agent.py
-nemo_oo_agents sandbox --env HF_TOKEN=abc123 --env WANDB_KEY=xyz -- python agent.py
+nooa sandbox --env HF_TOKEN=abc123 -- python agent.py
+nooa sandbox --env HF_TOKEN=abc123 --env WANDB_KEY=xyz -- python agent.py
 ```
 
 **Network:**
@@ -848,7 +848,7 @@ nemo_oo_agents sandbox --env HF_TOKEN=abc123 --env WANDB_KEY=xyz -- python agent
 Allow additional outbound domains with `--allow-domain` (repeatable):
 
 ```bash
-nemo_oo_agents sandbox --allow-domain api.myservice.com -- python agent.py
+nooa sandbox --allow-domain api.myservice.com -- python agent.py
 ```
 
 For advanced workflows (port forwarding, long-running tasks, connecting to existing sandboxes), use `openshell` directly.

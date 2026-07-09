@@ -2,7 +2,7 @@
 
 ## Problem
 
-nemo_oo_agents emits OpenTelemetry spans for every agent run. For those traces to
+nooa emits OpenTelemetry spans for every agent run. For those traces to
 work in any OpenInference-compatible backend (Phoenix, Arize, …) without surprises,
 the spans must follow the [OpenInference semantic conventions](https://arize-ai.github.io/openinference/spec/semantic_conventions.html):
 the correct span **kind** per operation and the spec's attribute **names/types** for
@@ -18,7 +18,7 @@ the framework now emits and how it is enforced.
 Two sources produce spans:
 
 - **Framework spans** — emitted by `OpenInferenceHooks`
-  (`src/nemo_oo_agents/tracing/_hooks_impl.py`).
+  (`src/nooa/tracing/_hooks_impl.py`).
 - **LLM spans** — emitted by `openinference-instrumentation-litellm` for each
   `litellm.acompletion` call (patched in `_litellm_patch.py` to also capture
   `tool_call.id` and reasoning content). These carry the `llm.*` attributes.
@@ -95,10 +95,10 @@ unknown-pricing models stay unset rather than reporting a misleading $0.
 Attributes with no OpenInference equivalent are kept (backends ignore unknown
 attributes): `agent.name`/`method`/`call_id`/`parent_call_id`/`method_signature`/
 `docstring`/`file_path`, `generation.id`/`strategy`/`parent_id`, `code.length`,
-`execution.id`, `invocation.id`, `result.type`, `nemo_oo_agents.viewer.plugin`,
+`execution.id`, `invocation.id`, `result.type`, `nooa.viewer.plugin`,
 and `session.id`.
 
-`context_snapshot` additionally keeps `nemo_oo_agents.system_message` (+
+`context_snapshot` additionally keeps `nooa.system_message` (+
 `system_message.is_diff` / `system_message.turn_index`): it is not a plain duplicate
 of `input.value` — it carries diff semantics and drives the viewer's diff renderer.
 

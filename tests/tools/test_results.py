@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Tests for result types."""
 
-from nemo_oo_agents.tools._results import (
+from nooa.tools._results import (
     EditResult,
     LsResult,
     RunResult,

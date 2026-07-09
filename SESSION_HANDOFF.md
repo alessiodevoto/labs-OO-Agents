@@ -3,7 +3,7 @@
 ## Status: 55/56 todos done. One item BLOCKED-ON-USER.
 
 ## Pushed
-- nemo_oo_agents main @ 7c45feb0
+- nooa main @ 7c45feb0
 - harbor MR !22 (commit a61ddaa4 — TB1 x86_64 cp312-overlay setup fix)
 - harbor_campaign skill (task-id resume + cp312 triage + infra phase categorization)
 
@@ -42,7 +42,7 @@ Key deploy needs the AD/domain password, not available in this headless session.
    3 leases — I will NOT release without explicit confirmation (destructive).
 
 ### Resumption recipe (once SSH works)
-clone nemo_oo_agents + 3p/harbor (branch feat/skip-editable-installs-with-pth) → run setup_colossus.sh
+clone nooa + 3p/harbor (branch feat/skip-editable-installs-with-pth) → run setup_colossus.sh
 → rsync SIF cache from DFW Lustre → run TB1/TB2/SWEBench one per machine.
 Validation criteria: TB1 agent-setup infra ~0 cp311 failures; TB2 ~0 exit-127;
 SWEBench ~75% opus / ~66% sonnet / ~60% ultra.

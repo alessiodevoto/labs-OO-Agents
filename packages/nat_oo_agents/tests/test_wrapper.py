@@ -12,7 +12,7 @@ import pytest
 
 pytest.importorskip("nat.builder.function")
 
-from nat.plugins.nemo_oo_agents.nemo_oo_agents_wrapper import (  # noqa: E402
+from nat.plugins.nooa.nooa_wrapper import (  # noqa: E402
     NemoOOAgentsWrapperConfig,
     register,
 )
@@ -73,12 +73,12 @@ async def test_register_threads_otlp_endpoint_to_setup_shared_tracer(tmp_path, m
     mod = _write_agent_module(tmp_path)
 
     # Avoid real tracing side effects.
-    import nemo_oo_agents.tracing as tracing
+    import nooa.tracing as tracing
 
     monkeypatch.setattr(tracing, "enable_tracing", lambda **kwargs: None)
 
     calls: list = []
-    import nat.plugins.nemo_oo_agents.otel_bridge as ob
+    import nat.plugins.nooa.otel_bridge as ob
 
     monkeypatch.setattr(ob, "setup_shared_tracer", lambda endpoint=None: calls.append(endpoint))
 
@@ -99,12 +99,12 @@ async def test_register_threads_otlp_endpoint_to_setup_shared_tracer(tmp_path, m
 async def test_register_passes_none_endpoint_by_default(tmp_path, monkeypatch):
     mod = _write_agent_module(tmp_path)
 
-    import nemo_oo_agents.tracing as tracing
+    import nooa.tracing as tracing
 
     monkeypatch.setattr(tracing, "enable_tracing", lambda **kwargs: None)
 
     calls: list = []
-    import nat.plugins.nemo_oo_agents.otel_bridge as ob
+    import nat.plugins.nooa.otel_bridge as ob
 
     monkeypatch.setattr(ob, "setup_shared_tracer", lambda endpoint=None: calls.append(endpoint))
 

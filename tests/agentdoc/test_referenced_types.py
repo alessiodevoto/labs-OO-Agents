@@ -7,8 +7,8 @@ from typing import Annotated
 import pytest
 from pydantic import BaseModel, Field
 
-from nemo_oo_agents.agentdoc import doc
-from nemo_oo_agents.agentdoc._discover import _is_custom_type, discover_referenced_types
+from nooa.agentdoc import doc
+from nooa.agentdoc._discover import _is_custom_type, discover_referenced_types
 
 
 # Test fixtures

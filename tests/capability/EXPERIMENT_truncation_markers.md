@@ -20,9 +20,9 @@ The combination hits **88-100% on flagship models** (claude-sonnet, gpt-5.2, gem
 
 from pydantic import BaseModel, Field
 from typing import Annotated
-from nemo_oo_agents import Agent
-from nemo_oo_agents.decorators import strategy
-from nemo_oo_agents.strategies import CodeActStrategy, PredictStrategy
+from nooa import Agent
+from nooa.decorators import strategy
+from nooa.strategies import CodeActStrategy, PredictStrategy
 
 
 class Answer(BaseModel):

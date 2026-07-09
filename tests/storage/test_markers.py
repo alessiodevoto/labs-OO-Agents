@@ -7,7 +7,7 @@ Covers:
 - _resolve_single() lines 72-73 (eval failure path)
 """
 
-from nemo_oo_agents.storage.markers import _resolve_single, is_nosnapshot_field
+from nooa.storage.markers import _resolve_single, is_nosnapshot_field
 
 
 class TestResolveSingle:

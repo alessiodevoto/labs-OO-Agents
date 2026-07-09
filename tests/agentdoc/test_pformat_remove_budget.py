@@ -8,7 +8,7 @@ Memory safety is M2's responsibility (truncating_pformat / TruncatingStringIO).
 
 import pytest
 
-from nemo_oo_agents.agentdoc import pformat
+from nooa.agentdoc import pformat
 
 
 class TestPformatRemovesBudgetParams:

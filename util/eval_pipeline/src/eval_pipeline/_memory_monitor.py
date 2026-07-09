@@ -326,7 +326,7 @@ class MemoryMonitor:
 
         # Flush traces so the viewer has the full execution up to this point
         try:
-            from nemo_oo_agents.tracing import flush_traces
+            from nooa.tracing import flush_traces
 
             flush_traces()
         except Exception:

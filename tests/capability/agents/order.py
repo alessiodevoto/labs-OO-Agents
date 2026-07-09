@@ -4,7 +4,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel
 
-from nemo_oo_agents import Agent
+from nooa import Agent
 
 
 class ErrorCode(StrEnum):

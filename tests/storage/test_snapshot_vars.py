@@ -4,12 +4,12 @@
 
 import logging
 
-from nemo_oo_agents.storage.json_snapshot import (  # noqa: F401
+from nooa.storage.json_snapshot import (  # noqa: F401
     snapshot_from_dict,
     snapshot_to_dict,
 )
-from nemo_oo_agents.storage.serialization import serialize
-from nemo_oo_agents.storage.snapshot_vars import SnapshotVars
+from nooa.storage.serialization import serialize
+from nooa.storage.snapshot_vars import SnapshotVars
 
 
 class _Unserializable:
@@ -72,7 +72,7 @@ class TestSnapshotVarsRoundTrips:
         assert blob["data"]["_data"] == {"keep": {"token": "abc"}}
 
     def test_round_trip_preserves_kept_values(self):
-        from nemo_oo_agents.storage.serialization import deserialize
+        from nooa.storage.serialization import deserialize
 
         v = SnapshotVars()
         v["keep"] = {"token": "abc"}
@@ -86,20 +86,20 @@ class TestTodoVarsIntegration:
     """SnapshotVars must work as the type of Todo.vars (the wiring the MR claims)."""
 
     def test_todo_is_constructible_and_vars_is_snapshotvars(self):
-        from nemo_oo_agents.tools.todo import Todo
+        from nooa.tools.todo import Todo
 
         t = Todo(title="x")
         assert isinstance(t.vars, SnapshotVars)
 
     def test_todo_coerces_dict_vars_to_snapshotvars(self):
-        from nemo_oo_agents.tools.todo import Todo
+        from nooa.tools.todo import Todo
 
         t = Todo(title="x", vars={"a": 1})
         assert isinstance(t.vars, SnapshotVars)
         assert t.vars["a"] == 1
 
     def test_todo_manager_add_then_set_var(self):
-        from nemo_oo_agents.tools.todo import TodoManager
+        from nooa.tools.todo import TodoManager
 
         tm = TodoManager()
         t = tm.add("hi")
@@ -107,14 +107,14 @@ class TestTodoVarsIntegration:
         assert t.vars["commits"] == ["abc"]
 
     def test_todo_dict_vars_filters_unserializable(self):
-        from nemo_oo_agents.tools.todo import Todo
+        from nooa.tools.todo import Todo
 
         t = Todo(title="x", vars={"good": 1, "bad": _Unserializable()})
         assert t.vars["good"] == 1
         assert "bad" not in t.vars
 
     def test_todo_model_validate_round_trip_keeps_snapshotvars(self):
-        from nemo_oo_agents.tools.todo import Todo
+        from nooa.tools.todo import Todo
 
         t = Todo(title="x", vars={"a": 1})
         raw = t.model_dump()

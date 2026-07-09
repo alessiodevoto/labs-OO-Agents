@@ -7,9 +7,9 @@ license = {text = "Apache-2.0"}
 dependencies = [
     "nvidia-nat-core",
     "pydantic>=2.0.0",
-    # Hard dependency: nemo_oo_agents_wrapper imports `dotenv` at module top.
+    # Hard dependency: nooa_wrapper imports `dotenv` at module top.
     "python-dotenv>=1.0.0",
-    # Soft dependency: llm.py's factories import nemo_oo_agents.unifiedllm for
+    # Soft dependency: llm.py's factories import nooa.unifiedllm for
     # registry-backed LLM defaults (guarded by try/except, but still required
     # for the registry-fallback feature to work).
     "nemo-oo-agents",
@@ -22,14 +22,14 @@ dev = [
 ]
 
 [project.entry-points.'nat.components']
-nat_nemo_oo_agents = "nat.plugins.nemo_oo_agents.register"
+nat_nooa = "nat.plugins.nooa.register"
 
 [build-system]
 requires = ["uv_build>=0.9.11,<0.10.0"]
 build-backend = "uv_build"
 
 [tool.uv.build-backend]
-module-name = "nat.plugins.nemo_oo_agents"
+module-name = "nat.plugins.nooa"
 
 # Tests live with the plugin because it depends on the NAT runtime
 # (nvidia-nat-core), which the main repo deliberately excludes from its

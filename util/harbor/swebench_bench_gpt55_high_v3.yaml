@@ -16,7 +16,7 @@ environment:
   type: docker
   env:
     NVIDIA_INTERNAL_API_KEY: "${NVIDIA_INTERNAL_API_KEY}"
-    NEMO_OO_LLM_CONFIG: "/installed-agent/nemo_oo_agents/llm_config.yaml"
+    NEMO_OO_LLM_CONFIG: "/installed-agent/nooa/llm_config.yaml"
     NEMO_OO_AGENTS_GIT_URL: "${NEMO_OO_AGENTS_GIT_URL}"
     OTLP_ENDPOINT: "http://10.87.108.113:5001/v1/traces"
     PATH: "/opt/harbor/cpython312/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"

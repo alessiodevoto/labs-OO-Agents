@@ -97,7 +97,7 @@ class TestRegistryImportPath:
     """model_factory registry dispatch must use the real import path (#346-3)."""
 
     def test_correct_registry_path_importable(self):
-        mod = importlib.import_module("nemo_oo_agents.unifiedllm.registry")
+        mod = importlib.import_module("nooa.unifiedllm.registry")
         assert hasattr(mod, "MODELS")
         assert hasattr(mod, "get_llm_client")
         assert hasattr(mod, "ensure_loaded")
@@ -116,7 +116,7 @@ class TestRegistryImportPath:
         our fake ensure_loaded populates it, proving the ordering is correct.
         """
         from eval_pipeline import model_factory
-        from nemo_oo_agents.unifiedllm import registry
+        from nooa.unifiedllm import registry
 
         sentinel = object()
         key = "__test_346_model__"
@@ -148,7 +148,7 @@ class TestTraceFilesGating:
     """--trace-files / --no-files must actually control jsonl file exporters (#346-1)."""
 
     def _run_start_tracing(self, monkeypatch, tmp_path, *, use_viewer, no_files, trace_files):
-        import nemo_oo_agents.tracing as tracing_mod
+        import nooa.tracing as tracing_mod
         from eval_pipeline import evaluator as evaluator_mod
         from eval_pipeline.evaluator import Evaluator
 

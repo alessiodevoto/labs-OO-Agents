@@ -1,6 +1,6 @@
 # Issue gl-138 — LLM-registry discovery via `paths.py` + entry-point bundled defaults
 
-Source: [gl-138](https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents/-/issues/138). Folds in the bundled-defaults work originally tracked as MR !223.
+Source: [gl-138](https://gitlab-master.nvidia.com/interactive-agents/nooa/-/issues/138). Folds in the bundled-defaults work originally tracked as MR !223.
 
 ## Problem
 
@@ -18,19 +18,19 @@ friction and the cause of recurring "alias not found" surprises.
 
 ## Design
 
-### Discovery: `nemo_oo_agents.llm_config.llm_config_chain()`
+### Discovery: `nooa.llm_config.llm_config_chain()`
 
 New module that returns YAML paths in priority order (lowest first):
 
 1. **Bundled** — every package that registers under the
-   `nemo_oo_agents.bundled_configs` entry-point group. Install
+   `nooa.bundled_configs` entry-point group. Install
    `nemo-oo-agents-nvidia` (the new sibling package) for the
    NVIDIA-gateway aliases; install nothing for an OSS-only registry.
    No env var to remember.
 2. **User** — `get_user_dir("llm_config.yaml")`
    (`~/.config/nat/oo/llm_config.yaml`).
 3. **Project** — `get_project_dir("llm_config.yaml")`
-   (`<project-root>/.nemo_oo_agents/llm_config.yaml`).
+   (`<project-root>/.nooa/llm_config.yaml`).
 4. **Env var** — `NEMO_OO_LLM_CONFIG` (comma-separated paths). The
    **global override**: highest priority so a shell session can
    override project / user files without editing them.
@@ -48,13 +48,13 @@ The bundled YAML lives in its own workspace package:
 
 ```
 packages/nemo-oo-agents-nvidia/
-  src/nemo_oo_agents_nvidia/
+  src/nooa_nvidia/
     __init__.py           # get_default_config_path() callable
     data/
       __init__.py
       llm_config_default.yaml
   pyproject.toml          # registers nvidia = "...:get_default_config_path"
-                          # under nemo_oo_agents.bundled_configs
+                          # under nooa.bundled_configs
   README.md
 ```
 
@@ -137,15 +137,15 @@ New subcommand at `commands/config.py`:
   auto-load, the no-args re-discover contract, the `_loaded`
   invariant, non-mapping validation, non-string `api_key_env`
   validation, and the explicit-`api_key`-skips-warning case.
-- **`packages/nemo-oo-agents-cli/tests/cli/test_config_command.py`**
+- **`packages/nemo-labs-oo-agents-cli/tests/cli/test_config_command.py`**
   — `show` / `path` / `eject` behaviour, including dedup
   annotation, no-provider / multi-provider eject refusal, and
   symlink/directory refusal.
-- **`packages/nemo-oo-agents-cli/tests/cli/test_health_check.py`** —
+- **`packages/nemo-labs-oo-agents-cli/tests/cli/test_health_check.py`** —
   chain + bundled-exclusion contract.
 
 Autouse fixtures stub
-`nemo_oo_agents.llm_config.bundled_config_paths` to return `[]` so
+`nooa.llm_config.bundled_config_paths` to return `[]` so
 tests are insensitive to whether `nemo-oo-agents-nvidia` is
 installed in the dev environment.
 

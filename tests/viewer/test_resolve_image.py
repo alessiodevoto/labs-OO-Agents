@@ -11,8 +11,8 @@ branch directly.
 
 from __future__ import annotations
 
-from nemo_oo_agents.tracing._journal_builder import _encode_image
-from nemo_oo_agents.viewer.otlp_store import _resolve_image
+from nooa.tracing._journal_builder import _encode_image
+from nooa.viewer.otlp_store import _resolve_image
 
 
 class TestResolveImage:

@@ -1,6 +1,6 @@
 """Needle-in-haystack test agent."""
 
-from nemo_oo_agents import Agent
+from nooa import Agent
 
 
 class NeedleTestWrapper(Agent):

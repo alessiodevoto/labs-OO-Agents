@@ -32,8 +32,8 @@ from typing import TYPE_CHECKING, Any
 
 from unifiedllm import FakeLLMClient
 
-from nemo_oo_agents import Agent, CodeActStrategy, strategy
-from nemo_oo_agents.config import CodeActConfig
+from nooa import Agent, CodeActStrategy, strategy
+from nooa.config import CodeActConfig
 
 if TYPE_CHECKING:
     from unifiedllm import UnifiedLLM

@@ -18,8 +18,8 @@ class TestEnableTracingIdempotency:
 
     def test_no_arg_calls_are_noop_after_first(self):
         """No-arg enable_tracing() is a no-op once tracing is enabled."""
-        import nemo_oo_agents.tracing as module
-        from nemo_oo_agents.tracing import enable_tracing, exporters
+        import nooa.tracing as module
+        from nooa.tracing import enable_tracing, exporters
 
         with tempfile.TemporaryDirectory() as tmpdir:
             enable_tracing(exporters=[exporters.jsonl(tmpdir)])
@@ -34,7 +34,7 @@ class TestEnableTracingIdempotency:
 
     def test_explicit_exporters_replace_after_enabled(self):
         """Calling with explicit exporters after enabled replaces the old ones."""
-        from nemo_oo_agents.tracing import enable_tracing, exporters
+        from nooa.tracing import enable_tracing, exporters
 
         with (
             tempfile.TemporaryDirectory() as dir1,
@@ -52,7 +52,7 @@ class TestEnableTracingIdempotency:
             with tracer.start_as_current_span("replace_test_span"):
                 pass
 
-            from nemo_oo_agents.tracing import flush_traces
+            from nooa.tracing import flush_traces
 
             flush_traces()
 
@@ -71,9 +71,9 @@ class TestEnableTracingIdempotency:
         from opentelemetry.sdk.trace import TracerProvider
         from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 
-        from nemo_oo_agents.tracing._otlp_file_exporter import OtlpJsonFileExporter
-        from nemo_oo_agents.tracing._session import set_session
-        from nemo_oo_agents.tracing._session_processor import SessionSpanProcessor
+        from nooa.tracing._otlp_file_exporter import OtlpJsonFileExporter
+        from nooa.tracing._session import set_session
+        from nooa.tracing._session_processor import SessionSpanProcessor
 
         with tempfile.TemporaryDirectory() as tmpdir:
             exporter = OtlpJsonFileExporter(tmpdir)
@@ -105,19 +105,19 @@ class TestFlushAndShutdown:
 
     def test_flush_traces_no_op_when_not_enabled(self):
         """flush_traces() should be safe to call when tracing is not enabled."""
-        from nemo_oo_agents.tracing import flush_traces
+        from nooa.tracing import flush_traces
 
         flush_traces()  # Should not raise
 
     def test_shutdown_traces_no_op_when_not_enabled(self):
         """shutdown_traces() should be safe to call when tracing is not enabled."""
-        from nemo_oo_agents.tracing import shutdown_traces
+        from nooa.tracing import shutdown_traces
 
         shutdown_traces()  # Should not raise
 
     def test_flush_traces_after_enable(self):
         """flush_traces() should work after enable_tracing()."""
-        from nemo_oo_agents.tracing import enable_tracing, exporters, flush_traces
+        from nooa.tracing import enable_tracing, exporters, flush_traces
 
         with tempfile.TemporaryDirectory() as tmpdir:
             enable_tracing(exporters=[exporters.jsonl(tmpdir)])

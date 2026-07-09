@@ -9,17 +9,17 @@
 # Prerequisites on Galaxy (lab@10.87.108.113):
 #   1. qemu-user-static + binfmt_misc registered for x86_64 (check: ls /proc/sys/fs/binfmt_misc/qemu-x86_64)
 #   2. Harbor installed: source /home/lab/miniforge3/bin/activate
-#   3. SWE-bench Verified task files at /home/lab/rcabral/nemo_oo_agents/util/harbor/tasks/swebench_all
+#   3. SWE-bench Verified task files at /home/lab/rcabral/nooa/util/harbor/tasks/swebench_all
 #      Rsync from ipp1-3404:
-#        rsync -a /localhome/local-rcabral/nemo_oo_agents/util/harbor/tasks/swebench_all/ \
-#          lab@10.87.108.113:/home/lab/rcabral/nemo_oo_agents/util/harbor/tasks/swebench_all/
+#        rsync -a /localhome/local-rcabral/nooa/util/harbor/tasks/swebench_all/ \
+#          lab@10.87.108.113:/home/lab/rcabral/nooa/util/harbor/tasks/swebench_all/
 #   4. SWE-bench SIF files at /home/lab/3p/sif_cache
 #      Pull from DFW Lustre (run on DFW login node or via SSH tunnel):
 #        rsync -a \
 #          cw-dfw-cs-001-login-02.cw-dfw-cs-001.hpc.nvidia.com:\
 #          /lustre/fs1/portfolios/coreai/projects/coreai_dlalgo_dle/users/agronskiy/apptainer_cache/swebench_* \
 #          lab@10.87.108.113:/home/lab/3p/sif_cache/
-#   5. Env vars in /home/lab/rcabral/nemo_oo_agents/.env (use `export KEY=value` form):
+#   5. Env vars in /home/lab/rcabral/nooa/.env (use `export KEY=value` form):
 #        export OPENAI_API_KEY=<key-for-inference-api.nvidia.com>
 #        export OPENAI_BASE_URL=https://inference-api.nvidia.com/v1
 #        export NVIDIA_INTERNAL_API_KEY=<nvidia-internal-key>
@@ -28,10 +28,10 @@
 #
 # Smoke test (5 tasks — generate with swebench adapter first):
 #   harbor run --config util/harbor/swebench_galaxy_ultra.yaml \
-#     --path /home/lab/rcabral/nemo_oo_agents/util/harbor/tasks/swebench_smoke
+#     --path /home/lab/rcabral/nooa/util/harbor/tasks/swebench_smoke
 #
 # Full run (500 tasks):
-#   source /home/lab/rcabral/nemo_oo_agents/.env
+#   source /home/lab/rcabral/nooa/.env
 #   source /home/lab/miniforge3/bin/activate
 #   harbor run --config util/harbor/swebench_galaxy_ultra.yaml
 
@@ -64,4 +64,4 @@ agents:
       agent_type: swebench/basic
 
 datasets:
-  - path: /home/lab/rcabral/nemo_oo_agents/util/harbor/tasks/swebench_all
+  - path: /home/lab/rcabral/nooa/util/harbor/tasks/swebench_all

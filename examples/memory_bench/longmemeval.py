@@ -38,16 +38,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from llm import build_embedding_config, build_llm, has_llm_creds  # noqa: E402
 from locomo import grade_llm, make_memory_agent  # noqa: E402
-from reflecting import make_llm_reasoner  # noqa: E402
-
-from nemo_oo_agents.memory import MemoryConfig, MemoryManager  # noqa: E402
-from nemo_oo_agents.memory.config import (  # noqa: E402
+from nooa_tui.memory import MemoryConfig, MemoryManager  # noqa: E402
+from nooa_tui.memory.config import (  # noqa: E402
     ReflectionPolicy,
     RetrievalConfig,
     SpontaneousConfig,
     VectorConfig,
 )
-from nemo_oo_agents.memory.schema import Memory, MemoryType  # noqa: E402
+from nooa_tui.memory.schema import Memory, MemoryType  # noqa: E402
+from reflecting import make_llm_reasoner  # noqa: E402
 
 log = logging.getLogger("longmemeval")
 
@@ -279,7 +278,7 @@ def main() -> None:
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     if args.verbose:
-        logging.getLogger("nemo_oo_agents.memory").setLevel(logging.DEBUG)
+        logging.getLogger("nooa.memory").setLevel(logging.DEBUG)
 
     if not has_llm_creds():
         print(

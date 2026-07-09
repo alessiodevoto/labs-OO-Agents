@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 """Test agent without any asyncio imports."""
 
-from nemo_oo_agents import Agent
-from nemo_oo_agents.unifiedllm import FakeLLMClient
+from nooa import Agent
+from nooa.unifiedllm import FakeLLMClient
 
 
 class AgentNoAsyncioImport(Agent, llm=FakeLLMClient()):

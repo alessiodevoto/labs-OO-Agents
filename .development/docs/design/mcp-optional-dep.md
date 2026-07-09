@@ -1,6 +1,6 @@
 # Make `mcp` an optional dependency
 
-Issue: https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents/-/issues/189
+Issue: https://gitlab-master.nvidia.com/interactive-agents/nooa/-/issues/189
 
 ## Problem
 
@@ -12,18 +12,18 @@ on the 2.5.x line where older-glibc wheels exist.
 
 ## Why this is safe (verified against current tree)
 
-- `import nemo_oo_agents` does NOT import `nemo_oo_agents.mcp` at top level
-  (verified: `src/nemo_oo_agents/__init__.py` contains no `mcp` import).
+- `import nooa` does NOT import `nooa.mcp` at top level
+  (verified: `src/nooa/__init__.py` contains no `mcp` import).
 - All MCP-using sites already guard the import:
-  - `packages/nemo-oo-agents-cli/.../tui/commands.py:550-554` —
-    `try: from nemo_oo_agents.mcp import MCPManager / except ImportError`
+  - `packages/nemo-labs-oo-agents-cli/.../tui/commands.py:550-554` —
+    `try: from nooa.mcp import MCPManager / except ImportError`
     with message `"MCP not enabled. Run `uv sync --extra mcp` and restart."`
     (already references the not-yet-existing extra).
   - `examples/quickstart/11_mcp.py:19-22` — `try/except ImportError` raising
     a clear "run `uv sync --extra mcp`" message.
   - `examples/assets/wiki_mcp_server.py` — imports `mcp`, but this is a
     standalone example server, not a package import path.
-  - `src/nemo_oo_agents/strategies/codeact.py:2164` — string comment only,
+  - `src/nooa/strategies/codeact.py:2164` — string comment only,
     no runtime import.
 - CI runs `uv sync --all-extras --no-extra sandbox` (4 occurrences in
   `.gitlab-ci.yml`); `--all-extras` picks up new optional groups
@@ -40,7 +40,7 @@ on the 2.5.x line where older-glibc wheels exist.
   mcp = ["mcp>=1.0.0"]
   ```
 - Replace **only line 76** — the stale comment
-  `"# mcp is now nemo_oo_agents.mcp (deps in main dependencies)"` —
+  `"# mcp is now nooa.mcp (deps in main dependencies)"` —
   with a note pointing at the new extra. Do NOT touch lines 77–86, which
   document the CLI install path and nemo-flow workaround.
 
@@ -81,16 +81,16 @@ an install instruction pointing at the `mcp` extra
 (`uv add 'nemo-oo-agents[mcp]'` or `uv sync --extra mcp`).
 
 While editing this paragraph, also correct the adjacent stale import on
-line 699 (`from mcp_nemo_oo_agents import MCPManager` →
-`from nemo_oo_agents.mcp import MCPManager`). It is broken today and
+line 699 (`from mcp_nooa import MCPManager` →
+`from nooa.mcp import MCPManager`). It is broken today and
 sits in the section we're rewriting; fixing it is a one-line addition,
 not a refactor.
 
 ### 4. No source-code changes
 
-`src/nemo_oo_agents/mcp/{client,oauth,tool}.py` already import `mcp`
+`src/nooa/mcp/{client,oauth,tool}.py` already import `mcp`
 unconditionally; that is correct — the submodule is only loaded on
-explicit import (`from nemo_oo_agents.mcp import …`), and the two
+explicit import (`from nooa.mcp import …`), and the two
 external call sites already wrap that in `try/except ImportError`.
 
 ## Files to touch
@@ -106,8 +106,8 @@ external call sites already wrap that in `try/except ImportError`.
 ## Verification
 
 1. `uv lock` produces an updated lockfile; commit it.
-2. `uv sync` (no extras) succeeds; `uv run python -c "import nemo_oo_agents"` works.
-3. `uv sync --extra mcp` installs `mcp`; `uv run python -c "from nemo_oo_agents.mcp import MCPManager"` works.
+2. `uv sync` (no extras) succeeds; `uv run python -c "import nooa"` works.
+3. `uv sync --extra mcp` installs `mcp`; `uv run python -c "from nooa.mcp import MCPManager"` works.
 4. With `mcp` not installed (e.g. via a fresh venv without the extra),
    `pytest tests/test_mcp/` reports skipped, not failed.
 5. With `mcp` installed, `pytest tests/test_mcp/` still runs the full suite.

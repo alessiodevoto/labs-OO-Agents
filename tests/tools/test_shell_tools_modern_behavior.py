@@ -10,7 +10,7 @@ to ShellTools left the default implementation under-tested.
 
 import pytest
 
-from nemo_oo_agents.tools.shell_tools import ShellTools
+from nooa.tools.shell_tools import ShellTools
 
 
 @pytest.fixture

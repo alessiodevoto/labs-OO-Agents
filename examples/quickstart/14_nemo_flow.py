@@ -36,8 +36,8 @@ except ModuleNotFoundError:
     sys.exit(0)
 from pydantic import BaseModel
 
-from nemo_oo_agents.nemo_flow_middleware import nemo_flow_scope
-from nemo_oo_agents.util.quickstart import *
+from nooa.nemo_flow_middleware import nemo_flow_scope
+from nooa.util.quickstart import *
 
 # ---------------------------------------------------------------------------
 # Agent definitions

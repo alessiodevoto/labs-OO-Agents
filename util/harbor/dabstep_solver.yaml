@@ -34,7 +34,7 @@ agents:
     model_name: aws/anthropic/bedrock-claude-sonnet-4-5-v1
     kwargs:
       agent_type: dabstep/solver
-      nemo_oo_agents_git_ref: "feat/gl-dabstep-benchmark-results"
+      nooa_git_ref: "feat/gl-dabstep-benchmark-results"
 
 datasets:
   - path: util/harbor/tasks/dabstep

@@ -10,9 +10,9 @@ These tests cover behavior that only applies to SQLiteEventBackend:
 import logging
 from typing import Literal
 
-from nemo_oo_agents.context_blocks import EventBase, Metadata
-from nemo_oo_agents.context_blocks.events import AssistantEvent, ToolCallEvent, UserEvent
-from nemo_oo_agents.storage.sqlite import _CONTEXT_BLOCKS_TYPES, SQLiteEventBackend
+from nooa.context_blocks import EventBase, Metadata
+from nooa.context_blocks.events import AssistantEvent, ToolCallEvent, UserEvent
+from nooa.storage.sqlite import _CONTEXT_BLOCKS_TYPES, SQLiteEventBackend
 
 # ---------------------------------------------------------------------------
 # _CONTEXT_BLOCKS_TYPES sanity
@@ -96,7 +96,7 @@ def test_deserialize_unknown_type_logs_warning(sqlite_conn, caplog):
     )
     sqlite_conn.commit()
 
-    with caplog.at_level(logging.WARNING, logger="nemo_oo_agents.storage.sqlite"):
+    with caplog.at_level(logging.WARNING, logger="nooa.storage.sqlite"):
         backend.get("1")
 
     assert any("mystery_event" in r.message for r in caplog.records), (
@@ -143,7 +143,7 @@ def test_register_event_type_overwrite_logs_warning(sqlite_conn, caplog):
     backend = SQLiteEventBackend(sqlite_conn)
     backend.register_event_type(V1)
 
-    with caplog.at_level(logging.WARNING, logger="nemo_oo_agents.storage.sqlite"):
+    with caplog.at_level(logging.WARNING, logger="nooa.storage.sqlite"):
         backend.register_event_type(V2)
 
     assert any("versioned_evt" in r.message for r in caplog.records), (

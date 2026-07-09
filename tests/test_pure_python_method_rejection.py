@@ -2,9 +2,9 @@
 
 import pytest
 
-from nemo_oo_agents import Agent, strategy
-from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
-from nemo_oo_agents.unifiedllm import FakeLLMClient
+from nooa import Agent, strategy
+from nooa.strategies.pure_python import PurePythonStrategy
+from nooa.unifiedllm import FakeLLMClient
 
 
 class SampleAgent(Agent):

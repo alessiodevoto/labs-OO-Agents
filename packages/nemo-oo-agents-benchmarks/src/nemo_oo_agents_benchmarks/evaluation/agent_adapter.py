@@ -271,7 +271,7 @@ class NemoOOAgentsAdapter:
             Path(trace_path).parent.mkdir(parents=True, exist_ok=True)
 
             try:
-                from nemo_oo_agents.tracing import get_session, set_session
+                from nooa.tracing import get_session, set_session
 
                 prev_session = get_session()
                 tp = Path(trace_path)
@@ -298,7 +298,7 @@ class NemoOOAgentsAdapter:
         finally:
             # Restore previous session (or clear if there was none)
             try:
-                from nemo_oo_agents.tracing import set_session
+                from nooa.tracing import set_session
 
                 set_session(prev_session)
             except ImportError:

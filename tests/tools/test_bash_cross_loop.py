@@ -15,8 +15,8 @@ The bug triggers specifically when:
 import asyncio
 import threading
 
-from nemo_oo_agents.tools._bash_session import BashSession
-from nemo_oo_agents.tools.shell_tools_legacy import ShellToolsLegacy as ShellTools
+from nooa.tools._bash_session import BashSession
+from nooa.tools.shell_tools_legacy import ShellToolsLegacy as ShellTools
 
 
 class TestCrossLoopLockContention:

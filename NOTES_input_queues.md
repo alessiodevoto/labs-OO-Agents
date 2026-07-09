@@ -59,20 +59,20 @@ Per-turn `respond()` with unified queue/notification I/O. Tests green
 
 ## Touched files
 
-- `src/nemo_oo_agents/events.py` — `Notification(source, description)`.
-- `src/nemo_oo_agents/runtime/input_queue.py` — emits new Notification shape.
-- `src/nemo_oo_agents/strategies/` — `ScopedCodeActStrategy` deleted
+- `src/nooa/events.py` — `Notification(source, description)`.
+- `src/nooa/runtime/input_queue.py` — emits new Notification shape.
+- `src/nooa/strategies/` — `ScopedCodeActStrategy` deleted
   (not needed; per-turn teardown gives clean REPL state for free).
-- `src/nemo_oo_agents_cli/tui/agent.py` — `RespondResult` Pydantic
+- `src/nooa_cli/tui/agent.py` — `RespondResult` Pydantic
   model, per-turn `respond(notification, restored)`, system-prompt
   docstring rewritten for the new pattern, `get_next_input` and
   `wait_for_input` removed.
-- `src/nemo_oo_agents_cli/tui/tui_application.py` — dispatcher loop
+- `src/nooa_cli/tui/tui_application.py` — dispatcher loop
   replaces the forever-loop lazy-start; `submit_message` unchanged
   from the user's POV.
-- `src/nemo_oo_agents_cli/tui/agent_event_renderer.py` — back to
+- `src/nooa_cli/tui/agent_event_renderer.py` — back to
   buffered rendering.
-- `src/nemo_oo_agents_cli/tui/skills-sw/*.md` — 23 sites updated
+- `src/nooa_cli/tui/skills-sw/*.md` — 23 sites updated
   (`return_result(RespondResult(kind="GET_USER_INPUT"))`).
 - Tests: `tests/cli/test_tui_input_queue_wiring.py` reworked for the
   dispatcher contract; `tests/cli/tui_app_harness.py` `FakeAgent`
@@ -116,5 +116,5 @@ Watch for:
 
 ## Running tests
 
-- Fast feedback: `uv run pytest src/nemo_oo_agents/runtime/tests/test_input_queue.py tests/cli/test_tui_input_queue_wiring.py -v`
+- Fast feedback: `uv run pytest src/nooa/runtime/tests/test_input_queue.py tests/cli/test_tui_input_queue_wiring.py -v`
 - Full TUI suite: `uv run pytest tests/cli/`

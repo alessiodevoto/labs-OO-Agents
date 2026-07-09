@@ -1,6 +1,6 @@
 """Single calculation agent - interprets natural language math."""
 
-from nemo_oo_agents import Agent
+from nooa import Agent
 
 
 class CalculateSingleAgent(Agent):

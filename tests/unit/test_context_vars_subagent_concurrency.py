@@ -29,10 +29,10 @@ import asyncio
 
 import pytest
 
-from nemo_oo_agents import Agent, strategy
-from nemo_oo_agents.agent import _parent_agent_var
-from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
-from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse
+from nooa import Agent, strategy
+from nooa.agent import _parent_agent_var
+from nooa.strategies.pure_python import PurePythonStrategy
+from nooa.unifiedllm import FakeLLMClient, LLMResponse
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -509,7 +509,7 @@ class TestExceptionPathContextCleanup:
         after max_retries attempts. We just verify the context var is cleaned up
         regardless of the exception type.
         """
-        from nemo_oo_agents.errors import GenerationError
+        from nooa.errors import GenerationError
 
         class ExplodingParent(Agent):
             @strategy(PurePythonStrategy())
@@ -646,8 +646,8 @@ class TestScopedBlocksIsolation:
         the parent's strategy context blocks, causing incorrect prompting.
         """
         # Use CodeActStrategy for the outer parent so _scoped_blocks_var is set
-        from nemo_oo_agents.strategies import CodeActStrategy
-        from nemo_oo_agents.unifiedllm import ToolCall
+        from nooa.strategies import CodeActStrategy
+        from nooa.unifiedllm import ToolCall
 
         def _tool_call(code: str) -> ToolCall:
             import json

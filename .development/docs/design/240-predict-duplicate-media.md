@@ -147,9 +147,9 @@ against regression). Mirrors the issue's minimal repro using
 ## Verification
 
 - `uv run pytest tests/strategies/test_current_call.py tests/strategies/test_predict_media_dedup.py -q`
-- `uv run pytest src/nemo_oo_agents/strategies/tests/test_predict_param_guard.py -q`
+- `uv run pytest src/nooa/strategies/tests/test_predict_param_guard.py -q`
   (existing `_assert_param_sizes` regression suite — must stay green after the
   refactor; error-message `name` values must remain sensible)
 - `uv run pytest tests/strategies tests/test_pure_functions_gl105.py -q`
   (regression sweep covering `format_parameters_as_code` / parser consumers)
-- `uv run ruff check src/nemo_oo_agents/strategies/predict.py src/nemo_oo_agents/strategies/current_call.py`
+- `uv run ruff check src/nooa/strategies/predict.py src/nooa/strategies/current_call.py`

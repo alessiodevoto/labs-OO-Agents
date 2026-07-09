@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from nemo_oo_agents.unifiedllm import FakeLLMClient
+from nooa.unifiedllm import FakeLLMClient
 
 # =============================================================================
 # Task 1: BlockSyntaxError handler (codeact.py — extracted method)
@@ -22,7 +22,7 @@ class TestHandleBlockSyntaxError:
     """CodeActStrategy._handle_block_syntax_error() — formerly 7 inline pragmas."""
 
     def _make_session(self, **kwargs):
-        from nemo_oo_agents.strategies.codeact import CodeActSession
+        from nooa.strategies.codeact import CodeActSession
 
         defaults = {
             "max_iterations": 5,
@@ -34,7 +34,7 @@ class TestHandleBlockSyntaxError:
         return CodeActSession(**defaults)
 
     def _make_error(self, key="bad_block", expr="not valid python {{{"):
-        from nemo_oo_agents.context_blocks.exceptions import BlockSyntaxError
+        from nooa.context_blocks.exceptions import BlockSyntaxError
 
         return BlockSyntaxError(
             key=key,
@@ -44,7 +44,7 @@ class TestHandleBlockSyntaxError:
 
     def test_removes_bad_block_from_context(self):
         """The bad block should be removed via runtime.context.remove()."""
-        from nemo_oo_agents.strategies.codeact import CodeActStrategy
+        from nooa.strategies.codeact import CodeActStrategy
 
         session = self._make_session()
         runtime = MagicMock()
@@ -57,7 +57,7 @@ class TestHandleBlockSyntaxError:
 
     def test_adds_error_event_with_fix_instructions(self):
         """An Error event with fix instructions should be added to event_manager."""
-        from nemo_oo_agents.strategies.codeact import CodeActStrategy
+        from nooa.strategies.codeact import CodeActStrategy
 
         session = self._make_session()
         runtime = MagicMock()
@@ -75,7 +75,7 @@ class TestHandleBlockSyntaxError:
 
     def test_records_iteration_not_error(self):
         """Should call session.record_iteration(), not record_error()."""
-        from nemo_oo_agents.strategies.codeact import CodeActStrategy
+        from nooa.strategies.codeact import CodeActStrategy
 
         session = self._make_session()
         runtime = MagicMock()
@@ -92,7 +92,7 @@ class TestHandleBlockSyntaxError:
 
     def test_survives_context_remove_failure(self):
         """If context.remove() raises, the handler should still add error feedback."""
-        from nemo_oo_agents.strategies.codeact import CodeActStrategy
+        from nooa.strategies.codeact import CodeActStrategy
 
         session = self._make_session()
         runtime = MagicMock()
@@ -108,7 +108,7 @@ class TestHandleBlockSyntaxError:
 
     def test_handles_no_context_on_runtime(self):
         """If runtime has no context attribute, should still work."""
-        from nemo_oo_agents.strategies.codeact import CodeActStrategy
+        from nooa.strategies.codeact import CodeActStrategy
 
         session = self._make_session()
         runtime = MagicMock(spec=[])  # no context attr
@@ -121,7 +121,7 @@ class TestHandleBlockSyntaxError:
 
     def test_truncates_long_expr(self):
         """Expressions > 100 chars should be truncated with '...'."""
-        from nemo_oo_agents.strategies.codeact import CodeActStrategy
+        from nooa.strategies.codeact import CodeActStrategy
 
         session = self._make_session()
         runtime = MagicMock()
@@ -148,7 +148,7 @@ class TestContextBudget:
 
     def test_returns_percentage_of_context_window(self):
         """``context_window`` is the canonical UnifiedLLM attribute."""
-        from nemo_oo_agents.agents.summarization import context_budget
+        from nooa.agents.summarization import context_budget
 
         llm = MagicMock(spec=["context_window"])
         llm.context_window = 1_000_000
@@ -157,21 +157,21 @@ class TestContextBudget:
 
     def test_falls_back_to_context_limit(self):
         """Legacy callers that set ``context_limit`` on custom wrappers still work."""
-        from nemo_oo_agents.agents.summarization import context_budget
+        from nooa.agents.summarization import context_budget
 
         llm = MagicMock(spec=["context_limit"])
         llm.context_limit = 100_000
         assert context_budget(llm, 0.8) == 80_000
 
     def test_returns_fallback_when_no_attributes(self):
-        from nemo_oo_agents.agents.summarization import context_budget
+        from nooa.agents.summarization import context_budget
 
         llm = MagicMock(spec=[])  # no attributes
         assert context_budget(llm) == 100_000
         assert context_budget(llm, fallback=50_000) == 50_000
 
     def test_returns_fallback_when_attributes_are_none(self):
-        from nemo_oo_agents.agents.summarization import context_budget
+        from nooa.agents.summarization import context_budget
 
         llm = MagicMock(spec=["context_window", "context_limit"])
         llm.context_window = None
@@ -179,7 +179,7 @@ class TestContextBudget:
         assert context_budget(llm) == 100_000
 
     def test_default_percent_is_80(self):
-        from nemo_oo_agents.agents.summarization import context_budget
+        from nooa.agents.summarization import context_budget
 
         llm = MagicMock(spec=["context_window"])
         llm.context_window = 200_000
@@ -187,7 +187,7 @@ class TestContextBudget:
 
     def test_returns_fallback_when_context_window_is_zero(self):
         """context_budget returns fallback when the model exposes a zero window."""
-        from nemo_oo_agents.agents.summarization import context_budget
+        from nooa.agents.summarization import context_budget
 
         llm = MagicMock(spec=["context_window"])
         llm.context_window = 0
@@ -195,7 +195,7 @@ class TestContextBudget:
 
     def test_rejects_zero_percent(self):
         """context_budget rejects zero percent because it would disable budget sizing."""
-        from nemo_oo_agents.agents.summarization import context_budget
+        from nooa.agents.summarization import context_budget
 
         llm = MagicMock(spec=["context_window"])
         llm.context_window = 200_000
@@ -212,8 +212,8 @@ class TestPredictCreateResponseModelFailure:
     """_create_response_model wraps create_model failure in GenerationError."""
 
     def test_non_pydantic_class_raises_generation_error(self):
-        from nemo_oo_agents.errors import GenerationError
-        from nemo_oo_agents.strategies.predict import PredictStrategy
+        from nooa.errors import GenerationError
+        from nooa.strategies.predict import PredictStrategy
 
         class NotAModel:
             """A plain class that Pydantic cannot serialize."""
@@ -237,9 +237,9 @@ class TestSummarizationAgentKwargsOverride:
     """SummarizationAgent.__init__ extracts class attrs from kwargs."""
 
     def test_config_kwarg_extracted_via_install(self):
-        from nemo_oo_agents.agent import Agent
-        from nemo_oo_agents.agents.summarization import TokenBudgetSummarizer
-        from nemo_oo_agents.config.summarizer_config import TokenBudgetConfig
+        from nooa.agent import Agent
+        from nooa.agents.summarization import TokenBudgetSummarizer
+        from nooa.config.summarizer_config import TokenBudgetConfig
 
         llm = FakeLLMClient()
 
@@ -264,9 +264,9 @@ class TestRunSummarizationExceptionHandler:
 
     @pytest.mark.asyncio
     async def test_summarize_failure_sets_pending_summary_none(self):
-        from nemo_oo_agents.agent import Agent
-        from nemo_oo_agents.agents.summarization import TokenBudgetSummarizer
-        from nemo_oo_agents.config.summarizer_config import TokenBudgetConfig
+        from nooa.agent import Agent
+        from nooa.agents.summarization import TokenBudgetSummarizer
+        from nooa.config.summarizer_config import TokenBudgetConfig
 
         llm = FakeLLMClient()
 
@@ -287,9 +287,9 @@ class TestRunSummarizationExceptionHandler:
 
     @pytest.mark.asyncio
     async def test_summarize_success_stores_summary(self):
-        from nemo_oo_agents.agent import Agent
-        from nemo_oo_agents.agents.summarization import TokenBudgetSummarizer
-        from nemo_oo_agents.config.summarizer_config import TokenBudgetConfig
+        from nooa.agent import Agent
+        from nooa.agents.summarization import TokenBudgetSummarizer
+        from nooa.config.summarizer_config import TokenBudgetConfig
 
         llm = FakeLLMClient()
 
@@ -312,9 +312,9 @@ class TestApplyPendingSummaryExceptionHandler:
     """_apply_pending_summary catches exceptions from collapse()."""
 
     def test_collapse_failure_clears_pending_state(self):
-        from nemo_oo_agents.agent import Agent
-        from nemo_oo_agents.agents.summarization import TokenBudgetSummarizer
-        from nemo_oo_agents.config.summarizer_config import TokenBudgetConfig
+        from nooa.agent import Agent
+        from nooa.agents.summarization import TokenBudgetSummarizer
+        from nooa.config.summarizer_config import TokenBudgetConfig
 
         llm = FakeLLMClient()
 
@@ -356,9 +356,9 @@ class TestMethodSummarizerComputeRange:
     """MethodSummarizer._compute_range — matches events by call_id metadata."""
 
     def _make_summarizer(self, min_events=2):
-        from nemo_oo_agents.agent import Agent
-        from nemo_oo_agents.agents.summarization import MethodSummarizer
-        from nemo_oo_agents.config.summarizer_config import MethodSummarizerConfig
+        from nooa.agent import Agent
+        from nooa.agents.summarization import MethodSummarizer
+        from nooa.config.summarizer_config import MethodSummarizerConfig
 
         llm = FakeLLMClient()
 
@@ -372,7 +372,7 @@ class TestMethodSummarizerComputeRange:
         return MethodSummarizer.install(agent, config=config)
 
     def _make_after_turn(self, call_id="call-abc"):
-        from nemo_oo_agents.events import AfterTurn
+        from nooa.events import AfterTurn
 
         event = AfterTurn(
             method_name="test",
@@ -388,7 +388,7 @@ class TestMethodSummarizerComputeRange:
 
     def test_returns_range_when_enough_matching_events(self):
         """Events with matching call_id define the summarization range."""
-        from nemo_oo_agents.events import Message
+        from nooa.events import Message
 
         summarizer = self._make_summarizer(min_events=2)
         em = summarizer.target_event_manager
@@ -411,7 +411,7 @@ class TestMethodSummarizerComputeRange:
 
     def test_range_includes_child_events(self):
         """Child call_ids interleaved between parent events are included in range."""
-        from nemo_oo_agents.events import Message
+        from nooa.events import Message
 
         summarizer = self._make_summarizer(min_events=2)
         em = summarizer.target_event_manager
@@ -440,7 +440,7 @@ class TestMethodSummarizerComputeRange:
         assert end_tag == "3"
 
     def test_returns_none_when_too_few_events(self):
-        from nemo_oo_agents.events import Message
+        from nooa.events import Message
 
         summarizer = self._make_summarizer(min_events=5)
         em = summarizer.target_event_manager
@@ -455,7 +455,7 @@ class TestMethodSummarizerComputeRange:
 
     def test_returns_none_when_no_call_id(self):
         """AfterTurn without call_id in metadata returns None."""
-        from nemo_oo_agents.events import AfterTurn
+        from nooa.events import AfterTurn
 
         summarizer = self._make_summarizer(min_events=1)
 
@@ -485,10 +485,10 @@ class TestPurePythonTimeoutRetryExhaustion:
     async def test_httpx_timeout_exhausts_retries(self):
         import httpx
 
-        from nemo_oo_agents.agent import Agent
-        from nemo_oo_agents.decorators import strategy
-        from nemo_oo_agents.errors import GenerationError
-        from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
+        from nooa.agent import Agent
+        from nooa.decorators import strategy
+        from nooa.errors import GenerationError
+        from nooa.strategies.pure_python import PurePythonStrategy
 
         llm = FakeLLMClient()
 
@@ -524,10 +524,10 @@ class TestPurePythonValidationRetryExhaustion:
         from pydantic import BaseModel
         from pydantic import ValidationError as PydanticValidationError
 
-        from nemo_oo_agents.agent import Agent
-        from nemo_oo_agents.decorators import strategy
-        from nemo_oo_agents.errors import GenerationError
-        from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
+        from nooa.agent import Agent
+        from nooa.decorators import strategy
+        from nooa.errors import GenerationError
+        from nooa.strategies.pure_python import PurePythonStrategy
 
         class Result(BaseModel):
             value: int
@@ -568,14 +568,14 @@ class TestCodeActToolCallResultHandling:
     """Translated tool call results: None/error → empty, TASK_COMPLETE → completed."""
 
     def test_tool_calls_result_default(self):
-        from nemo_oo_agents.strategies.codeact import _ToolCallsResult
+        from nooa.strategies.codeact import _ToolCallsResult
 
         r = _ToolCallsResult()
         assert not r.completed
         assert r.final_value is None
 
     def test_tool_calls_result_completed(self):
-        from nemo_oo_agents.strategies.codeact import _ToolCallsResult
+        from nooa.strategies.codeact import _ToolCallsResult
 
         r = _ToolCallsResult(completed=True, final_value=42)
         assert r.completed
@@ -592,8 +592,8 @@ class TestDynamicContextEvalFailure:
 
     @pytest.mark.asyncio
     async def test_bad_expression_returns_error_string(self):
-        from nemo_oo_agents.context_blocks import DynamicContext
-        from nemo_oo_agents.runtime.actor import ActorRuntime
+        from nooa.context_blocks import DynamicContext
+        from nooa.runtime.actor import ActorRuntime
 
         # We test _resolve_value indirectly through _prepare_context,
         # but the simplest test is to create a DynamicContext and evaluate it
@@ -623,7 +623,7 @@ class TestInstanceValuesExceptionHandling:
     """__instance_values__() skips attributes that raise."""
 
     def test_property_raising_attribute_error_is_skipped(self):
-        from nemo_oo_agents.agent import Agent
+        from nooa.agent import Agent
 
         llm = FakeLLMClient()
 
@@ -641,7 +641,7 @@ class TestInstanceValuesExceptionHandling:
         assert "broken" not in values
 
     def test_property_raising_type_error_is_skipped(self):
-        from nemo_oo_agents.agent import Agent
+        from nooa.agent import Agent
 
         llm = FakeLLMClient()
 
@@ -660,7 +660,7 @@ class TestInstanceValuesExceptionHandling:
 
     def test_property_raising_runtime_error_is_skipped(self):
         """The broad except Exception path."""
-        from nemo_oo_agents.agent import Agent
+        from nooa.agent import Agent
 
         llm = FakeLLMClient()
 
@@ -687,7 +687,7 @@ class TestHelperMethodBindingFailure:
     """HelperFunctionManager.apply() reports binding errors."""
 
     def test_errors_list_populated_on_exec_failure(self):
-        from nemo_oo_agents.strategies.generated_code import HelperFunctionManager
+        from nooa.strategies.generated_code import HelperFunctionManager
 
         manager = HelperFunctionManager()
 

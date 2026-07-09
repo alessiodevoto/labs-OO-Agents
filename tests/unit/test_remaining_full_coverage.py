@@ -1,4 +1,4 @@
-"""Tests targeting remaining uncovered lines across nemo_oo_agents.
+"""Tests targeting remaining uncovered lines across nooa.
 
 Covers:
 - agent.py: __type_info__ dedup guard, private filter, hidden check, __qualname__ exception
@@ -27,7 +27,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from nemo_oo_agents.unifiedllm import FakeLLMClient
+from nooa.unifiedllm import FakeLLMClient
 
 # =============================================================================
 # agent.py — __type_info__ coverage
@@ -45,7 +45,7 @@ class TestTypeInfoDedupAndFilters:
         """
         import inspect
 
-        from nemo_oo_agents.agent import Agent
+        from nooa.agent import Agent
 
         llm = FakeLLMClient()
 
@@ -81,7 +81,7 @@ class TestTypeInfoDedupAndFilters:
         """
         import inspect
 
-        from nemo_oo_agents.agent import Agent
+        from nooa.agent import Agent
 
         llm = FakeLLMClient()
 
@@ -112,7 +112,7 @@ class TestTypeInfoDedupAndFilters:
 
     def test_private_method_filtered_in_ismethod_loop(self):
         """Line 464-465: private classmethod is filtered by the underscore check."""
-        from nemo_oo_agents.agent import Agent
+        from nooa.agent import Agent
 
         llm = FakeLLMClient()
 
@@ -131,8 +131,8 @@ class TestTypeInfoDedupAndFilters:
 
     def test_hidden_classmethod_filtered_in_ismethod_loop(self):
         """Line 469-472: @hidden classmethod is filtered by is_hidden_method."""
-        from nemo_oo_agents.agent import Agent
-        from nemo_oo_agents.agentdoc import hidden as _hidden
+        from nooa.agent import Agent
+        from nooa.agentdoc import hidden as _hidden
 
         llm = FakeLLMClient()
 
@@ -156,7 +156,7 @@ class TestTypeInfoDedupAndFilters:
         so it passes the dedup guard (line 462), the underscore check (line 464),
         and the hidden check (line 471), reaching lines 473-474.
         """
-        from nemo_oo_agents.agent import Agent
+        from nooa.agent import Agent
 
         llm = FakeLLMClient()
 
@@ -182,7 +182,7 @@ class TestTypeInfoDedupAndFilters:
         non-AttributeError exceptions, the except branch in __type_info__
         is triggered.
         """
-        from nemo_oo_agents.agent import Agent
+        from nooa.agent import Agent
 
         llm = FakeLLMClient()
 
@@ -218,9 +218,9 @@ class TestSummarizationNoneGuards:
 
     def _make_summarizer(self):
         """Create a TokenBudgetSummarizer attached to a parent agent."""
-        from nemo_oo_agents.agent import Agent
-        from nemo_oo_agents.agents.summarization import TokenBudgetSummarizer
-        from nemo_oo_agents.config.summarizer_config import TokenBudgetConfig
+        from nooa.agent import Agent
+        from nooa.agents.summarization import TokenBudgetSummarizer
+        from nooa.config.summarizer_config import TokenBudgetConfig
 
         llm = FakeLLMClient()
 
@@ -288,9 +288,9 @@ class TestSummarizationNoneGuards:
 
     def test_method_summarizer_compute_range_none_guard(self):
         """Line 585: MethodSummarizer._compute_range returns None when target_event_manager is None."""
-        from nemo_oo_agents.agent import Agent
-        from nemo_oo_agents.agents.summarization import MethodSummarizer
-        from nemo_oo_agents.config.summarizer_config import MethodSummarizerConfig
+        from nooa.agent import Agent
+        from nooa.agents.summarization import MethodSummarizer
+        from nooa.config.summarizer_config import MethodSummarizerConfig
 
         llm = FakeLLMClient()
 
@@ -313,8 +313,8 @@ class TestSummarizationKwargsOverride:
 
     def test_kwargs_override_sets_attribute(self):
         """SummarizationAgent.__init__ extracts class attributes from kwargs."""
-        from nemo_oo_agents.agent import Agent
-        from nemo_oo_agents.agents.summarization import SummarizationAgent
+        from nooa.agent import Agent
+        from nooa.agents.summarization import SummarizationAgent
 
         llm = FakeLLMClient()
 
@@ -334,9 +334,9 @@ class TestSummarizationPendingDoneAndNotAfterTurn:
     """Lines 198 and 201: pending task done check and not-AfterTurn check."""
 
     def _make_summarizer(self):
-        from nemo_oo_agents.agent import Agent
-        from nemo_oo_agents.agents.summarization import TokenBudgetSummarizer
-        from nemo_oo_agents.config.summarizer_config import TokenBudgetConfig
+        from nooa.agent import Agent
+        from nooa.agents.summarization import TokenBudgetSummarizer
+        from nooa.config.summarizer_config import TokenBudgetConfig
 
         llm = FakeLLMClient()
 
@@ -362,7 +362,7 @@ class TestSummarizationPendingDoneAndNotAfterTurn:
             future.set_result(None)
             summarizer._pending_task = future  # type: ignore[assignment]
 
-            from nemo_oo_agents.events import BeforeTurn
+            from nooa.events import BeforeTurn
 
             event = BeforeTurn(
                 method_name="chat",
@@ -385,7 +385,7 @@ class TestSummarizationPendingDoneAndNotAfterTurn:
             future.set_result(None)
             summarizer._pending_task = future  # type: ignore[assignment]
 
-            from nemo_oo_agents.events import AfterTurn
+            from nooa.events import AfterTurn
 
             event = AfterTurn(
                 method_name="chat",
@@ -423,18 +423,18 @@ class TestDebugHandlerTracebackException:
 
     def test_print_stack_exception_handled(self, tmp_path):
         """When traceback.print_stack raises, the error is written to the file."""
-        from nemo_oo_agents.runtime.debug_handler import _debug_signal_handler
+        from nooa.runtime.debug_handler import _debug_signal_handler
 
         # Mock frame
         mock_frame = MagicMock()
 
         with (
-            patch("nemo_oo_agents.runtime.debug_handler._get_debug_dump_path") as mock_path,
-            patch("nemo_oo_agents.runtime.debug_handler._detect_llm_in_stack", return_value=[]),
-            patch("nemo_oo_agents.runtime.debug_handler._pending_llm_calls", {}),
+            patch("nooa.runtime.debug_handler._get_debug_dump_path") as mock_path,
+            patch("nooa.runtime.debug_handler._detect_llm_in_stack", return_value=[]),
+            patch("nooa.runtime.debug_handler._pending_llm_calls", {}),
             patch("traceback.print_stack", side_effect=RuntimeError("frame is gone")),
-            patch("nemo_oo_agents.runtime.debug_handler._dump_pending_llm_calls"),
-            patch("nemo_oo_agents.runtime.debug_handler._dump_cell_code"),
+            patch("nooa.runtime.debug_handler._dump_pending_llm_calls"),
+            patch("nooa.runtime.debug_handler._dump_cell_code"),
         ):
             dump_path = str(tmp_path / "debug_dump.txt")
             mock_path.return_value = dump_path
@@ -458,7 +458,7 @@ class TestMediaCapturePIL:
         pytest.importorskip("PIL")
         from PIL import Image as PILImage
 
-        from nemo_oo_agents.runtime.media_capture import _try_pil_to_content_block
+        from nooa.runtime.media_capture import _try_pil_to_content_block
 
         img = PILImage.new("RGB", (10, 10), color="red")
         result = _try_pil_to_content_block(img)
@@ -471,7 +471,7 @@ class TestMediaCapturePIL:
         pytest.importorskip("PIL")
         from PIL import Image as PILImage
 
-        from nemo_oo_agents.runtime.media_capture import _to_content_block
+        from nooa.runtime.media_capture import _to_content_block
 
         img = PILImage.new("RGB", (10, 10), color="blue")
         result = _to_content_block(img)
@@ -487,7 +487,7 @@ class TestMediaCaptureMatplotlib:
         pytest.importorskip("matplotlib")
         from matplotlib.figure import Figure
 
-        from nemo_oo_agents.runtime.media_capture import _try_matplotlib_to_content_block
+        from nooa.runtime.media_capture import _try_matplotlib_to_content_block
 
         fig = Figure(figsize=(2, 2))
         ax = fig.add_subplot(111)
@@ -504,7 +504,7 @@ class TestMediaCaptureMatplotlib:
         pytest.importorskip("matplotlib")
         from matplotlib.figure import Figure
 
-        from nemo_oo_agents.runtime.media_capture import _to_content_block
+        from nooa.runtime.media_capture import _to_content_block
 
         fig = Figure(figsize=(2, 2))
         result = _to_content_block(fig)
@@ -528,8 +528,8 @@ class TestMethodWrapperResolvedStrategyFalsy:
         We patch get_default_strategy to return None to make auto-resolution
         produce a falsy strategy.
         """
-        from nemo_oo_agents.runtime.method_wrapper import create_agent_method_wrapper
-        from nemo_oo_agents.strategies.base import RuntimeServices
+        from nooa.runtime.method_wrapper import create_agent_method_wrapper
+        from nooa.strategies.base import RuntimeServices
 
         async def my_method(self, runtime: RuntimeServices, x: int) -> int:
             """Do something."""
@@ -552,7 +552,7 @@ class TestMethodWrapperResolvedStrategyFalsy:
         bare = _BareObj()
 
         # Patch get_default_strategy to return None so resolved_strategy stays falsy
-        with patch("nemo_oo_agents.strategies.get_default_strategy", return_value=None):
+        with patch("nooa.strategies.get_default_strategy", return_value=None):
             with pytest.raises(ValueError, match="requires strategy parameter"):
                 await wrapper(bare, mock_runtime, 42)
 
@@ -567,14 +567,14 @@ class TestIsPydanticModelEdgeCases:
 
     def test_non_type_returns_false(self):
         """A string is not a type — returns False without calling issubclass."""
-        from nemo_oo_agents.strategies.generated_code import ReturnValueValidator
+        from nooa.strategies.generated_code import ReturnValueValidator
 
         validator = ReturnValueValidator()
         assert validator._is_pydantic_model("not_a_type") is False
 
     def test_plain_class_returns_false(self):
         """A plain class that isn't a BaseModel returns False."""
-        from nemo_oo_agents.strategies.generated_code import ReturnValueValidator
+        from nooa.strategies.generated_code import ReturnValueValidator
 
         class NotAModel:
             pass
@@ -586,7 +586,7 @@ class TestIsPydanticModelEdgeCases:
         """A BaseModel subclass returns True."""
         from pydantic import BaseModel
 
-        from nemo_oo_agents.strategies.generated_code import ReturnValueValidator
+        from nooa.strategies.generated_code import ReturnValueValidator
 
         class MyModel(BaseModel):
             x: int
@@ -604,18 +604,18 @@ class TestPrefillMediaImportError:
     """Lines 30-31: _is_media returns False when Media import fails."""
 
     def test_is_media_false_on_import_error(self):
-        """_is_media returns False when nemo_oo_agents.media cannot be imported."""
-        from nemo_oo_agents.strategies.prefill import _is_media
+        """_is_media returns False when nooa.media cannot be imported."""
+        from nooa.strategies.prefill import _is_media
 
         # Patch the import to fail
-        with patch.dict(sys.modules, {"nemo_oo_agents.media": None}):
+        with patch.dict(sys.modules, {"nooa.media": None}):
             # importlib will raise ImportError for None entries in sys.modules
             result = _is_media("some_string")
             assert result is False
 
     def test_is_media_false_for_non_media_object(self):
         """_is_media returns False for ordinary objects."""
-        from nemo_oo_agents.strategies.prefill import _is_media
+        from nooa.strategies.prefill import _is_media
 
         assert _is_media(42) is False
         assert _is_media("hello") is False
@@ -643,7 +643,7 @@ class TestFindSkillMdNonDirectory:
 
     def test_non_directory_returns_none(self, tmp_path):
         """Passing a file (not directory) to _find_skill_md returns None."""
-        from nemo_oo_agents.skill import _find_skill_md
+        from nooa.skill import _find_skill_md
 
         file_path = tmp_path / "not_a_dir.txt"
         file_path.write_text("content")
@@ -652,7 +652,7 @@ class TestFindSkillMdNonDirectory:
 
     def test_nonexistent_path_returns_none(self, tmp_path):
         """Passing a non-existent path to _find_skill_md returns None."""
-        from nemo_oo_agents.skill import _find_skill_md
+        from nooa.skill import _find_skill_md
 
         result = _find_skill_md(tmp_path / "does_not_exist")
         assert result is None
@@ -668,8 +668,8 @@ class TestSnapshotNosnaphotValue:
 
     def test_nosnapshot_value_attribute_is_skipped(self):
         """An attribute whose type has __nosnapshot__=True is excluded from snapshot."""
-        from nemo_oo_agents.agent import Agent
-        from nemo_oo_agents.storage.snapshot import AgentSnapshot
+        from nooa.agent import Agent
+        from nooa.storage.snapshot import AgentSnapshot
 
         llm = FakeLLMClient()
 
@@ -698,7 +698,7 @@ class TestSQLiteSessionLocking:
 
     def test_session_already_active_error(self, tmp_path):
         """Opening the same db twice raises SessionAlreadyActiveError."""
-        from nemo_oo_agents.storage.sqlite import SessionAlreadyActiveError, SQLiteStorageManager
+        from nooa.storage.sqlite import SessionAlreadyActiveError, SQLiteStorageManager
 
         db_path = tmp_path / "test.db"
         session1 = SQLiteStorageManager(db_path=db_path)
@@ -712,7 +712,7 @@ class TestSQLiteSessionLocking:
         """The error object carries the owner pid so callers (and users) can
         identify which process is holding the lock and decide what to do.
         """
-        from nemo_oo_agents.storage.sqlite import SessionAlreadyActiveError, SQLiteStorageManager
+        from nooa.storage.sqlite import SessionAlreadyActiveError, SQLiteStorageManager
 
         db_path = tmp_path / "test.db"
         session1 = SQLiteStorageManager(db_path=db_path)
@@ -738,7 +738,7 @@ class TestSQLiteSessionLocking:
         """
         import fcntl
 
-        from nemo_oo_agents.storage.sqlite import _acquire_session_lock
+        from nooa.storage.sqlite import _acquire_session_lock
 
         lock_path = tmp_path / "truncation.lock"
         # Seed with a longer "old owner" PID.
@@ -753,13 +753,13 @@ class TestSQLiteSessionLocking:
 
     def test_close_on_connect_failure(self, tmp_path):
         """Lines 365-367: close() is called when sqlite3.connect or schema setup fails."""
-        from nemo_oo_agents.storage.sqlite import SQLiteStorageManager
+        from nooa.storage.sqlite import SQLiteStorageManager
 
         db_path = tmp_path / "test_fail.db"
         # Create a valid lock file so the lock succeeds,
         # then make connect fail by patching
         with patch(
-            "nemo_oo_agents.storage.sqlite.sqlite3.connect",
+            "nooa.storage.sqlite.sqlite3.connect",
             side_effect=RuntimeError("connect failed"),
         ):
             with pytest.raises(RuntimeError, match="connect failed"):
@@ -774,7 +774,7 @@ class TestSQLiteModuleLevelAssertions:
         import importlib
         import typing
 
-        import nemo_oo_agents.storage.sqlite as sqlite_mod
+        import nooa.storage.sqlite as sqlite_mod
 
         original_get_args = typing.get_args
 
@@ -799,7 +799,7 @@ class TestSQLiteModuleLevelAssertions:
         """Line 72: duplicate event_type key in _CORE_TYPES raises AssertionError."""
         import importlib
 
-        from nemo_oo_agents.events import Task
+        from nooa.events import Task
 
         # Patch Task's event_type default to collide with Message's "Message" key.
         # When sqlite.py module reloads, it iterates all event classes
@@ -808,13 +808,13 @@ class TestSQLiteModuleLevelAssertions:
         Task.model_fields["event_type"].default = "Message"  # collides with Message
         try:
             with pytest.raises(AssertionError, match="Duplicate event_type key"):
-                import nemo_oo_agents.storage.sqlite as sqlite_mod
+                import nooa.storage.sqlite as sqlite_mod
 
                 importlib.reload(sqlite_mod)
         finally:
             Task.model_fields["event_type"].default = original_default
             # Reload to restore clean state
-            import nemo_oo_agents.storage.sqlite as sqlite_mod
+            import nooa.storage.sqlite as sqlite_mod
 
             importlib.reload(sqlite_mod)
 
@@ -832,14 +832,14 @@ class TestNemoFlowMiddlewareModelExtraction:
         """nemo_flow_llm_middleware extracts model_name from ctx.agent._llm.model."""
         fake_nemo_flow, _ = _make_fake_nemo_flow_for_test()
 
-        # Ensure nemo_oo_agents.nemo_flow_middleware is imported
-        import nemo_oo_agents.nemo_flow_middleware as _nm_ensure  # noqa: F401
+        # Ensure nooa.nemo_flow_middleware is imported
+        import nooa.nemo_flow_middleware as _nm_ensure  # noqa: F401
 
         with patch.dict(
             sys.modules,
             {"nemo_flow": fake_nemo_flow},
         ):
-            nm = sys.modules["nemo_oo_agents.nemo_flow_middleware"]
+            nm = sys.modules["nooa.nemo_flow_middleware"]
             importlib.reload(nm)
             try:
                 mock_agent = MagicMock()
@@ -874,7 +874,7 @@ class TestNemoFlowWrapperFallbackReturn:
         """When resp has no model_dump, raw_response, or assistant_message, return {}."""
         fake_nemo_flow, _ = _make_fake_nemo_flow_for_test()
 
-        import nemo_oo_agents.nemo_flow_middleware as _nm_ensure  # noqa: F401
+        import nooa.nemo_flow_middleware as _nm_ensure  # noqa: F401
 
         captured_wrapper_result = {}
 
@@ -888,7 +888,7 @@ class TestNemoFlowWrapperFallbackReturn:
         fake_nemo_flow.llm.execute = AsyncMock(side_effect=llm_execute_capturing)
 
         with patch.dict(sys.modules, {"nemo_flow": fake_nemo_flow}):
-            nm = sys.modules["nemo_oo_agents.nemo_flow_middleware"]
+            nm = sys.modules["nooa.nemo_flow_middleware"]
             importlib.reload(nm)
             try:
                 ctx = MagicMock()
@@ -941,7 +941,7 @@ class TestWebPublisherMethods:
 
     def test_rich_output_event_type(self):
         """RichOutput has event_type 'rich_output'."""
-        from nemo_oo_agents.tools.web_publisher import RichOutput
+        from nooa.tools.web_publisher import RichOutput
 
         ro = RichOutput(payload={"kind": "html", "html": "<b>hi</b>"})
         assert ro.event_type == "RichOutput"
@@ -949,7 +949,7 @@ class TestWebPublisherMethods:
 
     def test_post_stores_event_when_event_manager_present(self):
         """_post adds a RichOutput event to the event_manager."""
-        from nemo_oo_agents.tools.web_publisher import WebPublisher
+        from nooa.tools.web_publisher import WebPublisher
 
         mock_em = MagicMock()
         wp = WebPublisher(event_manager=mock_em)
@@ -962,7 +962,7 @@ class TestWebPublisherMethods:
 
     def test_post_skips_event_for_clear_kind(self):
         """_post does NOT store events for 'clear' kind."""
-        from nemo_oo_agents.tools.web_publisher import WebPublisher
+        from nooa.tools.web_publisher import WebPublisher
 
         mock_em = MagicMock()
         wp = WebPublisher(event_manager=mock_em)
@@ -974,7 +974,7 @@ class TestWebPublisherMethods:
 
     def test_post_without_event_manager(self):
         """_post works when event_manager is None (no storage)."""
-        from nemo_oo_agents.tools.web_publisher import WebPublisher
+        from nooa.tools.web_publisher import WebPublisher
 
         wp = WebPublisher(event_manager=None)
         with patch.dict(os.environ, {}, clear=False):
@@ -984,7 +984,7 @@ class TestWebPublisherMethods:
 
     def test_post_with_nemo_rich_url_httpx(self):
         """_post sends HTTP POST when NEMO_OO_RICH_URL is set and httpx is available."""
-        from nemo_oo_agents.tools.web_publisher import WebPublisher
+        from nooa.tools.web_publisher import WebPublisher
 
         wp = WebPublisher(event_manager=None)
         mock_httpx = MagicMock()
@@ -995,7 +995,7 @@ class TestWebPublisherMethods:
 
     def test_post_without_httpx_logs_warning(self, caplog):
         """_post logs a warning when httpx is not installed."""
-        from nemo_oo_agents.tools.web_publisher import WebPublisher
+        from nooa.tools.web_publisher import WebPublisher
 
         wp = WebPublisher(event_manager=None)
         with patch.dict(os.environ, {"NEMO_OO_RICH_URL": "http://localhost:1234/rich"}):
@@ -1003,13 +1003,13 @@ class TestWebPublisherMethods:
             with patch("builtins.__import__", side_effect=_selective_import_error("httpx")):
                 import logging
 
-                with caplog.at_level(logging.WARNING, logger="nemo_oo_agents.tools.web_publisher"):
+                with caplog.at_level(logging.WARNING, logger="nooa.tools.web_publisher"):
                     wp._post({"kind": "json", "data": {}})
                 assert any("httpx" in r.message for r in caplog.records)
 
     def test_post_httpx_exception_logged(self):
         """_post catches and logs httpx POST exceptions."""
-        from nemo_oo_agents.tools.web_publisher import WebPublisher
+        from nooa.tools.web_publisher import WebPublisher
 
         wp = WebPublisher(event_manager=None)
         mock_httpx = MagicMock()
@@ -1021,7 +1021,7 @@ class TestWebPublisherMethods:
 
     def test_post_event_manager_add_exception_handled(self):
         """_post catches exceptions from event_manager.add."""
-        from nemo_oo_agents.tools.web_publisher import WebPublisher
+        from nooa.tools.web_publisher import WebPublisher
 
         mock_em = MagicMock()
         mock_em.add.side_effect = RuntimeError("storage full")
@@ -1033,7 +1033,7 @@ class TestWebPublisherMethods:
 
     def test_plot_method(self):
         """plot() converts figure to JSON and posts."""
-        from nemo_oo_agents.tools.web_publisher import WebPublisher
+        from nooa.tools.web_publisher import WebPublisher
 
         wp = WebPublisher(event_manager=None)
         mock_fig = MagicMock()
@@ -1051,7 +1051,7 @@ class TestWebPublisherMethods:
 
     def test_plot_serialization_error(self):
         """plot() catches fig.to_json() exceptions."""
-        from nemo_oo_agents.tools.web_publisher import WebPublisher
+        from nooa.tools.web_publisher import WebPublisher
 
         wp = WebPublisher(event_manager=None)
         mock_fig = MagicMock()
@@ -1063,7 +1063,7 @@ class TestWebPublisherMethods:
 
     def test_html_method(self):
         """html() posts an HTML fragment."""
-        from nemo_oo_agents.tools.web_publisher import WebPublisher
+        from nooa.tools.web_publisher import WebPublisher
 
         wp = WebPublisher(event_manager=None)
         with patch.object(wp, "_post") as mock_post:
@@ -1078,7 +1078,7 @@ class TestWebPublisherMethods:
 
     def test_image_method(self):
         """image() posts an image src."""
-        from nemo_oo_agents.tools.web_publisher import WebPublisher
+        from nooa.tools.web_publisher import WebPublisher
 
         wp = WebPublisher(event_manager=None)
         with patch.object(wp, "_post") as mock_post:
@@ -1094,7 +1094,7 @@ class TestWebPublisherMethods:
 
     def test_markdown_method(self):
         """markdown() posts markdown text."""
-        from nemo_oo_agents.tools.web_publisher import WebPublisher
+        from nooa.tools.web_publisher import WebPublisher
 
         wp = WebPublisher(event_manager=None)
         with patch.object(wp, "_post") as mock_post:
@@ -1109,7 +1109,7 @@ class TestWebPublisherMethods:
 
     def test_json_method(self):
         """json() posts JSON data."""
-        from nemo_oo_agents.tools.web_publisher import WebPublisher
+        from nooa.tools.web_publisher import WebPublisher
 
         wp = WebPublisher(event_manager=None)
         with patch.object(wp, "_post") as mock_post:
@@ -1124,7 +1124,7 @@ class TestWebPublisherMethods:
 
     def test_clear_method(self):
         """clear() posts a clear payload."""
-        from nemo_oo_agents.tools.web_publisher import WebPublisher
+        from nooa.tools.web_publisher import WebPublisher
 
         wp = WebPublisher(event_manager=None)
         with patch.object(wp, "_post") as mock_post:
@@ -1133,14 +1133,14 @@ class TestWebPublisherMethods:
 
     def test_constructor_without_event_manager(self):
         """WebPublisher can be constructed with no event_manager."""
-        from nemo_oo_agents.tools.web_publisher import WebPublisher
+        from nooa.tools.web_publisher import WebPublisher
 
         wp = WebPublisher()
         assert wp._event_manager is None
 
     def test_constructor_with_event_manager(self):
         """WebPublisher stores the provided event_manager."""
-        from nemo_oo_agents.tools.web_publisher import WebPublisher
+        from nooa.tools.web_publisher import WebPublisher
 
         mock_em = MagicMock()
         wp = WebPublisher(event_manager=mock_em)

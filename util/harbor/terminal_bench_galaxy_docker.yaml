@@ -23,13 +23,13 @@
 #   2. Harbor installed: source /home/lab/miniforge3/bin/activate
 #   3. Bootstrap overlay at /home/lab/3p/harbor_bootstrap_overlay_v2
 #   4. Tasks at /home/lab/rcabral/harbor_tasks_tb_docker (docker_image lines stripped)
-#   5. Env vars exported (see /home/lab/rcabral/nemo_oo_agents/.env):
+#   5. Env vars exported (see /home/lab/rcabral/nooa/.env):
 #        export NVIDIA_INTERNAL_API_KEY=<key>
 #        export NEMO_OO_AGENTS_GIT_URL=<gitlab-url>
 #        export NEMO_OO_AGENTS_GIT_REF=<branch>
 #
-# Run from /home/lab/rcabral/nemo_oo_agents:
-#   source /home/lab/rcabral/nemo_oo_agents/.env
+# Run from /home/lab/rcabral/nooa:
+#   source /home/lab/rcabral/nooa/.env
 #   source /home/lab/miniforge3/bin/activate
 #   harbor run --config util/harbor/terminal_bench_galaxy_docker.yaml
 

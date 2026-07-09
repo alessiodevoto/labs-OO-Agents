@@ -10,7 +10,7 @@ import sqlite3
 
 import pytest
 
-import nemo_oo_agents.viewer.otlp_store as store
+import nooa.viewer.otlp_store as store
 
 # ---------------------------------------------------------------------------
 # Fixture: isolated database per test

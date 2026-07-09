@@ -8,7 +8,7 @@ and ``_truncate_blocks`` are gone. Per-value bounds come from ``cfg.context_bloc
 the assembly step.
 """
 
-from nemo_oo_agents.context_blocks.models import BlockMetadata, ResolvedBlock, Role
+from nooa.context_blocks.models import BlockMetadata, ResolvedBlock, Role
 
 
 class TestResolvedBlockHoldsContentVerbatim:

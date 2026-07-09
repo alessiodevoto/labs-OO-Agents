@@ -1,7 +1,7 @@
 import pytest
 from pydantic import BaseModel, ValidationError
 
-from nemo_oo_agents.config import CodeActConfig, PredictConfig, ReflexionConfig
+from nooa.config import CodeActConfig, PredictConfig, ReflexionConfig
 
 
 class TestCodeActConfig:
@@ -85,13 +85,13 @@ class TestStrategyWiring:
     """Tests that strategies accept config objects."""
 
     def test_predict_accepts_config(self):
-        from nemo_oo_agents.strategies.predict import PredictStrategy
+        from nooa.strategies.predict import PredictStrategy
 
         s = PredictStrategy(config=PredictConfig(max_retries=5))
         assert s.config.max_retries == 5
 
     def test_predict_rejects_flat_kwargs(self):
-        from nemo_oo_agents.strategies.predict import PredictStrategy
+        from nooa.strategies.predict import PredictStrategy
 
         with pytest.raises(TypeError):
             PredictStrategy(max_retries=5)

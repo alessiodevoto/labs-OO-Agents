@@ -13,8 +13,8 @@ from typing import Annotated
 
 from pydantic import BaseModel, Field
 
-from nemo_oo_agents.agentdoc import doc
-from nemo_oo_agents.agentdoc._structured import format_type
+from nooa.agentdoc import doc
+from nooa.agentdoc._structured import format_type
 
 
 class TestFormatType:

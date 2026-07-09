@@ -3,7 +3,7 @@
 ## Problem
 
 The viewer rendered OTEL spans in a flat timeline sorted purely by `start_time_ns`.
-nemo_oo_agents workflows commonly spawn **parallel sub-agent calls mid-workflow, at any
+nooa workflows commonly spawn **parallel sub-agent calls mid-workflow, at any
 depth and nested** (e.g. an orchestrator launches several CodeAct sub-agents via
 `asyncio.gather`). With a flat timestamp sort, those concurrent sibling subtrees
 **interleave**, so a reader scanning top-to-bottom sees spans from different branches
@@ -15,7 +15,7 @@ Two complementary changes; **no heuristics** anywhere.
 
 ### 1. Viewer: tree order (start time + parent-child nesting)
 
-`src/nemo_oo_agents/viewer/frontend-react/src/components/trace/tree_order.ts`
+`src/nooa/viewer/frontend-react/src/components/trace/tree_order.ts`
 - `annotateTreeOrder(events)` assigns each event a `_tree_rank` = DFS-preorder position,
   with each parent's children ordered by start time (span-events placed under their span).
   Sorting by `_tree_rank` keeps every subtree contiguous, so parallel branches render as
@@ -50,7 +50,7 @@ true position automatically.
 - `frontend-react/src/components/trace/TraceView.tsx` — `applyFilters` sorts by `_tree_rank`
   (eval-summary spans still floated to the top).
 - `frontend-react/dist/` — rebuilt (the Python viewer serves the committed build).
-- `nemo_oo_agents/tracing/_hooks_impl.py` — the parenting fix (see issue-254b).
+- `nooa/tracing/_hooks_impl.py` — the parenting fix (see issue-254b).
 - `tests/runtime/test_codeexec_method_parenting.py` — regression (sync + async submit).
 
 ## Verification

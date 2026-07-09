@@ -17,7 +17,7 @@ Core contract:
 
 from __future__ import annotations
 
-from nemo_oo_agents import hidden as _hidden
+from nooa import hidden as _hidden
 
 _agentdoc_hidden_names = {"_hidden"}
 
@@ -26,19 +26,19 @@ with _hidden:
     import os
     from typing import TYPE_CHECKING, Any
 
-    from nemo_oo_agents_cli.tools.repo_tools import RepoTools
+    from nooa_cli.tools.repo_tools import RepoTools
     from pydantic import BaseModel, Field
 
-    from nemo_oo_agents import Agent, CodeActStrategy, strategy
-    from nemo_oo_agents.agentdoc import doc, spec
-    from nemo_oo_agents.config import CodeActConfig
-    from nemo_oo_agents.context_blocks import DynamicContext
-    from nemo_oo_agents.tools.shell_tools import ShellTools
-    from nemo_oo_agents.tools.todo import TodoManager
-    from nemo_oo_agents.unifiedllm import FakeLLMClient
+    from nooa import Agent, CodeActStrategy, strategy
+    from nooa.agentdoc import doc, spec
+    from nooa.config import CodeActConfig
+    from nooa.context_blocks import DynamicContext
+    from nooa.tools.shell_tools import ShellTools
+    from nooa.tools.todo import TodoManager
+    from nooa.unifiedllm import FakeLLMClient
 
 if TYPE_CHECKING:
-    from nemo_oo_agents.unifiedllm import UnifiedLLM
+    from nooa.unifiedllm import UnifiedLLM
 
 _logger = logging.getLogger(__name__)
 
@@ -151,7 +151,7 @@ class BenchAgent(
         # hint references them, so expose both APIs to the LLM here.
         spec(self, "context", hidden=False)
         spec(self, "events", hidden=False)
-        from nemo_oo_agents import Context
+        from nooa import Context
 
         self.context_manager["python_tools"] = Context(doc(RepoTools, ShellTools), prefix=True)
         self.context_manager["todo"] = Context(doc(type(self.todo)), prefix=True)
@@ -185,7 +185,7 @@ class BenchAgent(
         else:
             cwd = next((d for d in ("/testbed", "/app") if os.path.isdir(d)), os.getcwd())
         self._install_python_tools(cwd)
-        from nemo_oo_agents import Context
+        from nooa import Context
 
         self.context_manager["todo"] = Context(doc(type(self.todo)), prefix=True)
         self.todo.clear()

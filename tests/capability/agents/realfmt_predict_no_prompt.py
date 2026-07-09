@@ -17,9 +17,9 @@ from typing import Annotated, Any
 
 from pydantic import BaseModel, Field
 
-from nemo_oo_agents import Agent
-from nemo_oo_agents.decorators import strategy
-from nemo_oo_agents.strategies import PredictStrategy
+from nooa import Agent
+from nooa.decorators import strategy
+from nooa.strategies import PredictStrategy
 from tests.capability.agents.truncation_formats import _patch_eval_pipeline_loader
 
 _patch_eval_pipeline_loader()
@@ -40,7 +40,7 @@ class RealFmtAgent(Agent):
         # Intentionally omits the truncation-conventions section that the
         # base Agent docstring includes, so the ablation measures the marker's
         # intrinsic legibility.
-        from nemo_oo_agents import Context
+        from nooa import Context
 
         self.context_manager["system_prompt"] = Context(
             expr=(

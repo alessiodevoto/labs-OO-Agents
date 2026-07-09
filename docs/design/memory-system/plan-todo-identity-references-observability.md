@@ -1,7 +1,7 @@
 # Memory System — MR Plan: TODOs · Identity · References · Observability
 
 > **Status:** PLANNED (design for the next memory-system MR, branch `feat/memory-followups`).
-> **Baseline:** the merged v1 subsystem (`src/nemo_oo_agents/memory/`, MR !483 + !487).
+> **Baseline:** the merged v1 subsystem (`src/nooa/memory/`, MR !483 + !487).
 > **Companions:** [`design.md`](./design.md) (v1 decision record) ·
 > [`addendum-skill-reflection-verbal-descriptors.md`](./addendum-skill-reflection-verbal-descriptors.md)
 > (skill interface, verbal ladders) · [`results.md`](./results.md) (benchmark evidence).
@@ -34,10 +34,10 @@ builds on.
 | Type taxonomy | `MemoryType` StrEnum — `memory/schema.py:28-36` (`info/skill/episode/intent/reflection/scratch`); LLM-facing doc in `MEMORY_SCHEMA_GUIDE` — `memory/manager.py:58-82` |
 | Record model | `Memory(BaseModel)` — `schema.py:82-197`; opaque refs today: `source_task_ref`, `chat_turn_ref`, `related_files` (plain strings) |
 | SQL DDL | `_SCHEMA` — `store.py:48-76`: 8 promoted columns (`type, importance, salience, strength, created_at, last_accessed, access_count, archived`) + `data` JSON blob + `memory_edges`; **no schema-version pragma yet** |
-| Identity today | **None.** One SQLite file = one flat namespace; path from `MemoryConfig.path` else `.nemo_oo/memory/memory.sqlite` (`manager.py:139-143`). TUI derives per-session files `{session_id}-memory.db` (`nemo_oo_agents_cli/tui/bootstrap.py:80-138`) |
+| Identity today | **None.** One SQLite file = one flat namespace; path from `MemoryConfig.path` else `.nooa/memory/memory.sqlite` (`manager.py:139-143`). TUI derives per-session files `{session_id}-memory.db` (`nooa_cli/tui/bootstrap.py:80-138`) |
 | Retrieval | `RetrievalEngine.recall` — `retrieval.py:71-142` (dense ∪ sparse → ACT-R scoring → spread); the **only** filter anywhere is `archived` (+ `mem_type` on `keyword_search`, `store.py:268`) |
 | Tool surface | `MemoryToolsMixin` — `manager.py:511-607` (`remember/update_memory/forget/recall/search/associate`); shipped to agents as `self.memory` via `MemorySkill` (`memory/memory_skill/__init__.py:23`) |
-| Agent live state | `agent.vars` (`SnapshotVars`, snapshot-backed, `nemo_oo_agents_cli/tui/agent.py:338`, proxied as `self.v`); context blocks (`runtime/context_manager.py:75,117`); CodeAct REPL `session_locals` (`strategies/codeact.py:586-599`); per-todo vars `self.todo.<id>.v` (`tools/todo.py:94`) |
+| Agent live state | `agent.vars` (`SnapshotVars`, snapshot-backed, `nooa_cli/tui/agent.py:338`, proxied as `self.v`); context blocks (`runtime/context_manager.py:75,117`); CodeAct REPL `session_locals` (`strategies/codeact.py:586-599`); per-todo vars `self.todo.<id>.v` (`tools/todo.py:94`) |
 | Session todo list | `TodoManager` skill (`nemo.todo` → `self.todo`, `tools/todo.py:117`) — session-scoped, snapshot-backed, **not** long-term memory |
 | Monitoring | `MemoryWritten/MemoryRecalled/MemoryInjected/ReflectionCompleted` (`monitoring.py:30-65`) — `RUNTIME_EVENT` role, `record=False` → **never persisted, never traced** (`manager.py:311-316`, `runtime/event_manager.py:144-146`) |
 | TUI browser framework | `ExplorerView`/`ExplorerModel`/`render_explorer` (`tui/explorer_base.py`) + host subview machinery (`tui/tui_application.py:533-627`); command registry `tui/commands.py:2550-2617` |
@@ -207,7 +207,7 @@ records back to traces.
   same file; no rebuild cost on refresh).
 - **TUI scope:** `tui.memory` gains `"project"` (config `Literal` at
   `tui/config.py:116-121`): one project-level DB at the legacy default path
-  `.nemo_oo/memory/memory.sqlite` (`manager.py:139-143`), `owner` = the per-agent key —
+  `.nooa/memory/memory.sqlite` (`manager.py:139-143`), `owner` = the per-agent key —
   this is what actually turns on *shared* memory for dogfooding (§7). `"session"`
   behavior unchanged. `session_manager.delete_session` cleanup (`session_manager.py:340`)
   must **not** delete the project DB.
@@ -448,7 +448,7 @@ Mirror the Traces tab end-to-end; three views (Records / Dashboard / Explain):
   the memory DB **read-only** (`file:...?mode=ro` URI) via `MemoryStore` +
   `observability.py` — same DB-backed-route precedent as `annotation_routes.py`.
 - Discovery = union of: paths recorded in trace resource attrs (`memory.db_path`, once
-  §5.2 lands), `.nemo_oo/memory/*.sqlite` under the project dir, and
+  §5.2 lands), `.nooa/memory/*.sqlite` under the project dir, and
   `*-memory.db` next to TUI session DBs. Explicit `?db=` always works.
 - Frontend: `NavLink` "Memory" + routes in `App.tsx:50-60`.
   - **Records:** `pages/MemoryList.tsx` on the generic `DataTable`

@@ -1,7 +1,7 @@
 #!/bin/bash
 # Colossus machine setup for NeMo OO Agents benchmarks
 # Usage: curl -sSL https://raw.githubusercontent.com/.../setup.sh | bash
-# Or: git clone ... && cd nemo_oo_agents && ./util/harbor/setup_colossus.sh
+# Or: git clone ... && cd nooa && ./util/harbor/setup_colossus.sh
 
 set -e
 
@@ -24,9 +24,9 @@ fi
 
 # 2. Clone repo if not in it already
 if [ ! -f "pyproject.toml" ]; then
-    echo "Cloning nemo_oo_agents..."
-    git clone https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents.git
-    cd nemo_oo_agents
+    echo "Cloning nooa..."
+    git clone https://gitlab-master.nvidia.com/interactive-agents/nooa.git
+    cd nooa
 fi
 
 # 3. Install project
@@ -126,7 +126,7 @@ else
 fi
 
 # (b) harbor x86_64 cp312-overlay setup fix (TB1 Python-version mismatch)
-HARBOR_SETUP=$(find ~/3p/harbor -path "*agents/installed/nemo_oo_agents.py" 2>/dev/null | head -1)
+HARBOR_SETUP=$(find ~/3p/harbor -path "*agents/installed/nooa.py" 2>/dev/null | head -1)
 if [ -n "$HARBOR_SETUP" ] && grep -q "elif \[ -x /opt/harbor/cpython312/bin/python3.12 \]" "$HARBOR_SETUP"; then
     echo "  [ok] harbor x86_64 cp312-overlay setup fix present"
 else

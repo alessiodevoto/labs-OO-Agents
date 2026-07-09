@@ -6,17 +6,17 @@ from typing import Annotated
 import pytest
 from pydantic import BaseModel
 
-from nemo_oo_agents import Agent
-from nemo_oo_agents.errors.storage import SerializationError
-from nemo_oo_agents.storage.json_snapshot import (
+from nooa import Agent
+from nooa.errors.storage import SerializationError
+from nooa.storage.json_snapshot import (
     snapshot_from_dict,
     snapshot_from_json,
     snapshot_to_dict,
     snapshot_to_json,
 )
-from nemo_oo_agents.storage.markers import nosnapshot
-from nemo_oo_agents.storage.snapshot import SNAPSHOT_VERSION, AgentSnapshot, StaticContextBlock
-from nemo_oo_agents.unifiedllm import FakeLLMClient
+from nooa.storage.markers import nosnapshot
+from nooa.storage.snapshot import SNAPSHOT_VERSION, AgentSnapshot, StaticContextBlock
+from nooa.unifiedllm import FakeLLMClient
 
 fake_llm = FakeLLMClient()
 
@@ -61,7 +61,7 @@ class TestSnapshotRoundtrip:
         agent2 = SimpleAgent()
         snapshot_from_json(snap, agent2)
 
-        from nemo_oo_agents.context_blocks import DynamicContext
+        from nooa.context_blocks import DynamicContext
 
         raw = dict(agent2.context_manager._raw_items())
         assert isinstance(raw["status"], DynamicContext)

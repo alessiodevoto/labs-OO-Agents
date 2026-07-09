@@ -1,6 +1,6 @@
 # eval_pipeline
 
-A flexible evaluation framework for nemo_oo_agents agents. Use it from **Python** or via **YAML config**.
+A flexible evaluation framework for nooa agents. Use it from **Python** or via **YAML config**.
 
 ## Installation
 
@@ -16,7 +16,7 @@ pip install -e ./util/eval_pipeline
 
 ```python
 from eval_pipeline import Evaluator, ExactMatchScorer
-from nemo_oo_agents.unifiedllm import CompletionClient
+from nooa.unifiedllm import CompletionClient
 
 # Create your LLM clients
 gpt4 = CompletionClient(model="openai/gpt-4", api_key="...")
@@ -295,7 +295,7 @@ Each result includes:
 
 ## Trace export: OTLP vs disk
 
-The pipeline can send traces to an **OTLP API** (e.g. the nemo_oo_agents viewer) or write them to **disk** as `.jsonl` files. The choice is controlled by the **`OTLP_ENDPOINT`** environment variable.
+The pipeline can send traces to an **OTLP API** (e.g. the nooa viewer) or write them to **disk** as `.jsonl` files. The choice is controlled by the **`OTLP_ENDPOINT`** environment variable.
 
 | `OTLP_ENDPOINT`   | Behavior |
 |-------------------|----------|
@@ -313,7 +313,7 @@ export OTLP_ENDPOINT=http://localhost:5001/v1/traces
 python -m eval_pipeline --config config.yaml --runs 3
 ```
 
-Start the viewer (e.g. `nemo-oo start-dev` or the combined viewer on port 5001) before running so the endpoint is available. Experiments will appear in the eval viewer under distinct names (e.g. `capability_20260309_080455_207319_r3_p40`).
+Start the viewer (e.g. `nooa start-dev` or the combined viewer on port 5001) before running so the endpoint is available. Experiments will appear in the eval viewer under distinct names (e.g. `capability_20260309_080455_207319_r3_p40`).
 
 **Example: traces to disk only (default)**
 

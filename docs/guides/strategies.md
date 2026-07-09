@@ -1,4 +1,4 @@
-# Strategies in nemo_oo_agents
+# Strategies in nooa
 
 ## The Two Strategies
 
@@ -17,8 +17,8 @@
 Use when the method returns a Pydantic model and the LLM only needs to produce structured output — no code execution required:
 
 ```python
-from nemo_oo_agents import strategy
-from nemo_oo_agents.strategies import PredictStrategy
+from nooa import strategy
+from nooa.strategies import PredictStrategy
 
 class Intent(BaseModel):
     task_type: Literal["question", "feature", "bugfix"]

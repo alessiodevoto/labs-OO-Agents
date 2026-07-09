@@ -6,8 +6,8 @@ uv run python examples/quickstart/10_skills.py
 
 from pathlib import Path
 
-from nemo_oo_agents import TextSkill
-from nemo_oo_agents.util.quickstart import *
+from nooa import TextSkill
+from nooa.util.quickstart import *
 
 ASSETS = Path(__file__).parent.parent / "assets"
 

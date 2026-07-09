@@ -1,11 +1,11 @@
-# Design: `nemo_oo_agents.print_prompt` runtime API
+# Design: `nooa.print_prompt` runtime API
 
 ## Goal
 
 ```python
 agent = MyAgent(llm=client)
 # ... lots of things happen
-await nemo_oo_agents.print_prompt(agent.analyze, my_data)
+await nooa.print_prompt(agent.analyze, my_data)
 ```
 
 Renders the three prompt sections that would be sent to the LLM for a given agent method — without triggering an actual LLM call. Uses real agent state and real argument values. Useful for prompt debugging, evaluation prep, and sanity-checking agent definitions.
@@ -20,15 +20,15 @@ Output sections:
 ## Runtime API (only)
 
 ```python
-await nemo_oo_agents.print_prompt(agent.analyze, my_data)
+await nooa.print_prompt(agent.analyze, my_data)
 
-data = await nemo_oo_agents.build_prompt_data(agent.analyze, my_data)
+data = await nooa.build_prompt_data(agent.analyze, my_data)
 print(data.task_prompt)
 ```
 
 ### Why runtime-only (no static CLI)
 
-A static CLI (`nemo_oo_agents prompts agent.py MyAgent.analyze`) was considered and designed but dropped because:
+A static CLI (`nooa prompts agent.py MyAgent.analyze`) was considered and designed but dropped because:
 
 - **Decorator-scoped blocks are invisible** at analysis time — blocks set via `@strategy(ScopedContext(context={...}))` only exist during a live method call
 - **Dynamic blocks render cold** — `DynamicContext` expressions evaluated against a fresh agent have no accumulated state
@@ -40,7 +40,7 @@ The runtime API avoids all of these: the agent is already instantiated, context 
 
 ## API Reference
 
-### `nemo_oo_agents.print_prompt`
+### `nooa.print_prompt`
 
 ```python
 async def print_prompt(method: Any, /, *args: Any, **kwargs: Any) -> None:
@@ -48,7 +48,7 @@ async def print_prompt(method: Any, /, *args: Any, **kwargs: Any) -> None:
 
 Writes plain-text prompt sections to stdout.  `*args` and `**kwargs` are the arguments the method would be called with — they are forwarded to `build_prompt_data` and from there to the agent's context pipeline, so real argument values appear in the prefill and task prompt.
 
-### `nemo_oo_agents.build_prompt_data`
+### `nooa.build_prompt_data`
 
 ```python
 async def build_prompt_data(method: Any, /, *args: Any, **kwargs: Any) -> PromptData:
@@ -60,7 +60,7 @@ Note: calling this on a non-`...` method (not a generation method) still returns
 
 Note: calls `agent.runtime._build_messages()` internally, which updates the agent's `DynamicContext` resolved-value cache as a side effect. Avoid using with speculative arguments mid-session if your agent relies on cached DynamicContext values between turns.
 
-### `nemo_oo_agents.PromptData`
+### `nooa.PromptData`
 
 ```python
 @dataclass(frozen=True)
@@ -105,7 +105,7 @@ pprint(data, max_length=50, max_string=500, max_depth=4)
 
 ## Implementation
 
-### Core builder (`src/nemo_oo_agents/prompts.py`)
+### Core builder (`src/nooa/prompts.py`)
 
 ```python
 async def _build_prompt_data_from_agent(agent, wrapper, original_func, args, kwargs):
@@ -143,10 +143,10 @@ Falls back to `call.docstring` when the strategy has no `_build_task_message` or
 ## File layout
 
 ```
-src/nemo_oo_agents/prompts.py   # Core helpers + print_prompt() + build_prompt_data()
+src/nooa/prompts.py   # Core helpers + print_prompt() + build_prompt_data()
 ```
 
-`print_prompt`, `build_prompt_data`, and `PromptData` are exported from `nemo_oo_agents/__init__.py`.
+`print_prompt`, `build_prompt_data`, and `PromptData` are exported from `nooa/__init__.py`.
 
 ---
 
@@ -156,8 +156,8 @@ All reused from existing framework — no new dependencies:
 
 | Import | Used for |
 |--------|----------|
-| `nemo_oo_agents.runtime.actor._current_strategy_var` | Strategy contextvar for `_prepare_context` |
+| `nooa.runtime.actor._current_strategy_var` | Strategy contextvar for `_prepare_context` |
 | `context_blocks.render_context` | System prompt message formatting |
-| `nemo_oo_agents.strategies.current_call.CurrentCall` | Task + prefill construction |
-| `nemo_oo_agents.strategies.prefill.InspectInputsPrefill` | Prefill code generation |
+| `nooa.strategies.current_call.CurrentCall` | Task + prefill construction |
+| `nooa.strategies.prefill.InspectInputsPrefill` | Prefill code generation |
 | `string.Formatter` | Template variable expansion (stdlib) |

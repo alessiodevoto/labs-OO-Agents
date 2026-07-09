@@ -14,11 +14,11 @@ from pathlib import Path
 
 import pytest
 
-from nemo_oo_agents.atif import Trajectory
-from nemo_oo_agents.atif.exporter import AtifExporter
-from nemo_oo_agents.context_blocks import ResultStatus
-from nemo_oo_agents.context_blocks.events import ToolCallEvent, ToolResult
-from nemo_oo_agents.events import (
+from nooa.atif import Trajectory
+from nooa.atif.exporter import AtifExporter
+from nooa.context_blocks import ResultStatus
+from nooa.context_blocks.events import ToolCallEvent, ToolResult
+from nooa.events import (
     AfterTurn,
     BeforeTurn,
     Error,

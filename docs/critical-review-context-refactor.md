@@ -25,7 +25,7 @@ The refactor is ready to merge. All technical issues have been addressed, tests 
 - **7 commits** with clear, semantic commit messages
 - **Three major subsystems touched**:
   1. `packages/context-blocks/` - Core context block system
-  2. `src/nemo_oo_agents/runtime/` - Agent runtime and context building
+  2. `src/nooa/runtime/` - Agent runtime and context building
   3. Test suites - Comprehensive test updates
 
 ### Risk Assessment: 🟡 MEDIUM
@@ -327,7 +327,7 @@ The `ScopedContext(events=EventQuery.current_call())` API is present, but:
    ```python
    """
    Example:
-       from nemo_oo_agents.runtime import EventQuery
+       from nooa.runtime import EventQuery
 
        @strategy(
            CodeActStrategy(),
@@ -366,7 +366,7 @@ The `ScopedContext(events=EventQuery.current_call())` API is present, but:
 
 #### M1: EventQuery Implementation Included ✅
 
-**File**: `src/nemo_oo_agents/runtime/event_query.py`
+**File**: `src/nooa/runtime/event_query.py`
 **Status**: ✅ Committed (commit d9ba6658)
 
 **Update**: Initial review incorrectly flagged this as untracked. The file IS properly committed in commit `d9ba6658: feat: replace dict-based event injection with type-safe EventQuery filtering`.

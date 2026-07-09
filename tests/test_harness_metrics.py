@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from nemo_oo_agents.runtime.harness_metrics import (
+from nooa.runtime.harness_metrics import (
     _MAX_CODE_PREVIEW_CHARS,
     _MAX_LIST_ITEMS,
     _MAX_STRING_CHARS,
@@ -32,7 +32,7 @@ from nemo_oo_agents.runtime.harness_metrics import (
 @pytest.fixture(autouse=True)
 def _clean_harness_metrics():
     """Ensure harness metrics ContextVar is clean before and after each test."""
-    from nemo_oo_agents.runtime.harness_metrics import _NULL_METRICS, _harness_metrics_var
+    from nooa.runtime.harness_metrics import _NULL_METRICS, _harness_metrics_var
 
     token = _harness_metrics_var.set(_NULL_METRICS)
     yield
@@ -697,12 +697,12 @@ class TestLLMMetricsCallback:
     """Test the ContextVar callback protocol used by unifiedllm."""
 
     def test_record_llm_metric_noop_when_no_callback(self):
-        from nemo_oo_agents.unifiedllm.unifiedllm import _record_llm_metric
+        from nooa.unifiedllm.unifiedllm import _record_llm_metric
 
         _record_llm_metric("think_tag_extracted")
 
     def test_record_llm_metric_dispatches_to_callback(self):
-        from nemo_oo_agents.unifiedllm.unifiedllm import _llm_metrics_callback, _record_llm_metric
+        from nooa.unifiedllm.unifiedllm import _llm_metrics_callback, _record_llm_metric
 
         events: list[tuple[str, Any]] = []
 
@@ -727,7 +727,7 @@ class TestLLMMetricsBridge:
     """Test the _make_llm_metrics_bridge function in actor.py."""
 
     def test_bridge_dispatches_all_events(self):
-        from nemo_oo_agents.runtime.actor import _make_llm_metrics_bridge
+        from nooa.runtime.actor import _make_llm_metrics_bridge
 
         hm = HarnessMetrics()
         bridge = _make_llm_metrics_bridge(hm)
@@ -752,7 +752,7 @@ class TestLLMMetricsBridge:
             )
 
     def test_bridge_ignores_unknown_events(self):
-        from nemo_oo_agents.runtime.actor import _make_llm_metrics_bridge
+        from nooa.runtime.actor import _make_llm_metrics_bridge
 
         hm = HarnessMetrics()
         bridge = _make_llm_metrics_bridge(hm)
@@ -761,8 +761,8 @@ class TestLLMMetricsBridge:
 
     def test_end_to_end_callback_to_harness_metrics(self):
         """Full path: set callback via ContextVar, record metric, verify HarnessMetrics."""
-        from nemo_oo_agents.runtime.actor import _make_llm_metrics_bridge
-        from nemo_oo_agents.unifiedllm.unifiedllm import _llm_metrics_callback, _record_llm_metric
+        from nooa.runtime.actor import _make_llm_metrics_bridge
+        from nooa.unifiedllm.unifiedllm import _llm_metrics_callback, _record_llm_metric
 
         hm = HarnessMetrics()
         bridge = _make_llm_metrics_bridge(hm)

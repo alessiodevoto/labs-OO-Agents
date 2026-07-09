@@ -8,7 +8,7 @@
 Generation methods are methods where the LLM "fills in" the implementation. With the metaclass-based system, methods with ellipsis (`...`) bodies are automatically wrapped for generation - no decorator needed!
 
 ```python
-from nemo_oo_agents import Agent
+from nooa import Agent
 
 class MyAgent(Agent, llm=my_llm):
     async def analyze(self, data: str) -> Analysis:
@@ -29,8 +29,8 @@ The `...` (ellipsis) is the key - it signals that this method needs LLM generati
 The metaclass detects ellipsis bodies and wraps them automatically. To override the default strategy, use `@strategy`:
 
 ```python
-from nemo_oo_agents import strategy
-from nemo_oo_agents.strategies import ReflexionStrategy
+from nooa import strategy
+from nooa.strategies import ReflexionStrategy
 
 @strategy(ReflexionStrategy(max_iterations=5))
 async def complex_task(self): ...
@@ -110,8 +110,8 @@ Strategy methods can also use ellipsis for generation. They must receive `runtim
 By default, ellipsis methods use `CodeActStrategy()`. Override with `@strategy`:
 
 ```python
-from nemo_oo_agents import Agent, strategy
-from nemo_oo_agents.strategies import PredictStrategy
+from nooa import Agent, strategy
+from nooa.strategies import PredictStrategy
 
 class MyAgent(Agent, llm=my_llm):
     # Default strategy (CodeActStrategy) — code execution + iteration
@@ -169,7 +169,7 @@ class MyAgent(Agent, llm=my_llm):
 To opt-out of tracing for a public method:
 
 ```python
-from nemo_oo_agents import no_trace
+from nooa import no_trace
 
 class MyAgent(Agent, llm=my_llm):
     @no_trace
@@ -208,7 +208,7 @@ class Analyzer(Agent, llm=my_llm):
 Use `agentdoc` functions in your docstrings:
 
 ```python
-from nemo_oo_agents.agentdoc import doc, brief
+from nooa.agentdoc import doc, brief
 
 class MyAgent(Agent, llm=my_llm):
     async def task(self, data: str):
@@ -241,7 +241,7 @@ If you're updating code from the old `@agent` and `@plan` decorators:
 
 **Before:**
 ```python
-from nemo_oo_agents import agent, plan
+from nooa import agent, plan
 
 @agent(llm=my_llm)
 class MyAgent(Agent):
@@ -254,8 +254,8 @@ class MyAgent(Agent):
 
 **After:**
 ```python
-from nemo_oo_agents import Agent, strategy
-from nemo_oo_agents.strategies import ReflexionStrategy
+from nooa import Agent, strategy
+from nooa.strategies import ReflexionStrategy
 
 class MyAgent(Agent, llm=my_llm):
     async def task(self): ...  # No decorator needed!

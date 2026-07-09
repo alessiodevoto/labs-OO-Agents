@@ -8,8 +8,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from nemo_oo_agents.skill import Skill
-from nemo_oo_agents.skill_registry import SkillRegistry
+from nooa.skill import Skill
+from nooa.skill_registry import SkillRegistry
 
 
 class FakeSkill(Skill):
@@ -35,7 +35,7 @@ def agent():
 
 @pytest.fixture
 def registry(agent):
-    with patch("nemo_oo_agents.skill_registry.entry_points", return_value=[]):
+    with patch("nooa.skill_registry.entry_points", return_value=[]):
         return SkillRegistry(agent)
 
 
@@ -50,7 +50,7 @@ class TestDiscoverSkillsDirs:
         skill_file = tmp_path / "my_tool.py"
         skill_file.write_text(
             textwrap.dedent("""
-            from nemo_oo_agents.skill import Skill
+            from nooa.skill import Skill
 
             class MyTool(Skill):
                 \"\"\"A custom tool.\"\"\"
@@ -66,7 +66,7 @@ class TestDiscoverSkillsDirs:
         skill_file = tmp_path / "_private.py"
         skill_file.write_text(
             textwrap.dedent("""
-            from nemo_oo_agents.skill import Skill
+            from nooa.skill import Skill
             class Priv(Skill): pass
         """)
         )
@@ -108,13 +108,11 @@ class TestDiscoverLibs:
         lib_dir.mkdir()
         (lib_dir / "pyproject.toml").write_text(
             '[project]\nname = "my-lib"\n\n'
-            '[project.entry-points."nemo_oo_agents.skills"]\n'
+            '[project.entry-points."nooa.skills"]\n'
             '"local.my_lib" = "my_lib:MyLibSkill"\n'
         )
         (lib_dir / "__init__.py").write_text(
-            "from nemo_oo_agents.skill import Skill\n\n"
-            "class MyLibSkill(Skill):\n"
-            '    """A library skill."""\n'
+            'from nooa.skill import Skill\n\nclass MyLibSkill(Skill):\n    """A library skill."""\n'
         )
         registry.discover_libs(tmp_path)
         assert "local.my_lib" in registry.loaded()
@@ -144,7 +142,7 @@ class TestDiscoverLibs:
         )
         (lib_dir / "__init__.py").write_text(
             textwrap.dedent("""
-            from nemo_oo_agents.skill import Skill
+            from nooa.skill import Skill
             class DupSkill(Skill): pass
         """)
         )
@@ -167,7 +165,7 @@ class TestResolveDeps:
         ep_base.name = "nemo.base"
         ep_base.load.return_value = FakeSkill
 
-        with patch("nemo_oo_agents.skill_registry.entry_points", return_value=[ep_base]):
+        with patch("nooa.skill_registry.entry_points", return_value=[ep_base]):
             reg = SkillRegistry(agent)
 
         dep_skill = DepSkill()

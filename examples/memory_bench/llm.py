@@ -30,8 +30,9 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from nemo_oo_agents.memory.config import EmbeddingConfig
-from nemo_oo_agents.unifiedllm import CompletionClient, FakeLLMClient, RetryConfig
+from nooa_tui.memory.config import EmbeddingConfig
+
+from nooa.unifiedllm import CompletionClient, FakeLLMClient, RetryConfig
 
 # Defaults requested for this benchmark. The gateway uses the OpenAI-compatible
 # route, so litellm appends "/embeddings" to the base — the base is ".../v1".

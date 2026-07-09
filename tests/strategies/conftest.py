@@ -50,7 +50,7 @@ def mock_runtime(mock_agent, mock_event_manager):
         @property
         def truncation_config(self):
             """Truncation configuration."""
-            from nemo_oo_agents.config.truncation_config import DEFAULT_TRUNCATION_CONFIG
+            from nooa.config.truncation_config import DEFAULT_TRUNCATION_CONFIG
 
             return DEFAULT_TRUNCATION_CONFIG
 

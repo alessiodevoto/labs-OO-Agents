@@ -30,7 +30,7 @@ if [ $# -gt 0 ]; then
     BENCHMARKS=("$@")
 fi
 
-cd /raid/rcabral/home/nemo_oo_agents
+cd /raid/rcabral/home/nooa
 
 for BENCH in "${BENCHMARKS[@]}"; do
     JOB_DIR="${JOBS_DIR}/${BENCH}"

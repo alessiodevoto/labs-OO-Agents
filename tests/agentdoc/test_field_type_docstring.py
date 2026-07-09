@@ -4,9 +4,9 @@
 
 from __future__ import annotations
 
-from nemo_oo_agents.agentdoc._info import REQUIRED
-from nemo_oo_agents.agentdoc._pformat import _field_type_docstring
-from nemo_oo_agents.agentdoc._structured import _ClassRef, _InstanceRef
+from nooa.agentdoc._info import REQUIRED
+from nooa.agentdoc._pformat import _field_type_docstring
+from nooa.agentdoc._structured import _ClassRef, _InstanceRef
 
 # ---------------------------------------------------------------------------
 # Fixtures

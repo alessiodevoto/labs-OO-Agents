@@ -14,7 +14,7 @@ from unittest.mock import patch
 
 import pytest
 
-from nemo_oo_agents.tools.bash_tool import BashTool, FileTool
+from nooa.tools.bash_tool import BashTool, FileTool
 
 # ============================================================================
 # Session isolation: subprocess cannot access /dev/tty

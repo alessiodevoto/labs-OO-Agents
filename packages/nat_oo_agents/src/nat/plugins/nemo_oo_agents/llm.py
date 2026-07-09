@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """LLM bridge: register NeMo OO Agents as a framework type in NAT's LLM client registry.
 
-Each NAT LLM provider gets an 'nemo_oo_agents' wrapper that constructs a
+Each NAT LLM provider gets an 'nooa' wrapper that constructs a
 CompletionClient. The NAT YAML config is the primary source for api_key,
 base_url, model, etc. If values are missing, we fall back to the
 unifiedllm model registry for defaults (endpoint, api key env, routing).
@@ -12,7 +12,7 @@ import logging
 from nat.builder.builder import Builder
 from nat.cli.register_workflow import register_llm_client
 
-from .nemo_oo_agents_wrapper import NEMO_OO_AGENTS_FRAMEWORK
+from .nooa_wrapper import NEMO_OO_AGENTS_FRAMEWORK
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ def _build_llm(
 
     Priority: NAT config > registry defaults > nothing.
     """
-    from nemo_oo_agents.unifiedllm import (
+    from nooa.unifiedllm import (
         CompletionClient,
         resolve_api_key_from_config,
     )
@@ -49,7 +49,7 @@ def _build_llm(
     # registry-load failure must not abort NAT client construction —
     # NAT config alone is sufficient to build the client.
     try:
-        from nemo_oo_agents.unifiedllm import get_registry_config
+        from nooa.unifiedllm import get_registry_config
 
         registry_config = get_registry_config(model_name)
     except Exception as exc:
@@ -106,7 +106,7 @@ try:
     from nat.llm.openai_llm import OpenAIModelConfig
 
     @register_llm_client(config_type=OpenAIModelConfig, wrapper_type=NEMO_OO_AGENTS_FRAMEWORK)
-    async def openai_nemo_oo_agents(config: OpenAIModelConfig, _builder: Builder):
+    async def openai_nooa(config: OpenAIModelConfig, _builder: Builder):
         yield _build_llm(
             model_name=config.model_name,
             api_key=_get_secret_value(config.api_key),
@@ -115,7 +115,7 @@ try:
         )
 
 except ImportError:
-    logger.debug("OpenAI LLM config not available, skipping nemo_oo_agents registration")
+    logger.debug("OpenAI LLM config not available, skipping nooa registration")
 
 
 # ---------------------------------------------------------------------------
@@ -126,7 +126,7 @@ try:
     from nat.llm.nim_llm import NIMModelConfig
 
     @register_llm_client(config_type=NIMModelConfig, wrapper_type=NEMO_OO_AGENTS_FRAMEWORK)
-    async def nim_nemo_oo_agents(config: NIMModelConfig, _builder: Builder):
+    async def nim_nooa(config: NIMModelConfig, _builder: Builder):
         yield _build_llm(
             model_name=config.model_name,
             api_key=_get_secret_value(config.api_key),
@@ -135,7 +135,7 @@ try:
         )
 
 except ImportError:
-    logger.debug("NIM LLM config not available, skipping nemo_oo_agents registration")
+    logger.debug("NIM LLM config not available, skipping nooa registration")
 
 
 # ---------------------------------------------------------------------------
@@ -146,7 +146,7 @@ try:
     from nat.llm.litellm_llm import LiteLLMModelConfig
 
     @register_llm_client(config_type=LiteLLMModelConfig, wrapper_type=NEMO_OO_AGENTS_FRAMEWORK)
-    async def litellm_nemo_oo_agents(config: LiteLLMModelConfig, _builder: Builder):
+    async def litellm_nooa(config: LiteLLMModelConfig, _builder: Builder):
         yield _build_llm(
             model_name=config.model_name,
             api_key=_get_secret_value(config.api_key),
@@ -155,4 +155,4 @@ try:
         )
 
 except ImportError:
-    logger.debug("LiteLLM config not available, skipping nemo_oo_agents registration")
+    logger.debug("LiteLLM config not available, skipping nooa registration")

@@ -12,9 +12,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from nemo_oo_agents import Agent
-from nemo_oo_agents.runtime.hooks import call_before_hook, set_hooks
-from nemo_oo_agents.tracing._hooks_impl import OpenInferenceHooks
+from nooa import Agent
+from nooa.runtime.hooks import call_before_hook, set_hooks
+from nooa.tracing._hooks_impl import OpenInferenceHooks
 
 
 class SimpleAgent(Agent):
@@ -38,7 +38,7 @@ def test_hook_exception_returns_none():
     mock_hooks = MagicMock()
     mock_hooks.before_agent_call.side_effect = ValueError("Simulated failure")
 
-    with patch("nemo_oo_agents.runtime.hooks.get_hooks", return_value=mock_hooks):
+    with patch("nooa.runtime.hooks.get_hooks", return_value=mock_hooks):
         result = call_before_hook(
             "before_agent_call",
             agent=MagicMock(),
@@ -83,7 +83,7 @@ async def test_concurrent_hook_failures_cause_missing_traces(temp_trace_dir):
     - Those samples have no tracing
     - Trace files are empty or missing
     """
-    from nemo_oo_agents.runtime.hooks import call_after_hook, call_before_hook
+    from nooa.runtime.hooks import call_after_hook, call_before_hook
 
     traces_created = []
     calls_attempted = []

@@ -24,13 +24,13 @@ from typing import Literal
 
 import pytest
 
-from nemo_oo_agents import Agent, strategy
-from nemo_oo_agents.atif import Trajectory, atif_scope
-from nemo_oo_agents.atif.exporter import AtifExporter
-from nemo_oo_agents.atif.schema import StepObject
-from nemo_oo_agents.config import CodeActConfig
-from nemo_oo_agents.context_blocks import ResultStatus
-from nemo_oo_agents.events import (
+from nooa import Agent, strategy
+from nooa.atif import Trajectory, atif_scope
+from nooa.atif.exporter import AtifExporter
+from nooa.atif.schema import StepObject
+from nooa.config import CodeActConfig
+from nooa.context_blocks import ResultStatus
+from nooa.events import (
     AfterTurn,
     BeforeTurn,
     LLMComplete,
@@ -40,8 +40,8 @@ from nemo_oo_agents.events import (
     SystemPrompt,
     Task,
 )
-from nemo_oo_agents.strategies import CodeActStrategy, PredictStrategy
-from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
+from nooa.strategies import CodeActStrategy, PredictStrategy
+from nooa.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
 from tests.atif.normative import assert_atif_normative
 
 # ---------------------------------------------------------------------------

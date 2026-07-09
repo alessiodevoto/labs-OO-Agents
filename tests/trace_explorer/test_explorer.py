@@ -9,12 +9,12 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from nemo_oo_agents.trace_explorer import (
+from nooa.trace_explorer import (
     ExecutionTurn,
     LLMTurn,
     TraceExplorer,
 )
-from nemo_oo_agents.trace_explorer.explorer import (
+from nooa.trace_explorer.explorer import (
     _extract_any_value,
     _extract_failing_line,
     _extract_messages,
@@ -942,7 +942,7 @@ class TestLoadSpansOtlp:
             },
         ]
         path = create_trace_file(otlp_spans)
-        from nemo_oo_agents.trace_explorer.explorer import _load_spans
+        from nooa.trace_explorer.explorer import _load_spans
 
         spans = _load_spans(path)
         assert len(spans) == 2
@@ -1195,7 +1195,7 @@ class TestPformatImport:
     def test_pformat_alias_returns_string(self):
         """The ``_pformat`` name in ``trace_explorer.explorer`` must be the
         public string-returning API, callable with kwargs only."""
-        from nemo_oo_agents.trace_explorer.explorer import _pformat
+        from nooa.trace_explorer.explorer import _pformat
 
         out = _pformat({"k": "v"}, max_string=60, max_length=5, max_depth=2)
         assert isinstance(out, str)

@@ -1,9 +1,9 @@
 """Tests for Agent.__init__ render_config= parameter (Task 17)."""
 
-from nemo_oo_agents.context_blocks.formatter import MarkdownBlockFormatter
-from nemo_oo_agents.context_blocks.render_config import RenderConfig
-from nemo_oo_agents.context_blocks.renderers import CachedBlockFormatter
-from nemo_oo_agents.unifiedllm import FakeLLMClient
+from nooa.context_blocks.formatter import MarkdownBlockFormatter
+from nooa.context_blocks.render_config import RenderConfig
+from nooa.context_blocks.renderers import CachedBlockFormatter
+from nooa.unifiedllm import FakeLLMClient
 
 
 def make_llm():
@@ -11,7 +11,7 @@ def make_llm():
 
 
 def test_agent_accepts_render_config():
-    from nemo_oo_agents import Agent
+    from nooa import Agent
 
     rc = RenderConfig(block_formatter=MarkdownBlockFormatter())
 
@@ -24,7 +24,7 @@ def test_agent_accepts_render_config():
 
 
 def test_agent_default_render_config():
-    from nemo_oo_agents import Agent
+    from nooa import Agent
 
     class MyAgent(Agent, llm=make_llm()):
         pass

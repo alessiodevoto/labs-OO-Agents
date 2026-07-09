@@ -4,8 +4,8 @@
 
 import pytest
 
-from nemo_oo_agents.errors.storage import StorageNotConfiguredError
-from nemo_oo_agents.storage.in_memory import InMemoryStorageManager
+from nooa.errors.storage import StorageNotConfiguredError
+from nooa.storage.in_memory import InMemoryStorageManager
 
 
 class TestInMemoryStorageManager:

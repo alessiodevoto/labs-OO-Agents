@@ -40,15 +40,15 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from llm import build_embedding_config, build_llm, has_llm_creds  # noqa: E402
-
-from nemo_oo_agents import Agent  # noqa: E402
-from nemo_oo_agents.memory import MemoryConfig, MemoryManager, MemoryToolsMixin  # noqa: E402
-from nemo_oo_agents.memory.config import (  # noqa: E402
+from nooa_tui.memory import MemoryConfig, MemoryManager, MemoryToolsMixin  # noqa: E402
+from nooa_tui.memory.config import (  # noqa: E402
     ReflectionPolicy,
     RetrievalConfig,
     SpontaneousConfig,
     VectorConfig,
 )
+
+from nooa import Agent  # noqa: E402
 
 log = logging.getLogger("locomo")
 
@@ -137,10 +137,10 @@ def make_memory_agent(llm, memorize_max_iterations: int | None = None):
     the framework default (unbounded); pass an int to cap the number of tool-call rounds so
     a reasoning model that never emits ``return_result`` can't loop forever.
     """
-    from nemo_oo_agents import PredictStrategy
-    from nemo_oo_agents.config.strategy_config import CodeActConfig
-    from nemo_oo_agents.decorators import strategy
-    from nemo_oo_agents.strategies import CodeActStrategy
+    from nooa import PredictStrategy
+    from nooa.config.strategy_config import CodeActConfig
+    from nooa.decorators import strategy
+    from nooa.strategies import CodeActStrategy
 
     memorize_deco = (
         strategy(CodeActStrategy(config=CodeActConfig(max_iterations=memorize_max_iterations)))
@@ -474,7 +474,7 @@ def main() -> None:
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     if args.verbose:
-        logging.getLogger("nemo_oo_agents.memory").setLevel(logging.DEBUG)
+        logging.getLogger("nooa.memory").setLevel(logging.DEBUG)
 
     # The agent authors its own memories — there is no raw/harness fallback — so this
     # benchmark requires an LLM. No credentials => stop with a clear message.

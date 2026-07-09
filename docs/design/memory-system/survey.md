@@ -1,6 +1,6 @@
 # Long-Term Memory for LLM Agents — Literature Survey
 
-*Prior-art survey for the nemo-oo memory subsystem. Compiled from a deep
+*Prior-art survey for the nooa memory subsystem. Compiled from a deep
 multi-source web search (fan-out search → fetch → 3-vote adversarial verification →
 cited synthesis) plus the design-phase research in
 [`research-notes.md`](./research-notes.md), and cross-checked against our own
@@ -186,8 +186,8 @@ forgotten** noted per system.)
 
 ## 7. Where our design sits (honest positioning)
 
-Our subsystem (`src/nemo_oo_agents/memory/`, see its
-[README](../../../src/nemo_oo_agents/memory/README.md)) is a **faithful synthesis of
+Our subsystem (`src/nooa/memory/`, see its
+[README](../../../src/nooa/memory/README.md)) is a **faithful synthesis of
 the above, not a research novelty**:
 
 | our element | nearest prior art |
@@ -204,7 +204,7 @@ the above, not a research novelty**:
 examples). What is *mildly distinctive* is the **packaging**: all of {conscious
 tools + spontaneous injection + dreaming-with-reconsolidation + forgetting + graph
 multi-hop + pluggable backends} as one **additive, toggleable, instructed**
-subsystem inside nemo-oo's "methods = tools / docstring = prompt" model, with the
+subsystem inside nooa's "methods = tools / docstring = prompt" model, with the
 agent explicitly told it **owns and curates** its memory (the closest framing is
 CoALA's "learning" actions, which we converged on independently). Our one genuinely
 useful empirical contribution is the **controlled precision/abstraction finding**:

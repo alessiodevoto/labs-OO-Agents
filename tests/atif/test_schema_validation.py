@@ -15,7 +15,7 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from nemo_oo_agents.atif import (
+from nooa.atif import (
     AgentSchema,
     ContentPart,
     ImageSource,

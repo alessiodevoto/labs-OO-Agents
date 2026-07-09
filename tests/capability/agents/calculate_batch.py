@@ -1,7 +1,7 @@
 """Batch calculation agent - interprets natural language math for multiple inputs."""
 
-from nemo_oo_agents import Agent
-from nemo_oo_agents.tools.method_writing_lib import MethodWriting
+from nooa import Agent
+from nooa.tools.method_writing_lib import MethodWriting
 
 
 class CalculateBatchAgent(Agent):

@@ -4,7 +4,7 @@
 
 import pytest
 
-from nemo_oo_agents.tracing._secret_scrubber import (
+from nooa.tracing._secret_scrubber import (
     REDACTED,
     ScrubStats,
     scrub_string,

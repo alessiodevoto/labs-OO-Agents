@@ -1,6 +1,6 @@
-# Config migration guide — nemo_oo_agents 0.4.x → 0.5.0
+# Config migration guide — nooa 0.4.x → 0.5.0
 
-**Applies to:** upgrading from any `nemo_oo_agents < 0.5.0` (e.g. 0.4.7) to
+**Applies to:** upgrading from any `nooa < 0.5.0` (e.g. 0.4.7) to
 **0.5.0**. The config changes below are **breaking** — that's why they land in
 the 0.5.0 minor bump. If you're a fresh `>= 0.5.0` install, there's nothing to
 migrate (the installer + first-run scaffold set everything up).
@@ -13,15 +13,15 @@ wins). Here's everything you need to move.
 
 | | Before | After |
 |---|--------|-------|
-| User-global | `~/.config/nat/oo/` | `~/.config/nemo_oo/` (XDG-aware, all platforms) |
-| Project-local | `<project>/.nemo_oo_agents/` | `<project>/.nemo_oo/` |
+| User-global | `~/.config/nat/oo/` | `~/.config/nooa/` (XDG-aware, all platforms) |
+| Project-local | `<project>/.nooa/` | `<project>/.nooa/` |
 
 `NAT_CONFIG_DIR` is gone — use `NEMO_OO_USER_DIR` to relocate the user dir.
 
 ## 2. TUI settings: `config.toml` → `settings.yaml`
 
-Project-only TOML becomes layered YAML (`<project>/.nemo_oo/settings.yaml` or
-user-global `~/.config/nemo_oo/settings.yaml`). **Hard switch — `config.toml`
+Project-only TOML becomes layered YAML (`<project>/.nooa/settings.yaml` or
+user-global `~/.config/nooa/settings.yaml`). **Hard switch — `config.toml`
 is no longer read.**
 
 **Before — `config.toml`**
@@ -30,7 +30,7 @@ is no longer read.**
 model = "claude-opus-4-8"
 python = false
 vi = false
-trace = ".nemo_oo_agents/traces"
+trace = ".nooa/traces"
 mcp_auto_connect = ["maas"]
 
 [tui.mcp_servers.maas]
@@ -47,7 +47,7 @@ tui:
   default_model: claude-opus-4-8
   show_python: false
   vi_mode: false
-  trace_dir: .nemo_oo/traces
+  trace_dir: .nooa/traces
   mcp_auto_connect: [maas]
   mcp_servers:
     maas:
@@ -78,7 +78,7 @@ Key renames (YAML uses the real field names):
 | `export NVIDIA_INTERNAL_API_KEY=…` in your shell rc | `secrets.yaml`, auto-loaded by the CLI on every run |
 
 ```yaml
-# ~/.config/nemo_oo/secrets.yaml   (chmod 600)
+# ~/.config/nooa/secrets.yaml   (chmod 600)
 env:
   NVIDIA_INTERNAL_API_KEY: sk-...
   # ANTHROPIC_API_KEY: sk-ant-...
@@ -91,8 +91,8 @@ file for you.
 ## 4. LLM aliases: `llm_config.yaml`
 
 Same filename and format — just move it to the new dir:
-`~/.config/nat/oo/llm_config.yaml` → `~/.config/nemo_oo/llm_config.yaml`
-(or `<project>/.nemo_oo/llm_config.yaml`). `nemo-oo config eject` regenerates
+`~/.config/nat/oo/llm_config.yaml` → `~/.config/nooa/llm_config.yaml`
+(or `<project>/.nooa/llm_config.yaml`). `nooa config eject` regenerates
 a fresh copy in the new location.
 
 ## 5. Environment variables → `NEMO_OO_` prefix
@@ -109,6 +109,6 @@ a fresh copy in the new location.
 ## Verify
 
 ```bash
-nemo-oo config show   # shows which settings.yaml / secrets.yaml / llm_config.yaml
+nooa config show   # shows which settings.yaml / secrets.yaml / llm_config.yaml
                       # layers are active (secret values redacted)
 ```

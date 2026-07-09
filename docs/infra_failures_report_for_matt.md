@@ -89,7 +89,7 @@ loud *before* a 500-task run burns hours producing reward=0.
 ### 7. LLM-provider config not found inside the container
 - **Symptom:** `LLM Provider NOT provided` transient on opus/ultra.
 - **Root cause:** harbor writes `llm_config.yaml` to
-  `/installed-agent/nemo_oo_agents/`, but the agent looked elsewhere; and the model
+  `/installed-agent/nooa/`, but the agent looked elsewhere; and the model
   had to be present in harbor's hardcoded LLM-config string.
 - **Fix:** set `NEMO_OO_LLM_CONFIG` to the path harbor writes + list the model.
 - **Design lesson:** **config discovery inside the sandbox must be explicit and
@@ -193,7 +193,7 @@ loud *before* a 500-task run burns hours producing reward=0.
   tarball with `.pth` files, `uv`, and the agent source snapshot at the intended SHA.
 - Per-run config `environment.env` MUST set (this is the block whose omission caused
   #9): `PATH` (with cpython312/bin first), `NEMO_OO_LLM_CONFIG`
-  (=`/installed-agent/nemo_oo_agents/llm_config.yaml`), `NEMO_OO_AGENTS_GIT_URL`,
+  (=`/installed-agent/nooa/llm_config.yaml`), `NEMO_OO_AGENTS_GIT_URL`,
   `OTLP_ENDPOINT`, the API key, and any agent-behavior selector (e.g. `SHELL_VARIANT`).
 - Configs are **generated from one source of truth**, never hand-copied per arm.
 - Model names carry **no `openai/` prefix** for the ultra endpoint (#1).
@@ -202,7 +202,7 @@ loud *before* a 500-task run burns hours producing reward=0.
 **Minimum preflight before any 500-task launch** (each < 1 min, fail loud):
 1. `(model, key)` 1-token live call → assert 200 + echoed model id.
 2. In a sample container: agent interpreter resolves to cp312; `uv` + `python3`
-   on PATH; `import nemo_oo_agents` succeeds.
+   on PATH; `import nooa` succeeds.
 3. Deployed agent SHA == intended SHA.
 4. **Behavior assertion:** the agent's runtime self-report (e.g. the active shell
    class in its system prompt) matches the experiment label — catches silent

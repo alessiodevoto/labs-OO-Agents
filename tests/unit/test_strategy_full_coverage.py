@@ -13,18 +13,18 @@ import pytest
 from pydantic import BaseModel
 from pydantic import ValidationError as PydanticValidationError
 
-from nemo_oo_agents import Agent, strategy
-from nemo_oo_agents.config import CodeActConfig
-from nemo_oo_agents.config.strategy_config import PredictConfig
-from nemo_oo_agents.errors import GenerationError
-from nemo_oo_agents.events import ExecutionResult
-from nemo_oo_agents.strategies.codeact import (
+from nooa import Agent, strategy
+from nooa.config import CodeActConfig
+from nooa.config.strategy_config import PredictConfig
+from nooa.errors import GenerationError
+from nooa.events import ExecutionResult
+from nooa.strategies.codeact import (
     CodeActStrategy,
     _ReturnResultSignal,
 )
-from nemo_oo_agents.strategies.predict import PredictStrategy
-from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
-from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
+from nooa.strategies.predict import PredictStrategy
+from nooa.strategies.pure_python import PurePythonStrategy
+from nooa.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -122,8 +122,8 @@ class TestCodeActHasContextSkillInstructions:
     @pytest.mark.asyncio
     async def test_context_visible_no_longer_adds_pin_unpin(self):
         """After removing Skills table, pin/unpin instructions are not in execution_context."""
-        from nemo_oo_agents.agentdoc import spec
-        from nemo_oo_agents.skill import Skill
+        from nooa.agentdoc import spec
+        from nooa.skill import Skill
 
         class AgentWithContext(Agent, llm=_TEST_LLM):
             my_skill: Any = None
@@ -160,7 +160,7 @@ class TestCodeActGenerationIdNone:
     async def test_generation_id_none_raises(self):
         """When runtime.get_generation_id() returns None during execute,
         a RuntimeError should be raised (line 586-590)."""
-        from nemo_oo_agents.runtime.actor import ActorRuntime
+        from nooa.runtime.actor import ActorRuntime
 
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(CodeActStrategy(config=CodeActConfig()))
@@ -191,7 +191,7 @@ class TestCodeActBlockSyntaxError:
     async def test_block_syntax_error_recovery(self):
         """When generate() raises BlockSyntaxError, the loop should
         handle it and continue to the next iteration (lines 625-627)."""
-        from nemo_oo_agents.context_blocks.exceptions import BlockSyntaxError
+        from nooa.context_blocks.exceptions import BlockSyntaxError
 
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(CodeActStrategy(config=CodeActConfig(max_iterations=3)))
@@ -210,7 +210,7 @@ class TestCodeActBlockSyntaxError:
         call_count = [0]
 
         # Patch within the agent execution
-        from nemo_oo_agents.runtime.actor import ActorRuntime
+        from nooa.runtime.actor import ActorRuntime
 
         orig_gen = ActorRuntime.generate
 
@@ -355,7 +355,7 @@ class TestCodeActInlineReturnResultWithError:
     async def test_inline_return_result_with_error_and_stderr(self):
         """When _execute_code returns a result with both signal (_ReturnResultSignal)
         AND error set, lines 1121-1128 format the error text (defensive path)."""
-        from nemo_oo_agents.runtime.actor import ActorRuntime
+        from nooa.runtime.actor import ActorRuntime
 
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(CodeActStrategy(config=CodeActConfig()))
@@ -392,7 +392,7 @@ class TestCodeActInlineReturnResultWithError:
     async def test_inline_return_result_with_error_no_stderr(self):
         """When error_text exists but stderr is empty, the 'else' branch
         of the ternary on line 1128-1131 is hit."""
-        from nemo_oo_agents.runtime.actor import ActorRuntime
+        from nooa.runtime.actor import ActorRuntime
 
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(CodeActStrategy(config=CodeActConfig()))
@@ -476,7 +476,7 @@ class TestCodeActPydanticValidationErrorFormat:
         """When code execution produces a PydanticValidationError with a
         returned_value, the error is formatted via format_validation_error
         (lines 1204-1210)."""
-        from nemo_oo_agents.runtime.actor import ActorRuntime
+        from nooa.runtime.actor import ActorRuntime
 
         class Result(BaseModel):
             score: int
@@ -538,7 +538,7 @@ class TestCodeActPydanticValidationErrorFormat:
     async def test_inline_return_result_validation_failure(self):
         """When inline return_result validation fails, lines 1109-1118 and
         1133-1138 and 1159 are hit (validation_error path)."""
-        from nemo_oo_agents.runtime.actor import ActorRuntime
+        from nooa.runtime.actor import ActorRuntime
 
         class Result(BaseModel):
             score: int
@@ -653,7 +653,7 @@ class TestCodeActPredictStrategyImportError:
         )
 
         def mock_import(name, *args, **kwargs):
-            if name == "nemo_oo_agents.strategies.predict":
+            if name == "nooa.strategies.predict":
                 raise ImportError("test: predict not available")
             return original_import(name, *args, **kwargs)
 
@@ -685,7 +685,7 @@ class TestCodeActImportDynamicClassesException:
 
         # Patch _iter_agent_attrs to raise
         with patch(
-            "nemo_oo_agents.strategies.codeact._iter_agent_attrs",
+            "nooa.strategies.codeact._iter_agent_attrs",
             side_effect=RuntimeError("iteration error"),
         ):
             # Should not raise — exception is silently caught
@@ -964,7 +964,7 @@ class TestPurePythonHttpxImportError:
 
     def test_httpx_timeout_exceptions_defined(self):
         """_HTTPX_TIMEOUT_EXCEPTIONS should be defined regardless of httpx availability."""
-        from nemo_oo_agents.strategies.pure_python import _HTTPX_TIMEOUT_EXCEPTIONS
+        from nooa.strategies.pure_python import _HTTPX_TIMEOUT_EXCEPTIONS
 
         assert isinstance(_HTTPX_TIMEOUT_EXCEPTIONS, tuple)
         assert len(_HTTPX_TIMEOUT_EXCEPTIONS) > 0
@@ -973,7 +973,7 @@ class TestPurePythonHttpxImportError:
         """When httpx is not available, fallback to (TimeoutError,) (lines 61-63)."""
         import importlib
 
-        import nemo_oo_agents.strategies.pure_python as pp_mod
+        import nooa.strategies.pure_python as pp_mod
 
         # Temporarily make httpx unavailable
         original_httpx = sys.modules.get("httpx")
@@ -1003,7 +1003,7 @@ class TestPurePythonGenerationIdNone:
     async def test_generation_id_none_raises(self):
         """When runtime.get_generation_id() returns None, a RuntimeError
         should be raised (line 244-248)."""
-        from nemo_oo_agents.runtime.actor import ActorRuntime
+        from nooa.runtime.actor import ActorRuntime
 
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(PurePythonStrategy())
@@ -1044,9 +1044,9 @@ class TestPurePythonStrategyImportError:
         original_import = __import__
 
         def mock_import(name, *args, **kwargs):
-            if name == "nemo_oo_agents.strategies.predict":
+            if name == "nooa.strategies.predict":
                 raise ImportError("test: predict not available")
-            if name == "nemo_oo_agents.strategies.reflexion":
+            if name == "nooa.strategies.reflexion":
                 raise ImportError("test: reflexion not available")
             return original_import(name, *args, **kwargs)
 
@@ -1069,7 +1069,7 @@ class TestPurePythonHelperMethodErrors:
     async def test_helper_method_binding_error(self):
         """When helper method binding produces errors, an error event is
         added and execution returns empty result (lines 722-729)."""
-        from nemo_oo_agents.strategies.generated_code import (
+        from nooa.strategies.generated_code import (
             HelperApplyResult,
             HelperFunctionManager,
         )

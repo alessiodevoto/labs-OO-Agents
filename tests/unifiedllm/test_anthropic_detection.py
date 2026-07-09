@@ -8,7 +8,7 @@ from copy import deepcopy
 
 import pytest
 
-from nemo_oo_agents.unifiedllm.unifiedllm import (
+from nooa.unifiedllm.unifiedllm import (
     CompletionClient,
     _is_anthropic_model,
 )

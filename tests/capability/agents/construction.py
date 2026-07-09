@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from nemo_oo_agents import Agent
+from nooa import Agent
 
 
 class Widget:

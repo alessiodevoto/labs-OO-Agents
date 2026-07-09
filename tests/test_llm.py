@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
+from nooa.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
 
 
 @pytest.mark.asyncio

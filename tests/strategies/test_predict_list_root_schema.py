@@ -15,12 +15,12 @@ from dataclasses import dataclass
 import pytest
 from pydantic import BaseModel
 
-from nemo_oo_agents import Agent
-from nemo_oo_agents.config.strategy_config import PredictConfig
-from nemo_oo_agents.decorators import strategy
-from nemo_oo_agents.strategies import PredictStrategy
-from nemo_oo_agents.strategies.predict import PredictStrategy as _PredictStrategy
-from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse
+from nooa import Agent
+from nooa.config.strategy_config import PredictConfig
+from nooa.decorators import strategy
+from nooa.strategies import PredictStrategy
+from nooa.strategies.predict import PredictStrategy as _PredictStrategy
+from nooa.unifiedllm import FakeLLMClient, LLMResponse
 
 
 @dataclass

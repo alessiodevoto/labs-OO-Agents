@@ -2,8 +2,8 @@
 
 **Status:** Draft / RFC
 **Date:** 2026-06-15
-**Author:** rcabral (via nemo_oo_agents agent)
-**Motivation:** Critique of `nemo_oo_agents` against Databricks **Omnigent** (the "meta-harness" — blog: *Introducing Omnigent: A Meta-Harness to Combine, Control and Share Your Agents*).
+**Author:** rcabral (via nooa agent)
+**Motivation:** Critique of `nooa` against Databricks **Omnigent** (the "meta-harness" — blog: *Introducing Omnigent: A Meta-Harness to Combine, Control and Share Your Agents*).
 
 ---
 
@@ -33,7 +33,7 @@ to `/tmp`.
 
 ## 2. Background: the layer mismatch
 
-| Layer | What it owns | Omnigent | nemo_oo_agents |
+| Layer | What it owns | Omnigent | nooa |
 |---|---|---|---|
 | **Model** | tokens→tokens | (delegated) | UnifiedLLM / litellm registry |
 | **Harness** | working dir, file edits, tool loop, session history | wraps Claude Code/Codex/Pi/SDK | **this is nemo** (Agent + strategies) |
@@ -52,15 +52,15 @@ registry.
 ### 3.1 Security is in-process, not OS-level — **highest priority**
 
 Today, agent-generated code is validated by `UnifiedCodeValidator`
-(`src/nemo_oo_agents/runtime/code_validator.py`) against a `RestrictionsConfig`
-(`src/nemo_oo_agents/runtime/restrictions.py`): an AST pass that rejects
+(`src/nooa/runtime/code_validator.py`) against a `RestrictionsConfig`
+(`src/nooa/runtime/restrictions.py`): an AST pass that rejects
 forbidden builtins (`exec`/`eval`/`compile`/`__import__`), restricted/blocked
 imports (`DEFAULT_BLOCKED_MODULES` = `subprocess`, `socket`, `urllib.request`,
 …), and dunder-escape attribute access. The validated code is then run **in the
 same Python process** via:
 
 ```python
-# src/nemo_oo_agents/strategies/generated_code.py
+# src/nooa/strategies/generated_code.py
 exec(compile(method_code, "<generated_helper>", "exec"), namespace)
 ```
 
@@ -133,7 +133,7 @@ both route through, defaulting to a kernel-enforced backend on Linux.
 - **`LinuxBwrapSandbox`** — run `execute_python` cells *and* `ShellTools.run`
   inside `bwrap` with `seccomp` syscall filtering. Filesystem: only
   user-granted paths bind-mounted; dotfile secrets (`~/.ssh`, `~/.aws`,
-  `~/.config/nemo_oo/secrets.yaml`) masked even under a broad grant.
+  `~/.config/nooa/secrets.yaml`) masked even under a broad grant.
 - **`MacSeatbeltSandbox`** — `sandbox-exec` profile equivalent.
 - **`NullSandbox`** — current in-process behavior, explicit opt-out
   (`Agent(sandbox=NullSandbox())`) so "no sandbox" is a deliberate choice, not
@@ -181,7 +181,7 @@ existing `colossus` skill for lease lifecycle.
 
 A catalog where a published agent (its module + pinned config + skill deps) is
 discoverable and governed. Build on the existing entry-point skill discovery and
-the `nemo_oo_agents.bundled_configs` group; don't invent YAML-as-agent to get
+the `nooa.bundled_configs` group; don't invent YAML-as-agent to get
 there.
 
 ---

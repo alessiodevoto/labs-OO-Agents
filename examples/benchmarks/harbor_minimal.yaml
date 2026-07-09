@@ -1,0 +1,16 @@
+# Minimal Harbor configuration for the bench agent.
+# Run: harbor run --config examples/benchmarks/harbor_minimal.yaml
+jobs_dir: /tmp/harbor_jobs
+n_attempts: 1
+orchestrator:
+  type: local
+  n_concurrent_trials: 1
+environment:
+  type: apptainer
+  kwargs:
+    apptainer_binary: apptainer
+agents:
+  - name: nooa-bench
+    model_name: anthropic/claude-sonnet-4-20250514
+datasets:
+  - path: /path/to/your/tasks/

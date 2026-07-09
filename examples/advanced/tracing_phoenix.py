@@ -21,7 +21,7 @@ from dotenv import load_dotenv
 from pydantic import BaseModel
 
 from examples.util.example_llm import qwen
-from nemo_oo_agents import Agent
+from nooa import Agent
 
 load_dotenv(override=True)
 
@@ -64,7 +64,7 @@ class SentimentAgent(Agent, llm=qwen):
 
 
 async def main() -> None:
-    from nemo_oo_agents.tracing import enable_tracing, exporters
+    from nooa.tracing import enable_tracing, exporters
 
     host = os.getenv("PHOENIX_HOST", "http://localhost:6006")
     api_key = os.getenv("PHOENIX_API_KEY")

@@ -1,6 +1,6 @@
 # Issue 215 — ATIF v1.7 compliance fixes in trajectory exporter
 
-Issue: https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents/-/issues/215
+Issue: https://gitlab-master.nvidia.com/interactive-agents/nooa/-/issues/215
 RFC:   `0001-trajectory-format-2.md` (ATIF v1.7, April 2026)
 
 ## Goal
@@ -66,7 +66,7 @@ wants it; storing it in `message` blocks SFT extraction and is unreadable.
 
 ### 3. Phantom user steps — root cause
 
-The `CachedBlockFormatter` (`src/nemo_oo_agents/context_blocks/renderers/cached.py:127–145`)
+The `CachedBlockFormatter` (`src/nooa/context_blocks/renderers/cached.py:127–145`)
 always appends a
 trailing `RenderedMessage(role=USER, content="<context>…</context>")` to
 isolate dynamic context blocks for prompt caching (issue #208). The exporter
@@ -235,7 +235,7 @@ populations (F4–F7).
 
 ### Files to modify
 
-- `src/nemo_oo_agents/tracing/_atif_exporter.py` — primary exporter
+- `src/nooa/tracing/_atif_exporter.py` — primary exporter
   changes:
   - Drop the `f"Executed {fn_name} {first_id}"` fallback at line 419 (F2).
   - Add an empty-content skip after `_strip_context_block` at line 386 (F3).
@@ -249,7 +249,7 @@ populations (F4–F7).
     `"stdout:\n…\nstderr:\n…\nreturned_value:\n…"` (skipping empty parts).
     Fall back to the raw `result` string on JSON failure.
 
-- `src/nemo_oo_agents/tracing/_hooks_impl.py` — wire the previously-dead
+- `src/nooa/tracing/_hooks_impl.py` — wire the previously-dead
   `_safe_serialize_execution_result(...)` into
   `after_code_execution` so the TOOL span's `result` attribute carries
   parseable JSON instead of the generic repr serializer's output (F1a —
@@ -366,7 +366,7 @@ These should be reviewed during implementation but don't change the plan:
 - `uv run pytest tests/tracing/test_atif_exporter.py -v` — all (new + old)
   green.
 - `uv run pytest tests/tracing/ -v` — full tracing suite green.
-- `uv run ruff check src/nemo_oo_agents/tracing/_atif_exporter.py tests/tracing/test_atif_exporter.py`
+- `uv run ruff check src/nooa/tracing/_atif_exporter.py tests/tracing/test_atif_exporter.py`
   — clean.
 - Manual smoke: run `examples/quickstart/14_atif_trajectory.py` (already
   exists), open the resulting `trajectory.json`, verify a tool-using agent

@@ -15,9 +15,9 @@ from typing import Any
 import pytest
 from pydantic import BaseModel, ConfigDict
 
-from nemo_oo_agents.errors.storage import DeserializationError, SerializationError
-from nemo_oo_agents.storage.markers import snapshotable
-from nemo_oo_agents.storage.serialization import SKIP, deserialize, serialize
+from nooa.errors.storage import DeserializationError, SerializationError
+from nooa.storage.markers import snapshotable
+from nooa.storage.serialization import SKIP, deserialize, serialize
 
 # ---------------------------------------------------------------------------
 # Fixture types

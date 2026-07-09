@@ -11,7 +11,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-import nemo_oo_agents.nemo_flow_middleware as nm
+import nooa.nemo_flow_middleware as nm
 
 
 @pytest.fixture()
@@ -26,7 +26,7 @@ class TestImportErrorWhenMissing:
     @pytest.mark.usefixtures("_no_nemo_flow")
     def test_install_nemo_flow_raises_import_error(self):
         """install_nemo_flow() raises ImportError when nemo_flow is not installed."""
-        from nemo_oo_agents.runtime.event_manager import EventManager
+        from nooa.runtime.event_manager import EventManager
 
         em = EventManager()
         with pytest.raises(ImportError, match="nemo_flow is required"):

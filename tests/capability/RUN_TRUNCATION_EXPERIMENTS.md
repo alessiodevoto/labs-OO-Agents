@@ -19,12 +19,12 @@ This document is a step-by-step guide for re-running the truncation-comprehensio
 
 3. **Model aliases** (claude-haiku, nemotron3-nano-30b, …) ship in the `nemo-oo-agents-nvidia` package — install it (or the `[nvidia]` extra) and verify they're loaded:
    ```bash
-   uv run nemo-oo config show
+   uv run nooa config show
    ```
 
 4. **Optional: trace viewer** for live trace inspection:
    ```bash
-   uv run python -m nemo_oo_agents.viewer &  # http://localhost:5001
+   uv run python -m nooa.viewer &  # http://localhost:5001
    ```
 
 5. **Source your env**:
@@ -223,7 +223,7 @@ Each row shows: `passed/total (%)`. The `passed` count is the sum across `runs` 
 
 ## Troubleshooting
 
-- **`ValueError: Model 'X' not found.`** — run `nemo-oo config show` to confirm the `nemo-oo-agents-nvidia` package is installed and its bundled defaults are loading.
+- **`ValueError: Model 'X' not found.`** — run `nooa config show` to confirm the `nemo-oo-agents-nvidia` package is installed and its bundled defaults are loading.
 - **`AuthenticationError: key not allowed to access model`** — the API key doesn't have permission for that model. `gemini-3-pro` is one example; substitute `gemini-2.5-pro` or `gemini-3.1-pro-preview`.
 - **Empty `actual: None` for many results** — that model is failing the output-format protocol (PredictStrategy JSON or CodeAct tool-calling). See the limitations section of `EXPERIMENT_truncation_markers.md` for known cases (`llama-3.1-8b`, `gpt-oss-20b`, `qwen3.5-35b`).
 - **`Spec.__call__() got an unexpected keyword argument 'max_string'`** — the agent module is on a branch where `spec()` doesn't yet accept pformat hints. The current `truncation_comprehension.py` doesn't use those kwargs; if you're modifying it, leave the spec annotations off the parameters.
@@ -232,7 +232,7 @@ Each row shows: `passed/total (%)`. The `passed` count is the sum across `runs` 
 
 ## Adding new models
 
-1. Register the alias in `packages/nemo-oo-agents-nvidia/src/nemo_oo_agents_nvidia/data/llm_config_default.yaml` (the bundled default that ships in the NVIDIA package):
+1. Register the alias in `packages/nemo-oo-agents-nvidia/src/nooa_nvidia/data/llm_config_default.yaml` (the bundled default that ships in the NVIDIA package):
    ```yaml
    my-new-model:
      model_name: openai/path/to/model

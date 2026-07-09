@@ -9,7 +9,7 @@
 #   3. harbor_bootstrap_overlay_v2 at /home/lab/3p/harbor_bootstrap_overlay_v2
 #   4. SIF cache at /home/lab/3p/sif_cache
 #   5. Tasks at /home/lab/rcabral/harbor_tasks_tb_filtered (236 tasks)
-#   6. Env vars exported (see /home/lab/rcabral/nemo_oo_agents/.env):
+#   6. Env vars exported (see /home/lab/rcabral/nooa/.env):
 #        export NVIDIA_INTERNAL_API_KEY=<key>
 #        export NEMO_OO_AGENTS_GIT_URL=<gitlab-url>
 #        export NEMO_OO_AGENTS_GIT_REF=<branch>
@@ -17,8 +17,8 @@
 #      that harbor's Python process inherits the vars and passes them via
 #      --env to Apptainer.
 #
-# Run from /home/lab/rcabral/nemo_oo_agents:
-#   source /home/lab/rcabral/nemo_oo_agents/.env
+# Run from /home/lab/rcabral/nooa:
+#   source /home/lab/rcabral/nooa/.env
 #   source /home/lab/miniforge3/bin/activate
 #   harbor run --config util/harbor/terminal_bench_galaxy.yaml
 

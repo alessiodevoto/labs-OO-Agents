@@ -23,7 +23,7 @@ def _exporter_routes() -> set[str]:
     """Inspect ``MessageJournalCallback`` to discover which ``/v1/journal/*``
     paths it actually POSTs to, so adding a new wire route automatically
     pulls it into this contract test."""
-    from nemo_oo_agents.tracing._litellm_journal import MessageJournalCallback
+    from nooa.tracing._litellm_journal import MessageJournalCallback
 
     cb = MessageJournalCallback("http://example.invalid")
     paths: set[str] = set()
@@ -47,7 +47,7 @@ def _post_routes_on_app(app) -> set[str]:
 
 
 def test_exporter_journal_paths_are_registered_on_viewer_app():
-    from nemo_oo_agents.viewer.main import app as viewer_app
+    from nooa.viewer.main import app as viewer_app
 
     exporter_paths = _exporter_routes()
     assert exporter_paths, (

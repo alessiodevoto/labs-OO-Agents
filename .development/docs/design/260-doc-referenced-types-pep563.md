@@ -15,7 +15,7 @@ no equivalent — that asymmetry is the bug.
 
 ## Root cause
 
-In `src/nemo_oo_agents/agentdoc/_discover.py`, both the standalone-callable branch
+In `src/nooa/agentdoc/_discover.py`, both the standalone-callable branch
 (lines ~80-93) and the class-method loop (lines ~117-142) read annotations via
 `inspect.signature(attr)` and pass `param.annotation` / `sig.return_annotation`
 straight to `_extract_types_from_hint`. Under PEP 563 those values are strings, which
@@ -64,7 +64,7 @@ at module level).
 
 ## Files to touch
 
-- `src/nemo_oo_agents/agentdoc/_discover.py` — add helper, call it from both branches.
+- `src/nooa/agentdoc/_discover.py` — add helper, call it from both branches.
 - `tests/agentdoc/test_discover_pep563.py` (new) — regression tests.
 
 ## Tests

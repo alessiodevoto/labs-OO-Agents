@@ -2,9 +2,9 @@
 
 import pytest
 
-from nemo_oo_agents import Agent
-from nemo_oo_agents.events import Task
-from nemo_oo_agents.unifiedllm import FakeLLMClient
+from nooa import Agent
+from nooa.events import Task
+from nooa.unifiedllm import FakeLLMClient
 
 _LLM = FakeLLMClient()
 

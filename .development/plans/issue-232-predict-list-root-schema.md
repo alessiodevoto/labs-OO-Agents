@@ -17,7 +17,7 @@ though container return types are documented as supported.
 
 ## Root-cause detail
 
-In `src/nemo_oo_agents/strategies/predict.py::_create_response_model`:
+In `src/nooa/strategies/predict.py::_create_response_model`:
 
 - `dict` / `dict[...]`  → `RootModel[dict[str, Any]]`  → root schema `type: object`  ✅ valid
 - `list` / `list[...]`  → `RootModel[list[inner]]`     → root schema `type: array`   ❌ invalid
@@ -69,7 +69,7 @@ compliant `{"value": [...]}` responses is identical.
 
 ## Files to touch
 
-1. `src/nemo_oo_agents/strategies/predict.py`
+1. `src/nooa/strategies/predict.py`
    - Delete the `if return_type is list or origin is list:` block in `_create_response_model`
      (lines ~783–796) so `list` falls through to the generic `value`-wrapper.
    - Update the method docstring bullet that claims `list` uses `RootModel`.
@@ -93,7 +93,7 @@ compliant `{"value": [...]}` responses is identical.
 
 - New regression test fails against unmodified code (schema root is `array`) and passes after the fix.
 - `uv run pytest tests/strategies/test_strategies_coverage.py tests/strategies/test_predict_list_root_schema.py -q`
-- `uv run ruff check src/nemo_oo_agents/strategies/predict.py tests/strategies/`
+- `uv run ruff check src/nooa/strategies/predict.py tests/strategies/`
 - Broader smoke: `uv run pytest tests/strategies -q`.
 
 ## Follow-up: strict-mode schema fallback for dict/tuple/set/bare-list (cross-model audit)

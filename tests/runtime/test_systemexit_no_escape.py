@@ -19,9 +19,9 @@ import asyncio
 
 import pytest
 
-from nemo_oo_agents import Agent
-from nemo_oo_agents.errors import RestrictedCodeError
-from nemo_oo_agents.unifiedllm import FakeLLMClient
+from nooa import Agent
+from nooa.errors import RestrictedCodeError
+from nooa.unifiedllm import FakeLLMClient
 
 _TEST_LLM = FakeLLMClient()
 
@@ -128,7 +128,7 @@ class TestReturnResultStillPropagatesAsSignal:
     @pytest.mark.asyncio
     async def test_return_result_execution_signal_is_not_wrapped(self, test_agent):
         """``return_result()`` uses ExecutionSignal and must not become RuntimeError."""
-        from nemo_oo_agents.events import ExecutionSignal
+        from nooa.events import ExecutionSignal
 
         def return_result(value):
             raise ExecutionSignal("return_result", {"result": value})

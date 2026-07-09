@@ -18,15 +18,15 @@ Clean context is healthy context. The agent should only see what the developer e
 
 ### The Context Manager
 
-`nemo_oo_agents.visible_to_agent` is a module-level context manager that declares which names (imports, constants, helpers) are visible to LLM-generated code.
+`nooa.visible_to_agent` is a module-level context manager that declares which names (imports, constants, helpers) are visible to LLM-generated code.
 
 ```python
-import nemo_oo_agents
-from nemo_oo_agents import Agent
+import nooa
+from nooa import Agent
 
 import subprocess  # developer-only — never in exec_globals
 
-with nemo_oo_agents.visible_to_agent:
+with nooa.visible_to_agent:
     import json
     import pandas as pd
     from pathlib import Path
@@ -48,7 +48,7 @@ class MyAgent(Agent, llm=llm):
 
 4. **`blocked_modules` conflict = startup error.** If a name inside `visible_to_agent` resolves to a module in `blocked_modules`, raise immediately:
    ```
-   nemo_oo_agents.ConfigurationError: 'subprocess' is in blocked_modules but was
+   nooa.ConfigurationError: 'subprocess' is in blocked_modules but was
    declared in visible_to_agent. Import it outside the block (developer-only)
    or remove it from blocked_modules via CodeActConfig.
    ```
@@ -65,13 +65,13 @@ class MyAgent(Agent, llm=llm):
 ### Mechanism
 
 ```python
-# nemo_oo_agents/visibility.py
+# nooa/visibility.py
 
 class _VisibleToAgent:
     """Context manager that tracks names defined inside its block.
 
     Uses module dict diff: snapshot keys on enter, diff on exit.
-    Records visible names on the module as `_nemo_oo_agents_visible_names`.
+    Records visible names on the module as `_nooa_visible_names`.
     """
 
     def __enter__(self):
@@ -82,15 +82,15 @@ class _VisibleToAgent:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         new_names = set(self._module.__dict__.keys()) - self._snapshot
-        existing = getattr(self._module, "_nemo_oo_agents_visible_names", set())
-        self._module._nemo_oo_agents_visible_names = existing | new_names
+        existing = getattr(self._module, "_nooa_visible_names", set())
+        self._module._nooa_visible_names = existing | new_names
 
         # Validate new names against blocked_modules and restricted_modules
         self._validate_new_names(new_names)
         return False
 
     def _validate_new_names(self, names):
-        from nemo_oo_agents.runtime.restrictions import (
+        from nooa.runtime.restrictions import (
             DEFAULT_BLOCKED_MODULES,
             RESTRICTED_MODULES,
             is_from_blocked_module,
@@ -126,16 +126,16 @@ class _VisibleToAgent:
 visible_to_agent = _VisibleToAgent()
 ```
 
-Exposed via `nemo_oo_agents/__init__.py`:
+Exposed via `nooa/__init__.py`:
 ```python
-from nemo_oo_agents.visibility import visible_to_agent
+from nooa.visibility import visible_to_agent
 ```
 
 ### exec_globals Construction Change (actor.py)
 
 ```python
 agent_module = inspect.getmodule(type(self.agent))
-visible_names = getattr(agent_module, "_nemo_oo_agents_visible_names", None)
+visible_names = getattr(agent_module, "_nooa_visible_names", None)
 
 if visible_names is not None:
     # Allowlist mode: only include visible names from module dict
@@ -174,7 +174,7 @@ exec_globals = _strip_blocked_modules(exec_globals, effective_blocked)
 
 This is a **breaking change by design**. Existing agents without `visible_to_agent` blocks will have empty module-level exec_globals (builtins only). To migrate:
 
-1. Add `with nemo_oo_agents.visible_to_agent:` around the imports the agent needs.
+1. Add `with nooa.visible_to_agent:` around the imports the agent needs.
 2. Move developer-only imports outside the block.
 
 ### Relationship to Blocking Call Prevention

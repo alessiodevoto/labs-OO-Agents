@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from nemo_oo_agents.agentdoc._metadata import (
+from nooa.agentdoc._metadata import (
     get_docs_metadata,
     get_field_metadata,
     is_expand_false,

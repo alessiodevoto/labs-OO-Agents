@@ -5,7 +5,7 @@ import asyncio
 
 import pytest
 
-from nemo_oo_agents.unifiedllm import unifiedllm
+from nooa.unifiedllm import unifiedllm
 
 
 @pytest.mark.asyncio

@@ -8,7 +8,7 @@ import httpx
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from nemo_oo_agents.trace_explorer.client import TraceExplorerClient
+from nooa.trace_explorer.client import TraceExplorerClient
 
 # =============================================================================
 # Fixtures
@@ -90,7 +90,7 @@ def app():
     """Create a test FastAPI app with explorer routes."""
     from fastapi import FastAPI
 
-    from nemo_oo_agents.viewer.explorer_routes import router
+    from nooa.viewer.explorer_routes import router
 
     test_app = FastAPI()
     test_app.include_router(router)
@@ -100,10 +100,10 @@ def app():
 @pytest.fixture
 def mock_otlp_store():
     """Mock otlp_store functions used by explorer_routes."""
-    from nemo_oo_agents.viewer.explorer_routes import clear_explorer_cache
+    from nooa.viewer.explorer_routes import clear_explorer_cache
 
     clear_explorer_cache()
-    with patch("nemo_oo_agents.viewer.explorer_routes.otlp_store") as mock_store:
+    with patch("nooa.viewer.explorer_routes.otlp_store") as mock_store:
         mock_store.session_exists.return_value = True
         mock_store.get_session_spans.return_value = _make_otlp_spans()
         yield mock_store

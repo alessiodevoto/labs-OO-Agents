@@ -16,11 +16,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 from opentelemetry.sdk.trace.export import SpanExportResult
 
-from nemo_oo_agents.tracing._otlp_http_exporter import OtlpJsonHttpExporter
+from nooa.tracing._otlp_http_exporter import OtlpJsonHttpExporter
 
 # Patch build_resource_spans throughout — we're testing HTTP/drop behaviour,
 # not span serialization.
-_SERIALIZE_PATH = "nemo_oo_agents.tracing._otlp_http_exporter.build_resource_spans"
+_SERIALIZE_PATH = "nooa.tracing._otlp_http_exporter.build_resource_spans"
 _FAKE_RESOURCE_SPANS = [{"spans": []}]
 
 

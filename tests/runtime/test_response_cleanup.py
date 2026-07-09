@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Tests for shared response cleanup functions."""
 
-from nemo_oo_agents.runtime.response_cleanup import strip_code_fences, strip_xml_wrapper
+from nooa.runtime.response_cleanup import strip_code_fences, strip_xml_wrapper
 
 
 class TestStripCodeFences:

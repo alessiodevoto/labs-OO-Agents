@@ -36,10 +36,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from llm import build_embedding_config, build_llm, has_embedding_creds, has_llm_creds  # noqa: E402
-from tasks import Task, build_suite  # noqa: E402
-
-from nemo_oo_agents import Agent  # noqa: E402
-from nemo_oo_agents.memory import (  # noqa: E402
+from nooa_tui.memory import (  # noqa: E402
     MemoryConfig,
     MemoryManager,
     MemoryStats,
@@ -48,13 +45,16 @@ from nemo_oo_agents.memory import (  # noqa: E402
     render,
     resolve,
 )
-from nemo_oo_agents.memory.config import (  # noqa: E402
+from nooa_tui.memory.config import (  # noqa: E402
     ReflectionPolicy,
     RetrievalConfig,
     SpontaneousConfig,
     VectorConfig,
 )
-from nemo_oo_agents.unifiedllm import FakeLLMClient  # noqa: E402
+from tasks import Task, build_suite  # noqa: E402
+
+from nooa import Agent  # noqa: E402
+from nooa.unifiedllm import FakeLLMClient  # noqa: E402
 
 log = logging.getLogger("memory_bench")
 
@@ -298,7 +298,7 @@ def main() -> None:
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     if args.verbose:
-        logging.getLogger("nemo_oo_agents.memory").setLevel(logging.DEBUG)
+        logging.getLogger("nooa.memory").setLevel(logging.DEBUG)
 
     solver = args.solver
     if solver == "auto":

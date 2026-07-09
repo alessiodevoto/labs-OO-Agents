@@ -3,13 +3,13 @@
 # Tests: task_decomposition, refinement, employee_lookup
 #
 # Run:
-#   nemo_oo_agents eval --config tests/capability/config_phase3.yaml --runs 3
+#   nooa eval --config tests/capability/config_phase3.yaml --runs 3
 #
 # Single model:
-#   nemo_oo_agents eval --config tests/capability/config_phase3.yaml --models claude-haiku-azure
+#   nooa eval --config tests/capability/config_phase3.yaml --models claude-haiku-azure
 #
 # Debug single test:
-#   nemo_oo_agents eval --config tests/capability/config_phase3.yaml --test refinement --limit 1
+#   nooa eval --config tests/capability/config_phase3.yaml --test refinement --limit 1
 
 name: capability-phase3
 no_cache: true

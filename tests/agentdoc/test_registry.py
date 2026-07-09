@@ -4,8 +4,8 @@
 
 import pytest
 
-from nemo_oo_agents.agentdoc import doc, pformat
-from nemo_oo_agents.agentdoc.ext import (
+from nooa.agentdoc import doc, pformat
+from nooa.agentdoc.ext import (
     FieldInfo,
     TypeInfo,
     clear_registry,

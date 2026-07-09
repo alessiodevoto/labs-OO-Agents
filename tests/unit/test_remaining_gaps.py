@@ -1,4 +1,4 @@
-"""Unit tests covering remaining gaps in nemo_oo_agents modules.
+"""Unit tests covering remaining gaps in nooa modules.
 
 Targets:
 - nemo_flow_middleware.py: async middleware handlers
@@ -67,7 +67,7 @@ def _nemo_flow_patched():
     fake_llm_request_cls = MagicMock(return_value=MagicMock(content={}))
 
     # Ensure the module is imported before patching (KeyError if not in sys.modules)
-    import nemo_oo_agents.nemo_flow_middleware as _nm_ensure  # noqa: F811, F401
+    import nooa.nemo_flow_middleware as _nm_ensure  # noqa: F811, F401
 
     with patch.dict(
         sys.modules,
@@ -76,7 +76,7 @@ def _nemo_flow_patched():
             "nemo_flow.LLMRequest": fake_llm_request_cls,
         },
     ):
-        nm = sys.modules["nemo_oo_agents.nemo_flow_middleware"]
+        nm = sys.modules["nooa.nemo_flow_middleware"]
         importlib.reload(nm)
         try:
             yield nm, fake_nemo_flow, fake_handle
@@ -97,7 +97,7 @@ class TestNemoFlowLLMMiddleware:
 
     async def _run_llm_middleware(self, fake_nemo_flow, nm, ctx_kwargs=None, nxt_response=None):
         """Helper: build ctx/nxt and run nemo_flow_llm_middleware."""
-        from nemo_oo_agents.runtime.middleware import LLMCallContext
+        from nooa.runtime.middleware import LLMCallContext
 
         ctx = LLMCallContext(
             messages=[{"role": "user", "content": "hello"}],
@@ -140,7 +140,7 @@ class TestNemoFlowLLMMiddleware:
 
             fake_nemo_flow.llm.execute.side_effect = capturing_execute
 
-            from nemo_oo_agents.runtime.middleware import LLMCallContext
+            from nooa.runtime.middleware import LLMCallContext
 
             ctx = LLMCallContext(
                 messages=[{"role": "user", "content": "hi"}],
@@ -162,7 +162,7 @@ class TestNemoFlowLLMMiddleware:
 
     async def test_llm_middleware_returns_captured_ctx(self):
         with _nemo_flow_patched() as (nm, fake_nemo_flow, _):
-            from nemo_oo_agents.runtime.middleware import LLMCallContext
+            from nooa.runtime.middleware import LLMCallContext
 
             ctx = LLMCallContext(messages=[{"role": "user", "content": "hi"}], params={})
             inner = LLMCallContext(messages=ctx.messages, params={})
@@ -182,7 +182,7 @@ class TestNemoFlowLLMMiddleware:
 
             fake_nemo_flow.llm.execute.side_effect = blocking_execute
 
-            from nemo_oo_agents.runtime.middleware import LLMCallContext
+            from nooa.runtime.middleware import LLMCallContext
 
             ctx = LLMCallContext(messages=[{"role": "user", "content": "hi"}], params={})
 
@@ -210,7 +210,7 @@ class TestNemoFlowLLMMiddleware:
 
             fake_nemo_flow.llm.execute.side_effect = recording_execute
 
-            from nemo_oo_agents.runtime.middleware import LLMCallContext
+            from nooa.runtime.middleware import LLMCallContext
 
             # agent=None is fine; model extraction returns "" in that case
             ctx = LLMCallContext(
@@ -236,7 +236,7 @@ class TestNemoFlowLLMMiddleware:
 
             fake_nemo_flow.llm.execute.side_effect = execute_and_capture
 
-            from nemo_oo_agents.runtime.middleware import LLMCallContext
+            from nooa.runtime.middleware import LLMCallContext
 
             raw_resp = MagicMock()
             raw_resp.model_dump.return_value = {"choices": []}
@@ -258,7 +258,7 @@ class TestNemoFlowLLMMiddleware:
     async def test_llm_middleware_response_with_model_dump_no_raw(self):
         """When response has model_dump but no raw_response, model_dump is used."""
         with _nemo_flow_patched() as (nm, fake_nemo_flow, _):
-            from nemo_oo_agents.runtime.middleware import LLMCallContext
+            from nooa.runtime.middleware import LLMCallContext
 
             response = MagicMock(spec=["model_dump"])
             response.raw_response = None
@@ -277,7 +277,7 @@ class TestNemoFlowLLMMiddleware:
     async def test_llm_middleware_response_assistant_message_fallback(self):
         """When response has assistant_message, fall back to manual serialization."""
         with _nemo_flow_patched() as (nm, fake_nemo_flow, _):
-            from nemo_oo_agents.runtime.middleware import LLMCallContext
+            from nooa.runtime.middleware import LLMCallContext
 
             response = MagicMock(spec=["assistant_message", "usage", "finish_reason"])
             response.assistant_message = "Hello!"
@@ -297,7 +297,7 @@ class TestNemoFlowLLMMiddleware:
     async def test_llm_middleware_response_none_returns_empty(self):
         """When response is None, wrapper returns {}."""
         with _nemo_flow_patched() as (nm, fake_nemo_flow, _):
-            from nemo_oo_agents.runtime.middleware import LLMCallContext
+            from nooa.runtime.middleware import LLMCallContext
 
             ctx = LLMCallContext(messages=[{"role": "user", "content": "hi"}], params={})
             inner = LLMCallContext(messages=ctx.messages, params={})
@@ -327,7 +327,7 @@ class TestNemoFlowLLMMiddleware:
 
             fake_nemo_flow.llm.execute.side_effect = intercepting_execute
 
-            from nemo_oo_agents.runtime.middleware import LLMCallContext
+            from nooa.runtime.middleware import LLMCallContext
 
             ctx = LLMCallContext(messages=[{"role": "user", "content": "hi"}], params={})
             inner = LLMCallContext(messages=ctx.messages, params={})
@@ -351,7 +351,7 @@ class TestNemoFlowLLMMiddleware:
 
             fake_nemo_flow.llm.execute.side_effect = intercepting_execute
 
-            from nemo_oo_agents.runtime.middleware import LLMCallContext
+            from nooa.runtime.middleware import LLMCallContext
 
             ctx = LLMCallContext(
                 messages=[{"role": "user", "content": "hi"}],
@@ -371,7 +371,7 @@ class TestNemoFlowToolMiddleware:
     """Tests for nemo_flow_tool_middleware (lines 197–258)."""
 
     async def _make_exec_ctx(self, code="print('hi')", params=None, result=None):
-        from nemo_oo_agents.runtime.middleware import ExecutePythonContext
+        from nooa.runtime.middleware import ExecutePythonContext
 
         ctx = ExecutePythonContext(code=code, params=params or {})
         inner = ExecutePythonContext(code=code, params=params or {})
@@ -431,7 +431,7 @@ class TestNemoFlowToolMiddleware:
     async def test_tool_middleware_result_with_returned_value(self):
         """When result.returned_value is set, it is passed to codec."""
         with _nemo_flow_patched() as (nm, fake_nemo_flow, _):
-            from nemo_oo_agents.events import ExecutionResult
+            from nooa.events import ExecutionResult
 
             exec_result = ExecutionResult(stdout="", returned_value=42)
             ctx, inner = await self._make_exec_ctx(result=exec_result)
@@ -446,7 +446,7 @@ class TestNemoFlowToolMiddleware:
     async def test_tool_middleware_result_with_no_return_uses_stdout(self):
         """When result has _NO_RETURN and no signal, stdout is used."""
         with _nemo_flow_patched() as (nm, fake_nemo_flow, _):
-            from nemo_oo_agents.events import _NO_RETURN, ExecutionResult
+            from nooa.events import _NO_RETURN, ExecutionResult
 
             exec_result = ExecutionResult(stdout="some output", signal=None)
             # Force returned_value to be _NO_RETURN sentinel
@@ -463,7 +463,7 @@ class TestNemoFlowToolMiddleware:
     async def test_tool_middleware_result_signal_with_result_key(self):
         """When result has a signal with 'result' key, that is used."""
         with _nemo_flow_patched() as (nm, fake_nemo_flow, _):
-            from nemo_oo_agents.events import _NO_RETURN, ExecutionResult, ExecutionSignal
+            from nooa.events import _NO_RETURN, ExecutionResult, ExecutionSignal
 
             class TestSignal(ExecutionSignal):
                 pass
@@ -492,7 +492,7 @@ class TestNemoFlowToolMiddleware:
 
             fake_nemo_flow.tools.execute.side_effect = intercepting_execute
 
-            from nemo_oo_agents.runtime.middleware import ExecutePythonContext
+            from nooa.runtime.middleware import ExecutePythonContext
 
             ctx = ExecutePythonContext(code="print('original')", params={})
             inner = ExecutePythonContext(code=ctx.code, params={})
@@ -508,7 +508,7 @@ class TestNemoFlowToolMiddleware:
     async def test_tool_middleware_result_signal_without_result_key(self):
         """When signal.result is not a dict with 'result', rv is None."""
         with _nemo_flow_patched() as (nm, fake_nemo_flow, _):
-            from nemo_oo_agents.events import _NO_RETURN, ExecutionResult, ExecutionSignal
+            from nooa.events import _NO_RETURN, ExecutionResult, ExecutionSignal
 
             class TestSignal(ExecutionSignal):
                 pass
@@ -537,7 +537,7 @@ class TestNemoFlowAgentCallMiddleware:
     """
 
     def _make_ctx(self, method_name="solve", agent=None):
-        from nemo_oo_agents.runtime.middleware import AgentCallContext
+        from nooa.runtime.middleware import AgentCallContext
 
         ctx = AgentCallContext(agent=agent, method_name=method_name, args=(), kwargs={})
         return ctx
@@ -626,97 +626,97 @@ class TestTruncationConfigValidators:
     """Cover the model_validator _check_values (lines 60-101)."""
 
     def test_default_config_valid(self):
-        from nemo_oo_agents.config.truncation_config import TruncationConfig
+        from nooa.config.truncation_config import TruncationConfig
 
         cfg = TruncationConfig()
         assert cfg.capture.max_stdout == 50_000
 
     def test_max_stdout_negative_raises(self):
-        from nemo_oo_agents.config.truncation_config import CaptureConfig
+        from nooa.config.truncation_config import CaptureConfig
 
         with pytest.raises(Exception, match="max_stdout must be > 0"):
             CaptureConfig(max_stdout=-1)
 
     def test_max_stderr_zero_raises(self):
-        from nemo_oo_agents.config.truncation_config import CaptureConfig
+        from nooa.config.truncation_config import CaptureConfig
 
         with pytest.raises(Exception, match="max_stderr must be > 0"):
             CaptureConfig(max_stderr=0)
 
     def test_max_context_tokens_zero_raises(self):
-        from nemo_oo_agents.config.truncation_config import TruncationConfig
+        from nooa.config.truncation_config import TruncationConfig
 
         with pytest.raises(Exception, match="max_context_tokens must be > 0 or None"):
             TruncationConfig(max_context_tokens=0)
 
     def test_max_event_tokens_negative_raises(self):
-        from nemo_oo_agents.config.truncation_config import TruncationConfig
+        from nooa.config.truncation_config import TruncationConfig
 
         with pytest.raises(Exception, match="max_event_tokens must be > 0 or None"):
             TruncationConfig(max_event_tokens=-5)
 
     def test_max_context_tokens_none_valid(self):
-        from nemo_oo_agents.config.truncation_config import TruncationConfig
+        from nooa.config.truncation_config import TruncationConfig
 
         cfg = TruncationConfig(max_context_tokens=None)
         assert cfg.max_context_tokens is None
 
     def test_value_max_length_zero_raises(self):
-        from nemo_oo_agents.config.truncation_config import FormatConfig
+        from nooa.config.truncation_config import FormatConfig
 
         with pytest.raises(Exception, match="max_length must be > 0 or None"):
             FormatConfig(max_length=0)
 
     def test_value_max_string_negative_raises(self):
-        from nemo_oo_agents.config.truncation_config import FormatConfig
+        from nooa.config.truncation_config import FormatConfig
 
         with pytest.raises(Exception, match="max_string must be > 0 or None"):
             FormatConfig(max_string=-1)
 
     def test_value_max_depth_zero_raises(self):
-        from nemo_oo_agents.config.truncation_config import FormatConfig
+        from nooa.config.truncation_config import FormatConfig
 
         with pytest.raises(Exception, match="max_depth must be > 0 or None"):
             FormatConfig(max_depth=0)
 
     def test_value_max_length_none_valid(self):
-        from nemo_oo_agents.config.truncation_config import FormatConfig
+        from nooa.config.truncation_config import FormatConfig
 
         cfg = FormatConfig(max_length=None)
         assert cfg.max_length is None
 
     def test_capture_tail_negative_raises(self):
-        from nemo_oo_agents.config.truncation_config import CaptureConfig
+        from nooa.config.truncation_config import CaptureConfig
 
         with pytest.raises(Exception, match="tail must be >= 0"):
             CaptureConfig(tail=-1)
 
     def test_capture_tail_equal_to_max_stdout_raises(self):
-        from nemo_oo_agents.config.truncation_config import CaptureConfig
+        from nooa.config.truncation_config import CaptureConfig
 
         with pytest.raises(Exception, match="tail.*must be less than.*max_stdout"):
             CaptureConfig(max_stdout=1000, tail=1000)
 
     def test_capture_tail_greater_than_max_stdout_raises(self):
-        from nemo_oo_agents.config.truncation_config import CaptureConfig
+        from nooa.config.truncation_config import CaptureConfig
 
         with pytest.raises(Exception, match="tail.*must be less than.*max_stdout"):
             CaptureConfig(max_stdout=1000, tail=1500)
 
     def test_capture_tail_equal_to_max_stderr_raises(self):
-        from nemo_oo_agents.config.truncation_config import CaptureConfig
+        from nooa.config.truncation_config import CaptureConfig
 
         with pytest.raises(Exception, match="tail.*must be less than.*max_stderr"):
             CaptureConfig(max_stdout=50_000, max_stderr=1000, tail=1000)
 
     def test_capture_tail_valid(self):
-        from nemo_oo_agents.config.truncation_config import CaptureConfig
+        from nooa.config.truncation_config import CaptureConfig
 
         cfg = CaptureConfig(max_stdout=50_000, max_stderr=20_000, tail=5000)
         assert cfg.tail == 5000
 
     def test_multiple_errors_all_reported(self):
-        from nemo_oo_agents.config.truncation_config import CaptureConfig, TruncationConfig
+        from nooa.config.truncation_config import CaptureConfig, TruncationConfig
 
         # Top-level error
         with pytest.raises(Exception, match="max_context_tokens"):
@@ -730,14 +730,14 @@ class TestTruncationConfigValidators:
         assert "max_stderr" in msg
 
     def test_merge_with_none_returns_self(self):
-        from nemo_oo_agents.config.truncation_config import TruncationConfig
+        from nooa.config.truncation_config import TruncationConfig
 
         cfg = TruncationConfig()
         result = cfg.merge_with(None)
         assert result is cfg
 
     def test_merge_with_overrides_set_fields(self):
-        from nemo_oo_agents.config.truncation_config import TruncationConfig
+        from nooa.config.truncation_config import TruncationConfig
 
         base = TruncationConfig()
         override = TruncationConfig(max_context_tokens=5000)
@@ -745,7 +745,7 @@ class TestTruncationConfigValidators:
         assert result.max_context_tokens == 5000
 
     def test_merge_with_no_fields_set_raises(self):
-        from nemo_oo_agents.config.truncation_config import TruncationConfig
+        from nooa.config.truncation_config import TruncationConfig
 
         base = TruncationConfig()
         # Construct a TruncationConfig with empty model_fields_set by using
@@ -764,7 +764,7 @@ class TestAsyncSafety:
     """Test async safety patches (lines 44-46, 64, 77-82, 89-94)."""
 
     def test_agent_context_sets_flag(self):
-        from nemo_oo_agents.runtime.async_safety import (
+        from nooa.runtime.async_safety import (
             _in_agent_context,
             agent_async_safety_context,
         )
@@ -775,7 +775,7 @@ class TestAsyncSafety:
         assert _in_agent_context.get() is False
 
     def test_agent_context_resets_on_exception(self):
-        from nemo_oo_agents.runtime.async_safety import (
+        from nooa.runtime.async_safety import (
             _in_agent_context,
             agent_async_safety_context,
         )
@@ -789,7 +789,7 @@ class TestAsyncSafety:
 
     def test_is_event_loop_thread_no_loop(self):
         """Outside event loop, _is_event_loop_thread returns False."""
-        from nemo_oo_agents.runtime.async_safety import _is_event_loop_thread
+        from nooa.runtime.async_safety import _is_event_loop_thread
 
         # We're not in an event loop here (sync test)
         result = _is_event_loop_thread()
@@ -797,14 +797,14 @@ class TestAsyncSafety:
 
     async def test_is_event_loop_thread_inside_loop(self):
         """Inside event loop, _is_event_loop_thread returns True."""
-        from nemo_oo_agents.runtime.async_safety import _is_event_loop_thread
+        from nooa.runtime.async_safety import _is_event_loop_thread
 
         result = _is_event_loop_thread()
         assert result is True
 
     async def test_future_result_blocks_in_agent_context(self):
         """Future.result() raises inside agent context on event loop thread."""
-        from nemo_oo_agents.runtime.async_safety import agent_async_safety_context
+        from nooa.runtime.async_safety import agent_async_safety_context
 
         future: concurrent.futures.Future[int] = concurrent.futures.Future()
 
@@ -814,7 +814,7 @@ class TestAsyncSafety:
 
     async def test_future_exception_blocks_in_agent_context(self):
         """Future.exception() raises inside agent context on event loop thread."""
-        from nemo_oo_agents.runtime.async_safety import agent_async_safety_context
+        from nooa.runtime.async_safety import agent_async_safety_context
 
         future: concurrent.futures.Future[int] = concurrent.futures.Future()
 
@@ -824,7 +824,7 @@ class TestAsyncSafety:
 
     async def test_future_result_allowed_when_done(self):
         """Future.result() does NOT raise for done futures (no deadlock risk)."""
-        from nemo_oo_agents.runtime.async_safety import agent_async_safety_context
+        from nooa.runtime.async_safety import agent_async_safety_context
 
         future: concurrent.futures.Future[int] = concurrent.futures.Future()
         future.set_result(42)
@@ -835,7 +835,7 @@ class TestAsyncSafety:
 
     async def test_future_exception_allowed_when_done(self):
         """Future.exception() does NOT raise for done futures (no deadlock risk)."""
-        from nemo_oo_agents.runtime.async_safety import agent_async_safety_context
+        from nooa.runtime.async_safety import agent_async_safety_context
 
         future: concurrent.futures.Future[int] = concurrent.futures.Future()
         future.set_result(42)
@@ -846,7 +846,7 @@ class TestAsyncSafety:
 
     async def test_wait_blocks_in_agent_context(self):
         """concurrent.futures.wait() raises inside agent context on event loop thread."""
-        from nemo_oo_agents.runtime.async_safety import agent_async_safety_context
+        from nooa.runtime.async_safety import agent_async_safety_context
 
         future: concurrent.futures.Future[int] = concurrent.futures.Future()
         future.set_result(42)
@@ -857,7 +857,7 @@ class TestAsyncSafety:
 
     async def test_as_completed_blocks_in_agent_context(self):
         """concurrent.futures.as_completed() raises inside agent context on event loop thread."""
-        from nemo_oo_agents.runtime.async_safety import agent_async_safety_context
+        from nooa.runtime.async_safety import agent_async_safety_context
 
         future: concurrent.futures.Future[int] = concurrent.futures.Future()
         future.set_result(42)
@@ -900,27 +900,27 @@ class TestEventQuery:
         return ev
 
     def test_by_type_classmethod(self):
-        from nemo_oo_agents.runtime.event_query import EventQuery
+        from nooa.runtime.event_query import EventQuery
 
         q = EventQuery.by_type("Task", limit=5)
         assert q.type == "Task"
         assert q.limit == 5
 
     def test_last_n_classmethod(self):
-        from nemo_oo_agents.runtime.event_query import EventQuery
+        from nooa.runtime.event_query import EventQuery
 
         q = EventQuery.last_n(10)
         assert q.limit == 10
 
     def test_current_call_classmethod(self):
-        from nemo_oo_agents.runtime.event_query import EventQuery
+        from nooa.runtime.event_query import EventQuery
 
         q = EventQuery.current_call(limit=3)
         assert q.call_id == "current"
         assert q.limit == 3
 
     def test_apply_filter_by_type(self):
-        from nemo_oo_agents.runtime.event_query import EventQuery
+        from nooa.runtime.event_query import EventQuery
 
         events = [
             self._make_event("Task"),
@@ -933,7 +933,7 @@ class TestEventQuery:
         assert all(e.__class__.__name__ == "Task" for e in result)
 
     def test_apply_filter_by_call_id_literal(self):
-        from nemo_oo_agents.runtime.event_query import EventQuery
+        from nooa.runtime.event_query import EventQuery
 
         events = [
             self._make_event("Task", call_id="call-1"),
@@ -945,7 +945,7 @@ class TestEventQuery:
         assert len(result) == 2
 
     def test_apply_filter_by_call_id_current(self):
-        from nemo_oo_agents.runtime.event_query import EventQuery
+        from nooa.runtime.event_query import EventQuery
 
         events = [
             self._make_event("Task", call_id="call-abc"),
@@ -956,7 +956,7 @@ class TestEventQuery:
         assert len(result) == 1
 
     def test_apply_filter_by_query_text(self):
-        from nemo_oo_agents.runtime.event_query import EventQuery
+        from nooa.runtime.event_query import EventQuery
 
         events = [
             self._make_event("Task", content="find the answer"),
@@ -967,7 +967,7 @@ class TestEventQuery:
         assert len(result) == 1
 
     def test_apply_filter_by_query_regex(self):
-        from nemo_oo_agents.runtime.event_query import EventQuery
+        from nooa.runtime.event_query import EventQuery
 
         events = [
             self._make_event("Task", content="error 404 not found"),
@@ -978,7 +978,7 @@ class TestEventQuery:
         assert len(result) == 1
 
     def test_apply_limit(self):
-        from nemo_oo_agents.runtime.event_query import EventQuery
+        from nooa.runtime.event_query import EventQuery
 
         events = [self._make_event("Task") for _ in range(10)]
         q = EventQuery(limit=3)
@@ -987,7 +987,7 @@ class TestEventQuery:
 
     def test_apply_limit_takes_last_n(self):
         """limit slices from the end."""
-        from nemo_oo_agents.runtime.event_query import EventQuery
+        from nooa.runtime.event_query import EventQuery
 
         events = [self._make_event("Task", content=f"event {i}") for i in range(5)]
         q = EventQuery(limit=2)
@@ -995,7 +995,7 @@ class TestEventQuery:
         assert result == events[-2:]
 
     def test_apply_combined_filters(self):
-        from nemo_oo_agents.runtime.event_query import EventQuery
+        from nooa.runtime.event_query import EventQuery
 
         events = [
             self._make_event("Task", call_id="c1", content="alpha"),
@@ -1008,7 +1008,7 @@ class TestEventQuery:
         assert len(result) == 1
 
     def test_apply_no_filters_returns_all(self):
-        from nemo_oo_agents.runtime.event_query import EventQuery
+        from nooa.runtime.event_query import EventQuery
 
         events = [self._make_event("Task") for _ in range(5)]
         q = EventQuery()
@@ -1025,7 +1025,7 @@ class TestMediaCapture:
     """Cover media_capture.py (lines 48, 67, 111, 120-124, 138-142)."""
 
     def _make_image(self, media_type="image/png", vendor_metadata=None):
-        from nemo_oo_agents.media import Image
+        from nooa.media import Image
 
         return Image(
             data_url="data:image/png;base64,abc123",
@@ -1034,17 +1034,17 @@ class TestMediaCapture:
         )
 
     def _make_audio(self, media_type="audio/wav"):
-        from nemo_oo_agents.media import Audio
+        from nooa.media import Audio
 
         return Audio(data_url="data:audio/wav;base64,abc123", media_type=media_type)
 
     def _make_file(self):
-        from nemo_oo_agents.media import File
+        from nooa.media import File
 
         return File(data_url="data:application/pdf;base64,abc123", media_type="application/pdf")
 
     def test_image_content_block_basic(self):
-        from nemo_oo_agents.runtime.media_capture import media_to_content_block
+        from nooa.runtime.media_capture import media_to_content_block
 
         img = self._make_image()
         block = media_to_content_block(img)
@@ -1053,7 +1053,7 @@ class TestMediaCapture:
         assert block["image_url"]["url"] == "data:image/png;base64,abc123"
 
     def test_image_content_block_includes_format(self):
-        from nemo_oo_agents.runtime.media_capture import media_to_content_block
+        from nooa.runtime.media_capture import media_to_content_block
 
         img = self._make_image(media_type="image/jpeg")
         block = media_to_content_block(img)
@@ -1061,7 +1061,7 @@ class TestMediaCapture:
 
     def test_image_content_block_skips_octet_stream_format(self):
         """media_type=application/octet-stream should not add 'format' key."""
-        from nemo_oo_agents.runtime.media_capture import media_to_content_block
+        from nooa.runtime.media_capture import media_to_content_block
 
         img = self._make_image(media_type="application/octet-stream")
         block = media_to_content_block(img)
@@ -1069,14 +1069,14 @@ class TestMediaCapture:
 
     def test_image_content_block_vendor_metadata_merged(self):
         """vendor_metadata is merged into image_url dict."""
-        from nemo_oo_agents.runtime.media_capture import media_to_content_block
+        from nooa.runtime.media_capture import media_to_content_block
 
         img = self._make_image(vendor_metadata={"detail": "high"})
         block = media_to_content_block(img)
         assert block["image_url"]["detail"] == "high"
 
     def test_audio_content_block(self):
-        from nemo_oo_agents.runtime.media_capture import media_to_content_block
+        from nooa.runtime.media_capture import media_to_content_block
 
         audio = self._make_audio()
         block = media_to_content_block(audio)
@@ -1086,14 +1086,14 @@ class TestMediaCapture:
 
     def test_audio_content_block_format_extracted(self):
         """Format is the last part of the media type."""
-        from nemo_oo_agents.runtime.media_capture import media_to_content_block
+        from nooa.runtime.media_capture import media_to_content_block
 
         audio = self._make_audio(media_type="audio/mp3")
         block = media_to_content_block(audio)
         assert block["input_audio"]["format"] == "mp3"
 
     def test_file_content_block(self):
-        from nemo_oo_agents.runtime.media_capture import media_to_content_block
+        from nooa.runtime.media_capture import media_to_content_block
 
         file_obj = self._make_file()
         block = media_to_content_block(file_obj)
@@ -1102,8 +1102,8 @@ class TestMediaCapture:
 
     def test_unknown_media_subclass_fallback(self):
         """Unknown Media subclass falls back to image_url type."""
-        from nemo_oo_agents.media import Media
-        from nemo_oo_agents.runtime.media_capture import media_to_content_block
+        from nooa.media import Media
+        from nooa.runtime.media_capture import media_to_content_block
 
         # Custom subclass not Image/Audio/File
         class UnknownMedia(Media):
@@ -1115,13 +1115,13 @@ class TestMediaCapture:
         assert block["image_url"]["url"] == "https://example.com/foo"
 
     def test_non_media_raises_type_error(self):
-        from nemo_oo_agents.runtime.media_capture import media_to_content_block
+        from nooa.runtime.media_capture import media_to_content_block
 
         with pytest.raises(TypeError, match="Expected Media"):
             media_to_content_block("not a media object")
 
     def test_show_outside_context_prints_message(self, capsys):
-        from nemo_oo_agents.runtime.media_capture import show
+        from nooa.runtime.media_capture import show
 
         img = self._make_image()
         show(img)
@@ -1129,7 +1129,7 @@ class TestMediaCapture:
         assert "outside execution context" in captured.out
 
     def test_show_inside_context_appends_block(self, capsys):
-        from nemo_oo_agents.runtime.media_capture import (
+        from nooa.runtime.media_capture import (
             _media_buffer_var,
             _MediaBuffer,
             show,
@@ -1146,7 +1146,7 @@ class TestMediaCapture:
         assert buf.blocks[0]["type"] == "image_url"
 
     def test_show_unsupported_type_raises(self):
-        from nemo_oo_agents.runtime.media_capture import (
+        from nooa.runtime.media_capture import (
             _media_buffer_var,
             _MediaBuffer,
             show,
@@ -1162,7 +1162,7 @@ class TestMediaCapture:
 
     def test_try_pil_to_content_block_import_error(self):
         """When PIL is not available, returns None gracefully."""
-        from nemo_oo_agents.runtime.media_capture import _try_pil_to_content_block
+        from nooa.runtime.media_capture import _try_pil_to_content_block
 
         with patch.dict(sys.modules, {"PIL": None, "PIL.Image": None}):
             result = _try_pil_to_content_block("not a pil image")
@@ -1170,7 +1170,7 @@ class TestMediaCapture:
 
     def test_try_matplotlib_to_content_block_import_error(self):
         """When matplotlib is not available, returns None gracefully."""
-        from nemo_oo_agents.runtime.media_capture import _try_matplotlib_to_content_block
+        from nooa.runtime.media_capture import _try_matplotlib_to_content_block
 
         with patch.dict(sys.modules, {"matplotlib": None, "matplotlib.figure": None}):
             result = _try_matplotlib_to_content_block("not a figure")
@@ -1178,7 +1178,7 @@ class TestMediaCapture:
 
     def test_image_alias(self):
         """image_to_content_block is an alias for media_to_content_block."""
-        from nemo_oo_agents.runtime.media_capture import (
+        from nooa.runtime.media_capture import (
             image_to_content_block,
             media_to_content_block,
         )
@@ -1195,7 +1195,7 @@ class TestBashResult:
     """Cover BashResult.__str__ paths (line 35)."""
 
     def test_str_with_stderr_and_return_code(self):
-        from nemo_oo_agents.tools.bash_tool import BashResult
+        from nooa.tools.bash_tool import BashResult
 
         r = BashResult(stdout="out", stderr="err", return_code=1)
         s = str(r)
@@ -1205,19 +1205,19 @@ class TestBashResult:
         assert "[exit code: 1]" in s
 
     def test_str_sandboxed(self):
-        from nemo_oo_agents.tools.bash_tool import BashResult
+        from nooa.tools.bash_tool import BashResult
 
         r = BashResult(stdout="out", stderr="", return_code=0, sandboxed=True)
         assert "[sandboxed]" in str(r)
 
     def test_str_no_extras(self):
-        from nemo_oo_agents.tools.bash_tool import BashResult
+        from nooa.tools.bash_tool import BashResult
 
         r = BashResult(stdout="out", stderr="", return_code=0)
         assert str(r) == "out"
 
     def test_success_property(self):
-        from nemo_oo_agents.tools.bash_tool import BashResult
+        from nooa.tools.bash_tool import BashResult
 
         assert BashResult(stdout="", stderr="", return_code=0).success is True
         assert BashResult(stdout="", stderr="", return_code=1).success is False
@@ -1227,7 +1227,7 @@ class TestBashToolInit:
     """Cover BashTool.__init__ paths (lines 66-71, 106-112)."""
 
     def test_default_init(self):
-        from nemo_oo_agents.tools.bash_tool import BashTool
+        from nooa.tools.bash_tool import BashTool
 
         with patch.object(BashTool, "_check_srt_available", return_value=False):
             tool = BashTool()
@@ -1235,8 +1235,8 @@ class TestBashToolInit:
 
     def test_srt_path_with_tilde(self):
         """When srt_executable contains ~, it is expanded."""
-        from nemo_oo_agents.config.tool_configs import BashConfig
-        from nemo_oo_agents.tools.bash_tool import BashTool
+        from nooa.config.tool_configs import BashConfig
+        from nooa.tools.bash_tool import BashTool
 
         cfg = BashConfig(srt_executable="~/bin/srt", use_sandbox=False)
         with patch.object(BashTool, "_check_srt_available", return_value=False):
@@ -1245,8 +1245,8 @@ class TestBashToolInit:
 
     def test_srt_executable_none_defaults_to_srt(self):
         """When srt_executable is falsy, _srt_path defaults to 'srt'."""
-        from nemo_oo_agents.config.tool_configs import BashConfig
-        from nemo_oo_agents.tools.bash_tool import BashTool
+        from nooa.config.tool_configs import BashConfig
+        from nooa.tools.bash_tool import BashTool
 
         cfg = BashConfig(srt_executable=None, use_sandbox=False)
         with patch.object(BashTool, "_check_srt_available", return_value=False):
@@ -1254,27 +1254,27 @@ class TestBashToolInit:
         assert tool._srt_path == "srt"
 
     def test_use_sandbox_false_when_srt_unavailable(self):
-        from nemo_oo_agents.tools.bash_tool import BashTool
+        from nooa.tools.bash_tool import BashTool
 
         with patch.object(BashTool, "_check_srt_available", return_value=False):
             tool = BashTool()
         assert tool._srt_available is False
 
     def test_sandbox_warning_when_srt_unavailable(self, caplog):
-        from nemo_oo_agents.config.tool_configs import BashConfig
-        from nemo_oo_agents.tools.bash_tool import BashTool
+        from nooa.config.tool_configs import BashConfig
+        from nooa.tools.bash_tool import BashTool
 
         cfg = BashConfig(use_sandbox=True)
         import logging
 
         with patch.object(BashTool, "_check_srt_available", return_value=False):
-            with caplog.at_level(logging.WARNING, logger="nemo_oo_agents.tools.bash_tool"):
+            with caplog.at_level(logging.WARNING, logger="nooa.tools.bash_tool"):
                 BashTool(config=cfg)
         assert "SRT is not available" in caplog.text
 
     def test_repr_sandbox_enabled(self):
-        from nemo_oo_agents.config.tool_configs import BashConfig
-        from nemo_oo_agents.tools.bash_tool import BashTool
+        from nooa.config.tool_configs import BashConfig
+        from nooa.tools.bash_tool import BashTool
 
         cfg = BashConfig(use_sandbox=True)
         with patch.object(BashTool, "_check_srt_available", return_value=True):
@@ -1282,7 +1282,7 @@ class TestBashToolInit:
         assert "enabled" in repr(tool)
 
     def test_repr_sandbox_disabled(self):
-        from nemo_oo_agents.tools.bash_tool import BashTool
+        from nooa.tools.bash_tool import BashTool
 
         with patch.object(BashTool, "_check_srt_available", return_value=False):
             tool = BashTool()
@@ -1293,7 +1293,7 @@ class TestBashToolCheckSrtAvailable:
     """Cover _check_srt_available (lines 123, 133-135, 144-147)."""
 
     def test_srt_available_when_settings_in_help(self):
-        from nemo_oo_agents.tools.bash_tool import BashTool
+        from nooa.tools.bash_tool import BashTool
 
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(
@@ -1305,7 +1305,7 @@ class TestBashToolCheckSrtAvailable:
         assert result is True
 
     def test_srt_unavailable_when_subtitle_editor(self):
-        from nemo_oo_agents.tools.bash_tool import BashTool
+        from nooa.tools.bash_tool import BashTool
 
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(
@@ -1317,7 +1317,7 @@ class TestBashToolCheckSrtAvailable:
         assert result is False
 
     def test_srt_unavailable_when_file_not_found(self):
-        from nemo_oo_agents.tools.bash_tool import BashTool
+        from nooa.tools.bash_tool import BashTool
 
         with patch("subprocess.run", side_effect=FileNotFoundError):
             tool = BashTool.__new__(BashTool)
@@ -1328,7 +1328,7 @@ class TestBashToolCheckSrtAvailable:
     def test_srt_unavailable_when_timeout(self):
         import subprocess
 
-        from nemo_oo_agents.tools.bash_tool import BashTool
+        from nooa.tools.bash_tool import BashTool
 
         with patch("subprocess.run", side_effect=subprocess.TimeoutExpired("srt", 2)):
             tool = BashTool.__new__(BashTool)
@@ -1337,7 +1337,7 @@ class TestBashToolCheckSrtAvailable:
         assert result is False
 
     def test_srt_none_path_returns_false(self):
-        from nemo_oo_agents.tools.bash_tool import BashTool
+        from nooa.tools.bash_tool import BashTool
 
         tool = BashTool.__new__(BashTool)
         tool._srt_path = None
@@ -1349,7 +1349,7 @@ class TestBashToolRun:
     """Cover BashTool.run() error paths (lines 178, 209-210, 219-220)."""
 
     async def test_run_timeout_returns_error_result(self):
-        from nemo_oo_agents.tools.bash_tool import BashTool
+        from nooa.tools.bash_tool import BashTool
 
         with patch.object(BashTool, "_check_srt_available", return_value=False):
             tool = BashTool()
@@ -1369,7 +1369,7 @@ class TestBashToolRun:
         assert "timed out" in result.stderr
 
     async def test_run_subprocess_exception_returns_error_result(self):
-        from nemo_oo_agents.tools.bash_tool import BashTool
+        from nooa.tools.bash_tool import BashTool
 
         with patch.object(BashTool, "_check_srt_available", return_value=False):
             tool = BashTool()
@@ -1382,8 +1382,8 @@ class TestBashToolRun:
 
     async def test_run_sandboxed_wraps_command(self):
         """When sandbox is available, command is wrapped with SRT."""
-        from nemo_oo_agents.config.tool_configs import BashConfig
-        from nemo_oo_agents.tools.bash_tool import BashTool
+        from nooa.config.tool_configs import BashConfig
+        from nooa.tools.bash_tool import BashTool
 
         cfg = BashConfig(use_sandbox=True)
         with patch.object(BashTool, "_check_srt_available", return_value=True):
@@ -1404,7 +1404,7 @@ class TestBashToolRun:
         assert wrapped_cmd and "srt" in wrapped_cmd[0].lower()
 
     async def test_run_basic_success(self):
-        from nemo_oo_agents.tools.bash_tool import BashTool
+        from nooa.tools.bash_tool import BashTool
 
         with patch.object(BashTool, "_check_srt_available", return_value=False):
             tool = BashTool()
@@ -1424,7 +1424,7 @@ class TestBashToolRun:
 
     async def test_run_timeout_kills_process(self):
         """On timeout, proc.kill() is called."""
-        from nemo_oo_agents.tools.bash_tool import BashTool
+        from nooa.tools.bash_tool import BashTool
 
         with patch.object(BashTool, "_check_srt_available", return_value=False):
             tool = BashTool()
@@ -1447,19 +1447,19 @@ class TestFileResult:
     """Cover FileResult.lines (line 248) and FileTool operations."""
 
     def test_lines_property(self):
-        from nemo_oo_agents.tools.bash_tool import FileResult
+        from nooa.tools.bash_tool import FileResult
 
         r = FileResult(stdout="a\nb\n\nc", stderr="", return_code=0)
         assert r.lines == ["a", "b", "c"]
 
     def test_lines_empty(self):
-        from nemo_oo_agents.tools.bash_tool import FileResult
+        from nooa.tools.bash_tool import FileResult
 
         r = FileResult(stdout="", stderr="", return_code=0)
         assert r.lines == []
 
     async def test_file_read_raises_on_failure(self):
-        from nemo_oo_agents.tools.bash_tool import BashResult, BashTool, FileTool
+        from nooa.tools.bash_tool import BashResult, BashTool, FileTool
 
         with patch.object(BashTool, "_check_srt_available", return_value=False):
             bash = BashTool()
@@ -1471,7 +1471,7 @@ class TestFileResult:
             await files.read("nonexistent.txt")
 
     async def test_file_list_raises_on_failure(self):
-        from nemo_oo_agents.tools.bash_tool import BashResult, BashTool, FileTool
+        from nooa.tools.bash_tool import BashResult, BashTool, FileTool
 
         with patch.object(BashTool, "_check_srt_available", return_value=False):
             bash = BashTool()
@@ -1485,7 +1485,7 @@ class TestFileResult:
             await files.list("/nonexistent/")
 
     async def test_file_write_raises_on_failure(self):
-        from nemo_oo_agents.tools.bash_tool import BashResult, BashTool, FileTool
+        from nooa.tools.bash_tool import BashResult, BashTool, FileTool
 
         with patch.object(BashTool, "_check_srt_available", return_value=False):
             bash = BashTool()
@@ -1499,7 +1499,7 @@ class TestFileResult:
             await files.write("/readonly/file.txt", "content")
 
     def test_file_tool_repr(self):
-        from nemo_oo_agents.tools.bash_tool import BashTool, FileTool
+        from nooa.tools.bash_tool import BashTool, FileTool
 
         with patch.object(BashTool, "_check_srt_available", return_value=False):
             bash = BashTool()
@@ -1511,14 +1511,14 @@ class TestBashToolSandboxProperty:
     """Cover sandbox_available property (line 230)."""
 
     def test_sandbox_available_true(self):
-        from nemo_oo_agents.tools.bash_tool import BashTool
+        from nooa.tools.bash_tool import BashTool
 
         with patch.object(BashTool, "_check_srt_available", return_value=True):
             tool = BashTool()
         assert tool.sandbox_available is True
 
     def test_sandbox_available_false(self):
-        from nemo_oo_agents.tools.bash_tool import BashTool
+        from nooa.tools.bash_tool import BashTool
 
         with patch.object(BashTool, "_check_srt_available", return_value=False):
             tool = BashTool()
@@ -1529,7 +1529,7 @@ class TestFileToolReadLines:
     """Cover FileTool.read() with start_line / end_line (lines 291, 293)."""
 
     async def test_read_with_start_and_end_line(self):
-        from nemo_oo_agents.tools.bash_tool import BashResult, BashTool, FileTool
+        from nooa.tools.bash_tool import BashResult, BashTool, FileTool
 
         with patch.object(BashTool, "_check_srt_available", return_value=False):
             bash = BashTool()
@@ -1546,7 +1546,7 @@ class TestFileToolReadLines:
         assert "sed" in call_args
 
     async def test_read_with_start_line_only(self):
-        from nemo_oo_agents.tools.bash_tool import BashResult, BashTool, FileTool
+        from nooa.tools.bash_tool import BashResult, BashTool, FileTool
 
         with patch.object(BashTool, "_check_srt_available", return_value=False):
             bash = BashTool()
@@ -1566,7 +1566,7 @@ class TestEditFile:
     """Cover FileTool.edit_file() paths (lines 411, 436, 439)."""
 
     async def test_edit_file_search_block_not_found_raises(self, tmp_path):
-        from nemo_oo_agents.tools.bash_tool import BashResult, BashTool, FileTool
+        from nooa.tools.bash_tool import BashResult, BashTool, FileTool
 
         with patch.object(BashTool, "_check_srt_available", return_value=False):
             bash = BashTool()
@@ -1580,7 +1580,7 @@ class TestEditFile:
             await files.edit_file("file.py", "nonexistent_block", "replacement")
 
     async def test_edit_file_multiple_matches_raises(self, tmp_path):
-        from nemo_oo_agents.tools.bash_tool import BashResult, BashTool, FileTool
+        from nooa.tools.bash_tool import BashResult, BashTool, FileTool
 
         with patch.object(BashTool, "_check_srt_available", return_value=False):
             bash = BashTool()
@@ -1594,7 +1594,7 @@ class TestEditFile:
 
     async def test_edit_file_fuzzy_match_hint(self, tmp_path):
         """When no exact match but a fuzzy match exists, error includes line hint."""
-        from nemo_oo_agents.tools.bash_tool import BashResult, BashTool, FileTool
+        from nooa.tools.bash_tool import BashResult, BashTool, FileTool
 
         with patch.object(BashTool, "_check_srt_available", return_value=False):
             bash = BashTool()
@@ -1609,7 +1609,7 @@ class TestEditFile:
 
     async def test_edit_file_successful_replacement(self):
         """Successful edit_file returns FileResult with SUCCESS message."""
-        from nemo_oo_agents.tools.bash_tool import BashResult, BashTool, FileTool
+        from nooa.tools.bash_tool import BashResult, BashTool, FileTool
 
         with patch.object(BashTool, "_check_srt_available", return_value=False):
             bash = BashTool()
@@ -1635,7 +1635,7 @@ class TestEditFile:
 
     async def test_edit_file_py_syntax_check_passes(self):
         """For .py files, a syntax check is run; on pass, replacement proceeds."""
-        from nemo_oo_agents.tools.bash_tool import BashResult, BashTool, FileTool
+        from nooa.tools.bash_tool import BashResult, BashTool, FileTool
 
         with patch.object(BashTool, "_check_srt_available", return_value=False):
             bash = BashTool()
@@ -1660,7 +1660,7 @@ class TestEditFile:
 
     async def test_edit_file_py_syntax_check_fails(self):
         """For .py files, if syntax check fails, ValueError is raised."""
-        from nemo_oo_agents.tools.bash_tool import BashResult, BashTool, FileTool
+        from nooa.tools.bash_tool import BashResult, BashTool, FileTool
 
         with patch.object(BashTool, "_check_srt_available", return_value=False):
             bash = BashTool()
@@ -1702,7 +1702,7 @@ class TestMediaCapturePILAndMatplotlib:
         """When PIL is available and obj is a PIL Image, returns image_url block."""
         import importlib
 
-        import nemo_oo_agents.runtime.media_capture as mc
+        import nooa.runtime.media_capture as mc
 
         # Create a mock PIL Image class and instance
         pil_cls = type("Image", (), {})
@@ -1730,7 +1730,7 @@ class TestMediaCapturePILAndMatplotlib:
 
     def test_try_matplotlib_returns_none_for_non_figure(self):
         """When matplotlib is available but obj is not a Figure, returns None."""
-        from nemo_oo_agents.runtime.media_capture import _try_matplotlib_to_content_block
+        from nooa.runtime.media_capture import _try_matplotlib_to_content_block
 
         mock_matplotlib = MagicMock()
         mock_figure_cls = type("Figure", (), {})
@@ -1749,7 +1749,7 @@ class TestMediaCapturePILAndMatplotlib:
 
     def test_try_pil_returns_none_for_non_pil_image(self):
         """When PIL is available but obj is not a PIL Image, returns None."""
-        from nemo_oo_agents.runtime.media_capture import _try_pil_to_content_block
+        from nooa.runtime.media_capture import _try_pil_to_content_block
 
         mock_pil = MagicMock()
         mock_pil.Image.Image = type("Image", (), {})
@@ -1761,7 +1761,7 @@ class TestMediaCapturePILAndMatplotlib:
 
     def test_show_with_auto_convert_failure_raises(self):
         """show() with unsupported type inside buffer context raises TypeError."""
-        from nemo_oo_agents.runtime.media_capture import (
+        from nooa.runtime.media_capture import (
             _media_buffer_var,
             _MediaBuffer,
             show,

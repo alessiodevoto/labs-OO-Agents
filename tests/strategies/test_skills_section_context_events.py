@@ -32,11 +32,11 @@ from __future__ import annotations
 
 import pytest
 
-from nemo_oo_agents import Agent
-from nemo_oo_agents.agentdoc import spec
-from nemo_oo_agents.prompts import build_prompt_data
-from nemo_oo_agents.skill import Skill
-from nemo_oo_agents.unifiedllm import FakeLLMClient
+from nooa import Agent
+from nooa.agentdoc import spec
+from nooa.prompts import build_prompt_data
+from nooa.skill import Skill
+from nooa.unifiedllm import FakeLLMClient
 
 _LLM = FakeLLMClient()
 

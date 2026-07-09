@@ -9,11 +9,11 @@
 #   3. Sidecar      — same overlay Python
 #
 # The agent requires Python >=3.12. The overlay ships Python 3.12 at a fixed path
-# (/opt/harbor/cpython312/bin/python3.12), so nemo_oo_agents.py always uses it
+# (/opt/harbor/cpython312/bin/python3.12), so nooa.py always uses it
 # regardless of what Python the task container has. That means PYVER is always cp312
 # and one tarball covers all containers — no per-container version needed.
 #
-# Only rebuild when package versions change in _cached_pkgs in nemo_oo_agents.py.
+# Only rebuild when package versions change in _cached_pkgs in nooa.py.
 # Never rebuild for agent code changes — code is git-cloned fresh each run.
 #
 # ## What's in the tarball
@@ -58,7 +58,7 @@ declare -A PYTHON_SIFS=(
     [cp312]="ghcr.io_laude-institute_t-bench_ubuntu-24-04_latest"
 )
 
-# Packages installed into each venv — must match _cached_pkgs in nemo_oo_agents.py
+# Packages installed into each venv — must match _cached_pkgs in nooa.py
 CACHED_PKGS=(
     aiohappyeyeballs==2.6.1
     aiohttp==3.13.3
@@ -204,32 +204,32 @@ SITE_PKGS="$VENV_DIR/lib/python3.12/site-packages"
 # These .pth files make all first-party packages importable by adding their
 # source directories to sys.path.  This eliminates the runtime pip install -e
 # step entirely — the tarball is self-sufficient.
-cat > "$SITE_PKGS/nemo_oo_agents.pth" << 'PTH'
-/installed-agent/nemo_oo_agents/src
+cat > "$SITE_PKGS/nooa.pth" << 'PTH'
+/installed-agent/nooa/src
 PTH
-cat > "$SITE_PKGS/nemo_oo_agents_benchmarks.pth" << 'PTH'
-/installed-agent/nemo_oo_agents/packages/nemo-oo-agents-benchmarks/src
+cat > "$SITE_PKGS/nooa_benchmarks.pth" << 'PTH'
+/installed-agent/nooa/packages/nemo-oo-agents-benchmarks/src
 PTH
 cat > "$SITE_PKGS/unifiedllm.pth" << 'PTH'
-/installed-agent/nemo_oo_agents/packages/unifiedllm/src
+/installed-agent/nooa/packages/unifiedllm/src
 PTH
 cat > "$SITE_PKGS/agentdoc.pth" << 'PTH'
-/installed-agent/nemo_oo_agents/packages/agentdoc/src
+/installed-agent/nooa/packages/agentdoc/src
 PTH
 cat > "$SITE_PKGS/nat_oo_agents.pth" << 'PTH'
-/installed-agent/nemo_oo_agents/packages/nat_oo_agents/src
+/installed-agent/nooa/packages/nat_oo_agents/src
 PTH
 cat > "$SITE_PKGS/evaluation.pth" << 'PTH'
-/installed-agent/nemo_oo_agents/packages/evaluation/src
+/installed-agent/nooa/packages/evaluation/src
 PTH
 cat > "$SITE_PKGS/openinference_nemo.pth" << 'PTH'
-/installed-agent/nemo_oo_agents/packages/openinference-instrumentation-nemo-oo-agents/src
+/installed-agent/nooa/packages/openinference-instrumentation-nemo-oo-agents/src
 PTH
 
 echo "=== Creating nemo-harbor entry point ==="
 cat > "$VENV_DIR/bin/nemo-harbor" << 'ENTRY'
 #!/opt/nemo-oo-agents-venv/bin/python3
-from nemo_oo_agents_benchmarks.runner import main
+from nooa_benchmarks.runner import main
 if __name__ == "__main__": main()
 ENTRY
 chmod +x "$VENV_DIR/bin/nemo-harbor"
@@ -313,14 +313,14 @@ ensure_uv_in_overlay() {
 }
 ensure_uv_in_overlay
 # --- IMPORTANT: keep installed-agent in sync with the repo ------------------
-# The overlay's installed-agent/nemo_oo_agents must mirror the CURRENT repo, or
+# The overlay's installed-agent/nooa must mirror the CURRENT repo, or
 # the .pth-imported agent will be stale and the runner errors
 # `Unknown agent_type: ...` for agents added after the overlay was built (e.g.
 # swebench/todo from MR !320). On a fresh machine, populate it from git:
 #
-#   rm -rf ~/3p/harbor_bootstrap_overlay/installed-agent/nemo_oo_agents
-#   git clone https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents.git \
-#       ~/3p/harbor_bootstrap_overlay/installed-agent/nemo_oo_agents
+#   rm -rf ~/3p/harbor_bootstrap_overlay/installed-agent/nooa
+#   git clone https://gitlab-master.nvidia.com/interactive-agents/nooa.git \
+#       ~/3p/harbor_bootstrap_overlay/installed-agent/nooa
 #
 # (Agent CODE is also git-cloned fresh inside each container at run time via
 # NEMO_OO_AGENTS_GIT_URL, but the overlay copy is the .pth import target used by

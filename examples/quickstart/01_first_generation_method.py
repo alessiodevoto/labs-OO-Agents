@@ -4,7 +4,7 @@
 uv run python examples/quickstart/01_first_generation_method.py
 """
 
-from nemo_oo_agents.util.quickstart import *
+from nooa.util.quickstart import *
 
 
 class FeedbackAgent(Agent, llm=llm):

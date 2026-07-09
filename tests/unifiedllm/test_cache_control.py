@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, patch
 import litellm
 import pytest
 
-from nemo_oo_agents.unifiedllm import CompletionClient
+from nooa.unifiedllm import CompletionClient
 
 
 def make_mock_response(content: str = "ok") -> litellm.ModelResponse:

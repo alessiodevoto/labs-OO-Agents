@@ -4,13 +4,13 @@
 #   repl_exploration, needle_in_haystack, large_data_find, large_data_extract, large_data_count
 #
 # Run:
-#   nemo_oo_agents eval --config tests/capability/config_phase2.yaml --runs 3
+#   nooa eval --config tests/capability/config_phase2.yaml --runs 3
 #
 # Single model:
-#   nemo_oo_agents eval --config tests/capability/config_phase2.yaml --models claude-haiku-azure
+#   nooa eval --config tests/capability/config_phase2.yaml --models claude-haiku-azure
 #
 # Debug single test:
-#   nemo_oo_agents eval --config tests/capability/config_phase2.yaml --test sentiment_batch --limit 1
+#   nooa eval --config tests/capability/config_phase2.yaml --test sentiment_batch --limit 1
 
 name: capability-phase2
 no_cache: true

@@ -1,4 +1,4 @@
-"""Tests for nemo_oo_agents.tools.bash_tool.FileTool.
+"""Tests for nooa.tools.bash_tool.FileTool.
 
 Contract-focused: assert public interface (file operations, error handling)
 without depending on implementation details.
@@ -9,8 +9,8 @@ from pathlib import Path
 
 import pytest
 
-from nemo_oo_agents.config.tool_configs import BashConfig
-from nemo_oo_agents.tools.bash_tool import BashTool, FileResult, FileTool
+from nooa.config.tool_configs import BashConfig
+from nooa.tools.bash_tool import BashTool, FileResult, FileTool
 
 # ============================================================================
 # Test Fixtures

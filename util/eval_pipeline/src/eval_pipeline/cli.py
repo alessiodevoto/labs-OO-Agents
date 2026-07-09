@@ -107,13 +107,13 @@ def get_strategy_instance(strategy_name: str):
     Raises:
         ValueError: If strategy_name is not recognized
     """
-    from nemo_oo_agents import (
+    from nooa import (
         CodeActLiteStrategy,
         CodeActStrategy,
         PredictStrategy,
         ReflexionStrategy,
     )
-    from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
+    from nooa.strategies.pure_python import PurePythonStrategy
 
     strategies = {
         "pure_python": PurePythonStrategy,
@@ -545,14 +545,14 @@ def load_custom_strategy(module_path: str, class_name: str):
 async def main_async():
     """Async main entry point."""
     args = parse_args()
-    from nemo_oo_agents import set_default_strategy
+    from nooa import set_default_strategy
 
     from .config import StrategyConfig, evaluator_from_config, load_config
 
     # Enable HTTP logging BEFORE any LLM imports (must patch httpx first)
     disable_http_logging = None
     if args.http_logging:
-        from nemo_oo_agents.unifiedllm.http_logging import enable_http_request_logging
+        from nooa.unifiedllm.http_logging import enable_http_request_logging
 
         disable_http_logging = enable_http_request_logging(
             output_dir=args.http_logging,
@@ -566,7 +566,7 @@ async def main_async():
         logging.basicConfig(level=logging.DEBUG, format="%(name)s: %(message)s")
     else:
         logging.basicConfig(level=logging.WARNING)
-        logging.getLogger("nemo_oo_agents").setLevel(logging.ERROR)
+        logging.getLogger("nooa").setLevel(logging.ERROR)
         logging.getLogger("LiteLLM").setLevel(logging.ERROR)
         logging.getLogger("litellm").setLevel(logging.ERROR)
 

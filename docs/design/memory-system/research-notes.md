@@ -1,8 +1,8 @@
 # Memory System — Research Notes (Appendix)
 
-This document is the appendix and supporting-evidence collection for the memory-system design. It gathers (A) codebase analysis of nemo_oo_agents extension points, (B) cognitive-science and prior-art research, (C) the schema and algorithms synthesis, and (D) the integration architecture and open-questions synthesis.
+This document is the appendix and supporting-evidence collection for the memory-system design. It gathers (A) codebase analysis of nooa extension points, (B) cognitive-science and prior-art research, (C) the schema and algorithms synthesis, and (D) the integration architecture and open-questions synthesis.
 
-## Part A — Codebase Analysis (nemo_oo_agents extension points)
+## Part A — Codebase Analysis (nooa extension points)
 
 ### A1 — Agent Class & Task Lifecycle (C1-agent-lifecycle)
 
@@ -14,8 +14,8 @@ All paths absolute; line numbers from the read at analysis time.
 
 `Agent` uses the `AgentMeta` metaclass (subclass of `ABCMeta`), so subclass creation flows through `AgentMeta.__new__` → then Python calls `Agent.__init_subclass__`.
 
-- `/root/projects/nemo_oo_agents/src/nemo_oo_agents/agent.py:74` — `class Agent(metaclass=AgentMeta)`.
-- `/root/projects/nemo_oo_agents/src/nemo_oo_agents/agent.py:127` — `__init_subclass__(cls, llm=INHERIT, truncation=None, execution=None, context=None, event_query=None, **kwargs)`.
+- `/root/projects/nooa/src/nooa/agent.py:74` — `class Agent(metaclass=AgentMeta)`.
+- `/root/projects/nooa/src/nooa/agent.py:127` — `__init_subclass__(cls, llm=INHERIT, truncation=None, execution=None, context=None, event_query=None, **kwargs)`.
 
 The `llm=` in `class MyAgent(Agent, llm=llm):` is a **class-keyword argument** consumed by `__init_subclass__`. It is stored on the class as `cls._agent_llm` (agent.py:153-154). `INHERIT` (a sentinel, agent.py:49-61) distinguishes "omitted" (cascade) from explicit; `llm=None` is rejected (`_validate_llm_param`, agent.py:64-71).
 
@@ -34,20 +34,20 @@ Resolution happens per-instance in `_resolve_llm` (agent.py:286-333), cascading:
 
 #### 2. How ellipsis (`...`) generation methods are dispatched & executed
 
-**Class-creation wrapping.** `AgentMeta.__new__` (`/root/projects/nemo_oo_agents/src/nemo_oo_agents/metaclass.py:49`) iterates the namespace; for each async function it calls `_should_generate` = `has_ellipsis_body(...)` (metaclass.py:119-130). Qualifying methods are replaced via `_create_wrapper` → `create_agent_method_wrapper` (metaclass.py:211-256). So an ellipsis method on the class becomes a **wrapper** (`_needs_generation=True`).
+**Class-creation wrapping.** `AgentMeta.__new__` (`/root/projects/nooa/src/nooa/metaclass.py:49`) iterates the namespace; for each async function it calls `_should_generate` = `has_ellipsis_body(...)` (metaclass.py:119-130). Qualifying methods are replaced via `_create_wrapper` → `create_agent_method_wrapper` (metaclass.py:211-256). So an ellipsis method on the class becomes a **wrapper** (`_needs_generation=True`).
 
-**Call-time dispatch** lives in `create_agent_method_wrapper` (`/root/projects/nemo_oo_agents/src/nemo_oo_agents/runtime/method_wrapper.py:33-321`). When the wrapped method is awaited:
+**Call-time dispatch** lives in `create_agent_method_wrapper` (`/root/projects/nooa/src/nooa/runtime/method_wrapper.py:33-321`). When the wrapped method is awaited:
 - validates args (method_wrapper.py:99-104), resolves strategy (defaults via `get_default_strategy()`, method_wrapper.py:107-111),
 - Agent path (has `self.runtime`): pushes call-id, sets `_parent_agent_var`, fires `before_agent_call` hook (method_wrapper.py:199-232), then `_dispatch` (method_wrapper.py:173-180):
   - not in a generation session → `runtime._call_plan(...)`,
   - already in one (nested) → `runtime._execute_task(...)`,
 - finally fires `after_agent_call` (method_wrapper.py:250-258).
 
-**Runtime execution chain** (`/root/projects/nemo_oo_agents/src/nemo_oo_agents/runtime/actor.py`):
+**Runtime execution chain** (`/root/projects/nooa/src/nooa/runtime/actor.py`):
 - `_call_plan` (actor.py:2262) → wraps `_execute_task` in an `asyncio.Task`.
 - `_execute_task` (actor.py:2290) → if generation: acquires `_generation_lock` (when `strategy.requires_lock`) and calls `_execute_with_generation`.
 - `_execute_with_generation` (actor.py:2355) — the **core of a task**: pops framework kwargs, resolves strategy/llm/truncation, sets `_in_generation_session`, generates a `generation_id`, **fires `before_generation` hook (actor.py:2430)**, expands the docstring placeholders (actor.py:2467), builds a `CurrentCall` (actor.py:2507), sets context-vars (`_current_call_var`, `_current_method_var`, `_current_llm_var`, `_current_strategy_var`), then `await strategy.execute(self, call)` (actor.py:2557), and in `finally` **fires `after_generation` hook (actor.py:2597)**.
-- Strategy (e.g. `CodeActStrategy.execute`, `/root/projects/nemo_oo_agents/src/nemo_oo_agents/strategies/codeact.py:551`) builds the task prompt from `call.docstring` via `_build_task_message` (codeact.py:522-533), adds it as a `Task` event (codeact.py:602), then loops calling `runtime.generate(...)` (actor.py:753) which calls `_build_messages` → `_prepare_context` → `llm_client.acall(...)`.
+- Strategy (e.g. `CodeActStrategy.execute`, `/root/projects/nooa/src/nooa/strategies/codeact.py:551`) builds the task prompt from `call.docstring` via `_build_task_message` (codeact.py:522-533), adds it as a `Task` event (codeact.py:602), then loops calling `runtime.generate(...)` (actor.py:753) which calls `_build_messages` → `_prepare_context` → `llm_client.acall(...)`.
 
 **Docstring = prompt:** `_build_task_message` renders `## Task: {method_name}\n\n{docstring}` and `event_manager.add(Task(prompt=...))` (codeact.py:601-602) is the **first conversation event before the first LLM turn**.
 
@@ -64,9 +64,9 @@ Lifecycle of one `await agent.some_ellipsis_method(args)`:
 
 ##### Hook mechanisms available (two distinct systems)
 
-**System A — `InstrumentationHooks`** (`/root/projects/nemo_oo_agents/src/nemo_oo_agents/runtime/hooks.py`). A single, global-per-async-context hooks object installed via `set_hooks(obj)` (hooks.py:321). **Caveat: single-slot** — `set_hooks` overwrites; the OTLP tracer uses it, so an add-on that calls `set_hooks` would clobber/be clobbered by tracing. The hooks fire via `call_before_hook`/`call_after_hook`. Available hook methods: `before_agent_call`/`after_agent_call`, `before_generation`/`after_generation`, `before_code_execution`/`after_code_execution`, `before/after_method_invocation`, `before/after_tool_execution`, `on_messages_built`.
+**System A — `InstrumentationHooks`** (`/root/projects/nooa/src/nooa/runtime/hooks.py`). A single, global-per-async-context hooks object installed via `set_hooks(obj)` (hooks.py:321). **Caveat: single-slot** — `set_hooks` overwrites; the OTLP tracer uses it, so an add-on that calls `set_hooks` would clobber/be clobbered by tracing. The hooks fire via `call_before_hook`/`call_after_hook`. Available hook methods: `before_agent_call`/`after_agent_call`, `before_generation`/`after_generation`, `before_code_execution`/`after_code_execution`, `before/after_method_invocation`, `before/after_tool_execution`, `on_messages_built`.
 
-**System B — per-agent EventManager** (`/root/projects/nemo_oo_agents/src/nemo_oo_agents/runtime/event_manager.py`), **scoped to each agent instance, multi-subscriber** (preferred for an add-on):
+**System B — per-agent EventManager** (`/root/projects/nooa/src/nooa/runtime/event_manager.py`), **scoped to each agent instance, multi-subscriber** (preferred for an add-on):
 - `agent.event_manager.on(event_type, handler)` (event_manager.py:184) — observe events; returns an unsubscribe callable. e.g. `on("Task", ...)`, `on("LLMOutput", ...)`.
 - `agent.event_manager.intercept(kind, fn)` (event_manager.py:262) — async middleware that **wraps and can mutate** `agent_call`, `llm_call`, or `execute_python`. Multiple allowed (registration order = execution order, first = outermost).
 
@@ -106,7 +106,7 @@ Lifecycle of one `await agent.some_ellipsis_method(args)`:
 
 #### 5. Existing wrapper / middleware / subclass extension mechanisms for cross-cutting behavior
 
-1. **EventManager middleware** `intercept(kind, fn)` (event_manager.py:262) for `agent_call` / `llm_call` / `execute_python` — async wrappers that can transform inputs/outputs or short-circuit. Multi-registration, per-agent. **This is the primary supported extension point for cross-cutting behavior** (the docstring at event_manager.py:269-285 explicitly frames it as guardrails/auth/rate-limiting). Context types: `AgentCallContext`, `LLMCallContext`, `ExecutePythonContext` in `/root/projects/nemo_oo_agents/src/nemo_oo_agents/runtime/middleware.py`.
+1. **EventManager middleware** `intercept(kind, fn)` (event_manager.py:262) for `agent_call` / `llm_call` / `execute_python` — async wrappers that can transform inputs/outputs or short-circuit. Multi-registration, per-agent. **This is the primary supported extension point for cross-cutting behavior** (the docstring at event_manager.py:269-285 explicitly frames it as guardrails/auth/rate-limiting). Context types: `AgentCallContext`, `LLMCallContext`, `ExecutePythonContext` in `/root/projects/nooa/src/nooa/runtime/middleware.py`.
 2. **EventManager observers** `on(event_type, handler)` (event_manager.py:184) — fire-and-forget observation.
 3. **InstrumentationHooks** `set_hooks(obj)` (hooks.py:321) — global single-slot, used by tracing; avoid for add-ons that must coexist with tracing.
 4. **Context blocks** — `context=` class kwarg (agent.py:132/157), instance `context=` (agent.py:172/254), `self.context[...]`/`set_dynamic` (ContextApi, context.py), `Strategy.get_block_overrides()` (base.py:215). These are the declarative way to inject content into the system prompt every turn.
@@ -123,12 +123,12 @@ Implement long-term memory as a **subclass/mixin that registers an `agent_call` 
 #### 1. Storage, evaluation, caching, rendering of context blocks
 
 ##### Storage (single source of truth: `ContextManager`)
-`ContextManager` (`src/nemo_oo_agents/runtime/context_manager.py:28`) holds three dicts:
+`ContextManager` (`src/nooa/runtime/context_manager.py:28`) holds three dicts:
 - `_blocks: dict[str, Any | DynamicContext]` — the raw value (or a `DynamicContext` marker for dynamic blocks).
 - `_dynamic_cache: dict[str, Any]` — last-resolved value of each dynamic block (populated post-turn).
 - `_static: dict[str, bool]` — partition flag (True = cacheable prefix, False = volatile suffix).
 
-`self.context` is `ContextApi` (`src/nemo_oo_agents/runtime/context.py:25`), a thin `Skill` wrapper that delegates everything to `agent.context_manager`. It is always present, hidden from the LLM by default (opt-in via `spec(self, "context", hidden=False)`).
+`self.context` is `ContextApi` (`src/nooa/runtime/context.py:25`), a thin `Skill` wrapper that delegates everything to `agent.context_manager`. It is always present, hidden from the LLM by default (opt-in via `spec(self, "context", hidden=False)`).
 
 Key routing distinction:
 - **Static** = cacheable prefix. Only `set_static(key, value)` (`context_manager.py:73`) sets `_static[key]=True`. There is no `ContextApi` method for this — `ContextApi` does **not** expose `set_static`.
@@ -226,25 +226,25 @@ Why this design:
 Caveat on caching: dynamic blocks live in the **volatile/non-cacheable** partition (`_static=False`), so a per-turn-changing memory block will not break prompt-prefix caching of the static framework prefix — but the memory block itself is never cached (correct, since it changes). The LLM-visible `self.context["recalled_memories"]` read returns the previous turn's cached value (`context_manager.py:156`); the live value is what's rendered into the prompt.
 
 ##### Key file:line references
-- `ContextApi`: `src/nemo_oo_agents/runtime/context.py:25` (`set_dynamic` `:70`, `__setitem__` `:63`)
-- `ContextManager`: `src/nemo_oo_agents/runtime/context_manager.py:28` (`set_dynamic` `:102`, `__getitem__`/cache `:136-159`, `_update_resolved` `:275`, `_invalidate` `:232`, `_raw_items` `:190`)
-- `DynamicContext` (compile-on-create): `src/nemo_oo_agents/context_blocks/models.py:25`
-- Per-turn build entry: `src/nemo_oo_agents/runtime/actor.py:785` (`generate`→`_build_messages`)
-- `_prepare_context` + `_resolve_value` closure: `src/nemo_oo_agents/runtime/actor.py:2653`, resolve `:2700`, cache side-effect `:2747`
-- `evaluate_expression` (async eval, auto-await, namespace): `src/nemo_oo_agents/runtime/actor.py:1924`
-- Build pipeline + phases: `src/nemo_oo_agents/runtime/context_builder.py:171`; persistent/dynamic resolve `:249-303`; ordering `_reorder_blocks` `:127`; append behavior `:120`
-- Rendering + truncation/eviction: `src/nemo_oo_agents/context_blocks/renderer.py:137`, eviction `_apply_context_total_limit` `:80`; default budget `actor.py:2785`
-- XML wrapping / `expr=` emission gate: `src/nemo_oo_agents/context_blocks/formatter.py:128-138`, system concat `:293`
+- `ContextApi`: `src/nooa/runtime/context.py:25` (`set_dynamic` `:70`, `__setitem__` `:63`)
+- `ContextManager`: `src/nooa/runtime/context_manager.py:28` (`set_dynamic` `:102`, `__getitem__`/cache `:136-159`, `_update_resolved` `:275`, `_invalidate` `:232`, `_raw_items` `:190`)
+- `DynamicContext` (compile-on-create): `src/nooa/context_blocks/models.py:25`
+- Per-turn build entry: `src/nooa/runtime/actor.py:785` (`generate`→`_build_messages`)
+- `_prepare_context` + `_resolve_value` closure: `src/nooa/runtime/actor.py:2653`, resolve `:2700`, cache side-effect `:2747`
+- `evaluate_expression` (async eval, auto-await, namespace): `src/nooa/runtime/actor.py:1924`
+- Build pipeline + phases: `src/nooa/runtime/context_builder.py:171`; persistent/dynamic resolve `:249-303`; ordering `_reorder_blocks` `:127`; append behavior `:120`
+- Rendering + truncation/eviction: `src/nooa/context_blocks/renderer.py:137`, eviction `_apply_context_total_limit` `:80`; default budget `actor.py:2785`
+- XML wrapping / `expr=` emission gate: `src/nooa/context_blocks/formatter.py:128-138`, system concat `:293`
 
 ### A3 — Events + Runtime Lifecycle Hooking (C3-events-runtime)
 
-# nemo_oo_agents Events + Runtime — Lifecycle Hooking Analysis (for an add-on memory system)
+# nooa Events + Runtime — Lifecycle Hooking Analysis (for an add-on memory system)
 
 #### 1. EventsApi / EventManager surface
 
-**`EventsApi`** (`src/nemo_oo_agents/runtime/events.py:21`) — the agent/LLM-facing, *read-only* wrapper exposed as `self.events`. It holds `self._manager = agent.event_manager` (`runtime/events.py:72`). Methods: `query(...)` (`:74`), `get(key|[keys])` (`:115`), `__getitem__` (`:149`), `__contains__` (`:180`), `collapse(start,end,summary_text=None)` (`:195`), `keys()` (`:216`). It cannot subscribe or write events — only query and collapse. Hidden from the LLM by default (`agent.py:110`, `Annotated["EventsApi", hidden, nosnapshot]`).
+**`EventsApi`** (`src/nooa/runtime/events.py:21`) — the agent/LLM-facing, *read-only* wrapper exposed as `self.events`. It holds `self._manager = agent.event_manager` (`runtime/events.py:72`). Methods: `query(...)` (`:74`), `get(key|[keys])` (`:115`), `__getitem__` (`:149`), `__contains__` (`:180`), `collapse(start,end,summary_text=None)` (`:195`), `keys()` (`:216`). It cannot subscribe or write events — only query and collapse. Hidden from the LLM by default (`agent.py:110`, `Annotated["EventsApi", hidden, nosnapshot]`).
 
-**`EventManager`** (`src/nemo_oo_agents/runtime/event_manager.py:73`) — the real bus, exposed as `self.event_manager` (also hidden, `agent.py:102`). This is what a memory system should attach to. Relevant API:
+**`EventManager`** (`src/nooa/runtime/event_manager.py:73`) — the real bus, exposed as `self.event_manager` (also hidden, `agent.py:102`). This is what a memory system should attach to. Relevant API:
 
 - `add(event, *, record=True) -> tag` (`event_manager.py:120`) — the single ingress point. It (1) auto-tags with `call_id` from the agent call stack (`:134`), (2) `self._emit(event)` to handlers (`:139`), (3) records unless `RUNTIME_EVENT` role (`:142`).
 - `on(event_type: str, handler) -> unsubscribe` (`event_manager.py:184`) — **observe** events fire-and-forget. `event_type="*"` subscribes to all (`:254`). Handlers are sync `Callable[[EventBase], None]`; exceptions are caught and logged, never propagated (`:251`). Returns an idempotent unsubscribe closure.
@@ -258,7 +258,7 @@ Storage is pluggable via the `EventBackend` Protocol (`runtime/event_backend.py:
 
 #### 2. The full event set and WHEN each fires
 
-Events are defined in `src/nemo_oo_agents/events.py`. The `_role` ClassVar determines recording: `Role.RUNTIME_EVENT` events are **emitted to handlers but never recorded** in LLM context (`event_manager.py:142`) — they are pure observability hooks. All events fire through `event_manager.add(...)`, so `on(...)` sees every one.
+Events are defined in `src/nooa/events.py`. The `_role` ClassVar determines recording: `Role.RUNTIME_EVENT` events are **emitted to handlers but never recorded** in LLM context (`event_manager.py:142`) — they are pure observability hooks. All events fire through `event_manager.add(...)`, so `on(...)` sees every one.
 
 | Event | `_role` | Fired by → when | Key fields |
 |---|---|---|---|
@@ -355,7 +355,7 @@ Two viable hooks; recommend the **`agent_call` middleware** as primary, with `on
 **Net recommendation:** attach a memory `EventManager` subscriber set in an `@asynccontextmanager` scope (model on `nemo_flow_scope`). Use `on("Notification"/"Error"/"Message")` for write-on-event, and a single `intercept("agent_call", ...)` gated to the orchestrator entrypoint for post-task dreaming — falling back to `on("AfterTurn")` filtered on `is_final and parent_generation_id is None` if you prefer pure observation and don't need the return value.
 
 ##### Key file:line references
-- Event definitions + roles: `src/nemo_oo_agents/events.py:59-507`
+- Event definitions + roles: `src/nooa/events.py:59-507`
 - Bus: `add` `event_manager.py:120`; `on` `:184`; `intercept` `:262`; `run_middleware` `:309`; `register_event_type` `:165`; `collapse` `:504`
 - Middleware contexts/constants: `runtime/middleware.py:59-148`
 - agent_call invocation: `runtime/method_wrapper.py:168-219`; llm_call: `actor.py:807-922`; execute_python: `actor.py:1158-1197`
@@ -369,7 +369,7 @@ Two viable hooks; recommend the **`agent_call` middleware** as primary, with `on
 
 # Memory System Analysis: How Agents Consciously Call Tools (CodeAct strategy)
 
-Read-only analysis of `/root/projects/nemo_oo_agents/src/nemo_oo_agents/strategies/`. All file:line refs below.
+Read-only analysis of `/root/projects/nooa/src/nooa/strategies/`. All file:line refs below.
 
 #### 1. How CodeAct exposes `execute_python()` / `return_result()` and how agent methods become callable
 
@@ -453,7 +453,7 @@ So an **automatic** (non-conscious) retrieval layer that surfaces "relevant memo
 4. **Automatic retrieval-injection** (if desired) goes in a `self.context.set_dynamic("working_memory", "self.format_relevant_memories()")` block (re-evaluated each turn, aligned with `runtime.generate()` at `codeact.py:654`), or as a one-shot prefill/static `self.context[...]` at task start. Keep the underlying store hidden only if needed; the recall/search/remember/associate surface stays visible.
 5. **No core-strategy edits required** for the conscious path — this is purely additive at the agent layer, consistent with an "add-on" memory system.
 
-Relevant files: `/root/projects/nemo_oo_agents/src/nemo_oo_agents/strategies/codeact.py`, `/root/projects/nemo_oo_agents/src/nemo_oo_agents/strategies/generated_code.py`, `/root/projects/nemo_oo_agents/src/nemo_oo_agents/strategies/base.py`, `/root/projects/nemo_oo_agents/src/nemo_oo_agents/strategies/predict.py`, `/root/projects/nemo_oo_agents/src/nemo_oo_agents/strategies/pure_python.py`, `/root/projects/nemo_oo_agents/src/nemo_oo_agents/context_blocks/models.py`.
+Relevant files: `/root/projects/nooa/src/nooa/strategies/codeact.py`, `/root/projects/nooa/src/nooa/strategies/generated_code.py`, `/root/projects/nooa/src/nooa/strategies/base.py`, `/root/projects/nooa/src/nooa/strategies/predict.py`, `/root/projects/nooa/src/nooa/strategies/pure_python.py`, `/root/projects/nooa/src/nooa/context_blocks/models.py`.
 
 ### A5 — Storage Layer Suitability (C5-storage)
 
@@ -463,7 +463,7 @@ Relevant files: `/root/projects/nemo_oo_agents/src/nemo_oo_agents/strategies/cod
 
 There are **two** distinct protocols, not one. The naming is a little misleading: `StorageManager` is a *session-snapshot* manager, and it *owns* an `EventBackend` which is the actual append-only record store.
 
-##### `StorageManager` protocol — `src/nemo_oo_agents/storage/manager.py:24-102`
+##### `StorageManager` protocol — `src/nooa/storage/manager.py:24-102`
 ```python
 @runtime_checkable
 class StorageManager(Protocol):
@@ -474,7 +474,7 @@ class StorageManager(Protocol):
 ```
 This is a thin facade: hand-it-an-agent / get-a-snapshot-id-back. It is **agent-centric** — every method takes an `Agent`. It has no concept of arbitrary records, keys, queries, or collections beyond "one blob per snapshot_id."
 
-##### `EventBackend` protocol — `src/nemo_oo_agents/runtime/event_backend.py:35-212`
+##### `EventBackend` protocol — `src/nooa/runtime/event_backend.py:35-212`
 This is the real record store and is much richer:
 ```python
 @runtime_checkable
@@ -545,12 +545,12 @@ Do **not** reuse `EventBackend` or `StorageManager` as the metadata/graph layer 
 **Net:** new dedicated `MemoryStore` (own protocol + own SQLite tables for metadata and an explicit edges table), reusing `serialization.py` for payloads and copying the SQLite robustness helpers. Chroma handles vectors; the new store handles metadata + graph. Do not overload `EventBackend`/`StorageManager`.
 
 ##### Key file references
-- Protocols: `src/nemo_oo_agents/storage/manager.py:24`, `src/nemo_oo_agents/runtime/event_backend.py:35`
-- Backends: `src/nemo_oo_agents/storage/in_memory.py:13`, `src/nemo_oo_agents/storage/sqlite.py:209` (event backend), `:640` (manager); `event_backend.py:215` (in-mem backend)
-- Schema: `src/nemo_oo_agents/storage/sqlite.py:98-128`
-- Reusable serialization: `src/nemo_oo_agents/storage/serialization.py:69-100` (API), `:108-260` (dispatch), `:223` (allowlist security)
-- Markers: `src/nemo_oo_agents/storage/markers.py:36` (`nosnapshot`), `:119` (`@snapshotable`)
-- Snapshot IR: `src/nemo_oo_agents/storage/snapshot.py:37`
+- Protocols: `src/nooa/storage/manager.py:24`, `src/nooa/runtime/event_backend.py:35`
+- Backends: `src/nooa/storage/in_memory.py:13`, `src/nooa/storage/sqlite.py:209` (event backend), `:640` (manager); `event_backend.py:215` (in-mem backend)
+- Schema: `src/nooa/storage/sqlite.py:98-128`
+- Reusable serialization: `src/nooa/storage/serialization.py:69-100` (API), `:108-260` (dispatch), `:223` (allowlist security)
+- Markers: `src/nooa/storage/markers.py:36` (`nosnapshot`), `:119` (`@snapshotable`)
+- Snapshot IR: `src/nooa/storage/snapshot.py:37`
 - SQLite robustness to lift: `sqlite.py:131` (`_is_virtiofs`), `:177` (`_is_corruption_error`), `:339` (`_retry_on_io_error`)
 
 ### A6 — Config Patterns + NVIDIA Inference/Embeddings (C6-config-nvidia-embeddings)
@@ -563,33 +563,33 @@ The framework has a clean, layered config story that you should mirror exactly f
 
 ##### 1a. Endpoint/model configuration = YAML registry over litellm
 
-- `src/nemo_oo_agents/unifiedllm/registry.py:237` — `get_llm_client(name, *, client_type=None, **overrides)` is the single entry point. It is a thin layer over litellm: if `name` is a registry alias it applies that config; otherwise it passes the string straight to litellm. Per-alias fields are merged in at `registry.py:298-321` (`model_name`, `api_base`, `api_key`, `temperature`, `top_p`, `max_tokens`, `reasoning`, `drop_params`).
+- `src/nooa/unifiedllm/registry.py:237` — `get_llm_client(name, *, client_type=None, **overrides)` is the single entry point. It is a thin layer over litellm: if `name` is a registry alias it applies that config; otherwise it passes the string straight to litellm. Per-alias fields are merged in at `registry.py:298-321` (`model_name`, `api_base`, `api_key`, `temperature`, `top_p`, `max_tokens`, `reasoning`, `drop_params`).
 - The registry YAML schema is documented at `registry.py:29-42`. Key fields per model: `model_name` (litellm routing string), `api_base`, `api_key_env`, `context_window`, plus generation params.
 - **API keys are resolved from env vars, never inlined**: `resolve_api_key_from_config()` at `registry.py:70-109` reads the `api_key_env`-named variable and warns if it is unset. This is the pattern to reuse for an embeddings API key.
 - `MODELS` is a merged, last-wins dict populated lazily via `ensure_loaded()` / `reload_registry()` (`registry.py:152-234`).
 
 ##### 1b. Config-file discovery chain (layered, last-wins)
 
-`src/nemo_oo_agents/llm_config.py:121` — `llm_config_chain()` returns YAML paths, lowest priority first:
-1. Bundled defaults from the `nemo_oo_agents.bundled_configs` entry-point group (`llm_config.py:48-88`)
+`src/nooa/llm_config.py:121` — `llm_config_chain()` returns YAML paths, lowest priority first:
+1. Bundled defaults from the `nooa.bundled_configs` entry-point group (`llm_config.py:48-88`)
 2. `get_user_dir("llm_config.yaml")` → `~/.config/nat/oo/llm_config.yaml`
-3. `get_project_dir("llm_config.yaml")` → `<root>/.nemo_oo_agents/llm_config.yaml`
+3. `get_project_dir("llm_config.yaml")` → `<root>/.nooa/llm_config.yaml`
 4. `NEMO_OO_LLM_CONFIG` env var (comma-separated, highest priority)
 
-Filesystem roots come from `src/nemo_oo_agents/paths.py`: `get_user_dir()` (`paths.py:44`, honors `NAT_CONFIG_DIR`/`NEMO_OO_USER_DIR`) and `get_project_dir()` (`paths.py:73`, honors `NEMO_OO_PROJECT_DIR`). **A persistent Chroma DB directory should live under `get_user_dir("memory")` or `get_project_dir("memory")`** to match convention.
+Filesystem roots come from `src/nooa/paths.py`: `get_user_dir()` (`paths.py:44`, honors `NAT_CONFIG_DIR`/`NEMO_OO_USER_DIR`) and `get_project_dir()` (`paths.py:73`, honors `NEMO_OO_PROJECT_DIR`). **A persistent Chroma DB directory should live under `get_user_dir("memory")` or `get_project_dir("memory")`** to match convention.
 
 ##### 1c. NVIDIA gateway aliases (the bundled package)
 
 `packages/nemo-oo-agents-nvidia/` is a standalone wheel that contributes only a YAML of aliases — no code dependency on the core (`pyproject.toml:11-15`). It registers itself via an entry point (`pyproject.toml:17-22`):
 ```
-[project.entry-points."nemo_oo_agents.bundled_configs"]
-nvidia = "nemo_oo_agents_nvidia:get_default_config_path"
+[project.entry-points."nooa.bundled_configs"]
+nvidia = "nooa_nvidia:get_default_config_path"
 ```
 `__init__.py:26-54` just materializes the bundled YAML path. The YAML (`data/llm_config_default.yaml`) shows the gateway pattern: **every model routes through one OpenAI-compatible endpoint** `https://inference-api.nvidia.com/v1` with `api_key_env: NVIDIA_INTERNAL_API_KEY` (public NIM uses `https://integrate.api.nvidia.com/v1` + `NVIDIA_API_KEY`, see `data/llm_config_default.yaml:91-95`). The litellm routing prefix is `openai/...` (OpenAI-compatible), e.g. `openai/nvidia/meta/llama-3.3-70b-instruct`.
 
 ##### 1d. Hyperparameter config objects = frozen Pydantic + `merge_with`
 
-Every config in `src/nemo_oo_agents/config/` follows an identical idiom:
+Every config in `src/nooa/config/` follows an identical idiom:
 - `pydantic.BaseModel` with `model_config = ConfigDict(frozen=True)`
 - Typed fields with defaults
 - A `merge_with(other)` method that overlays only `other.model_fields_set` (so partial overrides compose). It raises if `model_fields_set` is empty.
@@ -598,8 +598,8 @@ Examples: `ExecutionConfig` (`execution_config.py:6`), `HttpConfig` (`http_confi
 
 #### 2. Existing embedding client / NIM integration — NONE to reuse directly, but litellm is the bridge
 
-- **There is no embeddings client, no Chroma, no vector store, and no `litellm.embedding` call anywhere** in `src/` or `packages/`. Grep for `embed|chroma|vector|aembedding` returns only unrelated hits (the EMBEDDING/RETRIEVER trace span-kind enum at `src/nemo_oo_agents/tracing/_hooks_impl.py:92-93` from OpenInference, and code comments about "embedding heredocs").
-- The closest "memory" precedent is the **locomo benchmark agent** at `packages/nemo-oo-agents-benchmarks/src/nemo_oo_agents_benchmarks/agents/locomo.py` — but it uses **keyword-overlap retrieval** (`_retrieve_relevant_session_indices`, `locomo.py:304`), not embeddings. Not a vector-search base to build on.
+- **There is no embeddings client, no Chroma, no vector store, and no `litellm.embedding` call anywhere** in `src/` or `packages/`. Grep for `embed|chroma|vector|aembedding` returns only unrelated hits (the EMBEDDING/RETRIEVER trace span-kind enum at `src/nooa/tracing/_hooks_impl.py:92-93` from OpenInference, and code comments about "embedding heredocs").
+- The closest "memory" precedent is the **locomo benchmark agent** at `packages/nemo-oo-agents-benchmarks/src/nooa_benchmarks/agents/locomo.py` — but it uses **keyword-overlap retrieval** (`_retrieve_relevant_session_indices`, `locomo.py:304`), not embeddings. Not a vector-search base to build on.
 - **What you CAN reuse**: `litellm` is a first-class dependency (`pyproject.toml:21`, `litellm>=1.83.0`, locked at 1.83.10) and is the entire transport layer of `unifiedllm.py`. litellm exposes `litellm.embedding(...)` / `litellm.aembedding(...)` which speak the same OpenAI-compatible protocol as the NVIDIA gateway already configured. So an embeddings client can:
   - reuse the **same `api_base` + `api_key_env` resolution** as the LLM registry, and
   - reuse the global httpx hardening already applied process-wide (`_apply_httpx_no_pool_patch`, `unifiedllm.py:95-169`) and the `HttpConfig` defaults.
@@ -610,8 +610,8 @@ NVIDIA NIM embedding models (e.g. `nvidia/nv-embedqa-e5-v5`, `nvidia/llama-3.2-n
 
 The framework's established pattern for an optional, attachable subsystem is a **manager/agent class with a `classmethod install(cls, agent, *, config=...)`** that wires itself onto an existing agent and stores itself to keep it alive. Two canonical exemplars:
 
-- **`SummarizationAgent.install()`** (`src/nemo_oo_agents/agents/summarization.py:84-112`): `install()` constructs the subsystem, subscribes to the parent's event manager, and appends to `agent._summarizers` so its lifetime is tied to the agent. Subclasses (`TokenBudgetSummarizer.install`, `summarization.py:504`; `MethodSummarizer.install`, `summarization.py:592`) take a typed `config=` object and validate kwargs. It inherits the LLM from the parent (`summarization.py:126`, `kwargs.setdefault("llm", agent._llm)`).
-- **`LibraryManager.install()`** (`src/nemo_oo_agents/library_manager.py:45-50`): simpler — `install(cls, agent, *, libs_dir)` returns a manager that attaches things as `agent.<name>`.
+- **`SummarizationAgent.install()`** (`src/nooa/agents/summarization.py:84-112`): `install()` constructs the subsystem, subscribes to the parent's event manager, and appends to `agent._summarizers` so its lifetime is tied to the agent. Subclasses (`TokenBudgetSummarizer.install`, `summarization.py:504`; `MethodSummarizer.install`, `summarization.py:592`) take a typed `config=` object and validate kwargs. It inherits the LLM from the parent (`summarization.py:126`, `kwargs.setdefault("llm", agent._llm)`).
+- **`LibraryManager.install()`** (`src/nooa/library_manager.py:45-50`): simpler — `install(cls, agent, *, libs_dir)` returns a manager that attaches things as `agent.<name>`.
 
 **Toggling**: the framework's convention for opt-in/opt-out is *don't install it* (the NVIDIA package README, `packages/nemo-oo-agents-nvidia/README.md:18`, even states "External users who don't want the aliases simply don't install this package — there's no env-var toggle"). For a memory subsystem, follow both layers:
 - An `enabled: bool` field on `MemoryConfig` for in-process toggling, AND
@@ -621,14 +621,14 @@ Visibility: the subsystem's internal fields should be `Annotated[T, hidden]` (as
 
 #### Concrete recommendations for the memory add-on
 
-1. **Config**: add `MemoryConfig(BaseModel, frozen=True)` with `merge_with()` in `src/nemo_oo_agents/config/` (mirror `summarizer_config.py`), fields like: `enabled: bool = False`, `embedding_model: str = "nv-embedqa-e5-v5"` (a registry alias), `db_path: Path = get_user_dir("memory")`, `collection: str`, `top_k: int`, `min_similarity: float`, `max_memories: int`. Re-export from `config/__init__.py`.
+1. **Config**: add `MemoryConfig(BaseModel, frozen=True)` with `merge_with()` in `src/nooa/config/` (mirror `summarizer_config.py`), fields like: `enabled: bool = False`, `embedding_model: str = "nv-embedqa-e5-v5"` (a registry alias), `db_path: Path = get_user_dir("memory")`, `collection: str`, `top_k: int`, `min_similarity: float`, `max_memories: int`. Re-export from `config/__init__.py`.
 2. **Embeddings client**: write an `EmbeddingClient` that resolves `api_base`/`api_key` exactly like `get_llm_client` (reuse `resolve_api_key_from_config`, `registry.py:70`, and `MODELS` lookup) and calls `litellm.aembedding(model=..., input=..., api_base=..., api_key=...)`. Do not add a new key env var — reuse `NVIDIA_INTERNAL_API_KEY` / `NVIDIA_API_KEY`.
-3. **Bundled embed aliases**: optionally add NVIDIA embedding-model aliases to the existing bundled YAML pattern (a new package under the `nemo_oo_agents.bundled_configs` entry-point group, purely additive — see `llm_config.py:48-88`).
+3. **Bundled embed aliases**: optionally add NVIDIA embedding-model aliases to the existing bundled YAML pattern (a new package under the `nooa.bundled_configs` entry-point group, purely additive — see `llm_config.py:48-88`).
 4. **Storage path**: put the Chroma persistent dir under `get_project_dir("memory")` or `get_user_dir("memory")` (`paths.py:44,73`) so it honors `NEMO_OO_PROJECT_DIR`/`NEMO_OO_USER_DIR`.
 5. **Wiring**: expose the subsystem via `MemoryManager.install(agent, *, config=MemoryConfig(...))` (mirror `SummarizationAgent.install`, `summarization.py:84`), store it on the agent, inherit the agent's LLM if needed, and mark internal fields `Annotated[T, hidden]`.
 6. **Dependency**: `chromadb` is NOT in `pyproject.toml`/`uv.lock` — add it with `uv add chromadb`. `litellm` is already present so embeddings need no new transport dep.
 
-Key files: `src/nemo_oo_agents/unifiedllm/registry.py`, `src/nemo_oo_agents/llm_config.py`, `src/nemo_oo_agents/paths.py`, `src/nemo_oo_agents/config/summarizer_config.py` (config template), `src/nemo_oo_agents/agents/summarization.py` (install/toggle template), `packages/nemo-oo-agents-nvidia/src/nemo_oo_agents_nvidia/data/llm_config_default.yaml` (gateway YAML template), `src/nemo_oo_agents/library_manager.py` (simpler install template).
+Key files: `src/nooa/unifiedllm/registry.py`, `src/nooa/llm_config.py`, `src/nooa/paths.py`, `src/nooa/config/summarizer_config.py` (config template), `src/nooa/agents/summarization.py` (install/toggle template), `packages/nemo-oo-agents-nvidia/src/nooa_nvidia/data/llm_config_default.yaml` (gateway YAML template), `src/nooa/library_manager.py` (simpler install template).
 
 ### A7 — Prior Art & Dependency Availability (C7-prior-art-deps)
 
@@ -657,38 +657,38 @@ If the memory add-on needs embeddings/ANN, it requires **net-new dependencies** 
 
 These live under the **`progressive-learning` submodule** (`.gitmodules` → `gitlab-master.nvidia.com/esarafian/progressive-learning.git`). `import beam` fails in the main venv; beam has its own `progressive-learning/pyproject.toml` and no installed `.venv`. Treat as **read-only reference / algorithm source**, not an importable library.
 
-- `/root/projects/nemo_oo_agents/progressive-learning/beam/similarity/chroma.py` — `ChromaSimilarity` + `ChromaEmbeddingFunction`: thin wrapper over `chromadb.HttpClient` with `add()` / `search(k)` returning a `Similarities(index, distance, ...)`. **Requires a running Chroma server** (host/port), not embedded mode.
-- `/root/projects/nemo_oo_agents/progressive-learning/beam/similarity/{core,dense,sparse,tfidf,sparnn}.py` — `BeamSimilarity` base, `Similarities` dataclass, plus `DenseSimilarity`, `SparseSimilarity`, `TFIDF`, `SparnnSimilarity` backends.
-- `/root/projects/nemo_oo_agents/progressive-learning/beam/embedding/text.py` — `BeamEmbedding`, `OpenAIEmbedding`, `SentenceTransformerEmbedding` (lazy-imports `sentence_transformers`).
-- `/root/projects/nemo_oo_agents/progressive-learning/beam/embedding/robust_encoder.py` — `RobustDenseEncoder`.
+- `/root/projects/nooa/progressive-learning/beam/similarity/chroma.py` — `ChromaSimilarity` + `ChromaEmbeddingFunction`: thin wrapper over `chromadb.HttpClient` with `add()` / `search(k)` returning a `Similarities(index, distance, ...)`. **Requires a running Chroma server** (host/port), not embedded mode.
+- `/root/projects/nooa/progressive-learning/beam/similarity/{core,dense,sparse,tfidf,sparnn}.py` — `BeamSimilarity` base, `Similarities` dataclass, plus `DenseSimilarity`, `SparseSimilarity`, `TFIDF`, `SparnnSimilarity` backends.
+- `/root/projects/nooa/progressive-learning/beam/embedding/text.py` — `BeamEmbedding`, `OpenAIEmbedding`, `SentenceTransformerEmbedding` (lazy-imports `sentence_transformers`).
+- `/root/projects/nooa/progressive-learning/beam/embedding/robust_encoder.py` — `RobustDenseEncoder`.
 
 These are all coupled to the `beam` `Processor`/`Resource`/`Types` framework, so reusing one class drags in the whole beam runtime. Useful as an **API design reference** (the `Similarity.add/search` + `Similarities` shape is clean), not for direct import.
 
 #### 3. "Memory" code already in the repo
 
 ##### Legacy ARC memory (submodule, LangChain-coupled — DROP, do not reuse)
-- `/root/projects/nemo_oo_agents/progressive-learning/arc_agi/memory.py` — `BestLastTupleMemory` / `MemoryBit`. A **heuristic conversation-window memory** (keep best-k by score + last-k message chunks) built on LangChain `BaseMessage` + LangGraph `add_messages`. **Not embedding-based; not retrieval.** Wired into the legacy agent at `progressive-learning/arc_agi/agent.py:45,460,1288` and `containers.py:234`; configured by `MemoryConfig(k_best, k_last)` in `progressive-learning/arc_agi/config.py:82`.
-- `/root/projects/nemo_oo_agents/progressive-learning/arc_agi/elasticsearch.py` — `ARCResultDocument` + `ARCElasticIndex`: indexes full ARC run trajectories to Elasticsearch (via beam's `BeamElastic`) with query/aggregation helpers. This is **experiment-result logging/analytics**, not agent-runtime retrieval, and is beam+ES-coupled.
+- `/root/projects/nooa/progressive-learning/arc_agi/memory.py` — `BestLastTupleMemory` / `MemoryBit`. A **heuristic conversation-window memory** (keep best-k by score + last-k message chunks) built on LangChain `BaseMessage` + LangGraph `add_messages`. **Not embedding-based; not retrieval.** Wired into the legacy agent at `progressive-learning/arc_agi/agent.py:45,460,1288` and `containers.py:234`; configured by `MemoryConfig(k_best, k_last)` in `progressive-learning/arc_agi/config.py:82`.
+- `/root/projects/nooa/progressive-learning/arc_agi/elasticsearch.py` — `ARCResultDocument` + `ARCElasticIndex`: indexes full ARC run trajectories to Elasticsearch (via beam's `BeamElastic`) with query/aggregation helpers. This is **experiment-result logging/analytics**, not agent-runtime retrieval, and is beam+ES-coupled.
 
-**The in-repo port already classifies these as "Drop."** `/root/projects/nemo_oo_agents/examples/arc_agi/DESIGN.md:675-679` explicitly says:
+**The in-repo port already classifies these as "Drop."** `/root/projects/nooa/examples/arc_agi/DESIGN.md:675-679` explicitly says:
 > `elasticsearch.py`, `memory.py` (→ **nemo events/summarizer**), `checkpointer/` (→ `SQLiteStorageManager`)
 
 i.e., the existing design guidance is that this legacy memory should be **replaced by the framework's events + summarizer**, and persistence by `SQLiteStorageManager`.
 
 ##### Trivial demo (not a system)
-- `/root/projects/nemo_oo_agents/examples/advanced/memory.py` — 30-line demo showing event-history persistence across two method calls (`greet` then `recall`). Illustrates the native "memory = event history" model; no storage/retrieval.
+- `/root/projects/nooa/examples/advanced/memory.py` — 30-line demo showing event-history persistence across two method calls (`greet` then `recall`). Illustrates the native "memory = event history" model; no storage/retrieval.
 
 ##### Framework-native, directly reusable (main `src/` — IMPORTABLE, the real foundation)
-- `/root/projects/nemo_oo_agents/src/nemo_oo_agents/agents/summarization.py` — `SummarizationAgent` base + `TokenBudgetSummarizer` / method summarizers. A proper sub-agent that subscribes to a parent's `EventManager` and LLM-summarizes event ranges at safe turn boundaries (`.install(agent, config=...)`). This is the canonical **memory-consolidation / reflection** primitive in the framework.
-- `/root/projects/nemo_oo_agents/src/nemo_oo_agents/tools/library_writing_lib.py` — `SkillWriting` skill: scaffold / lint / hot-reload / test **persistent skill libraries** (creates `pyproject.toml` + modules, runs pytest + security validation). This is the existing **"skill library"** mechanism — the closest thing to procedural/long-term memory already in the repo.
-- Supporting infra: `src/nemo_oo_agents/events.py`, `runtime/event_manager.py`, `runtime/event_query.py` (event storage + querying), `storage/sqlite.py` + `storage/in_memory.py` (`SQLiteStorageManager` for cross-session persistence), `context_blocks/` (static + dynamic context injection per CLAUDE.md). `tests/` only references these in passing — there is **no existing RAG/vector/embedding test**, confirming no such subsystem exists.
+- `/root/projects/nooa/src/nooa/agents/summarization.py` — `SummarizationAgent` base + `TokenBudgetSummarizer` / method summarizers. A proper sub-agent that subscribes to a parent's `EventManager` and LLM-summarizes event ranges at safe turn boundaries (`.install(agent, config=...)`). This is the canonical **memory-consolidation / reflection** primitive in the framework.
+- `/root/projects/nooa/src/nooa/tools/library_writing_lib.py` — `SkillWriting` skill: scaffold / lint / hot-reload / test **persistent skill libraries** (creates `pyproject.toml` + modules, runs pytest + security validation). This is the existing **"skill library"** mechanism — the closest thing to procedural/long-term memory already in the repo.
+- Supporting infra: `src/nooa/events.py`, `runtime/event_manager.py`, `runtime/event_query.py` (event storage + querying), `storage/sqlite.py` + `storage/in_memory.py` (`SQLiteStorageManager` for cross-session persistence), `context_blocks/` (static + dynamic context injection per CLAUDE.md). `tests/` only references these in passing — there is **no existing RAG/vector/embedding test**, confirming no such subsystem exists.
 
 #### 4. Reuse vs. avoid-duplication recommendation
 
 **Reuse (build the memory add-on on these):**
-- **Events + `EventManager`/`event_query` as the episodic memory store**, and **`SummarizationAgent`/`TokenBudgetSummarizer`** (`src/nemo_oo_agents/agents/summarization.py`) as the consolidation/reflection layer — this is what DESIGN.md already prescribes. Do not reimplement window/best-k memory.
-- **`SQLiteStorageManager`** (`src/nemo_oo_agents/storage/sqlite.py`) for cross-session persistence instead of any new DB.
-- **`SkillWriting`** (`src/nemo_oo_agents/tools/library_writing_lib.py`) as the procedural "skill library" memory — extend it rather than inventing a parallel one.
+- **Events + `EventManager`/`event_query` as the episodic memory store**, and **`SummarizationAgent`/`TokenBudgetSummarizer`** (`src/nooa/agents/summarization.py`) as the consolidation/reflection layer — this is what DESIGN.md already prescribes. Do not reimplement window/best-k memory.
+- **`SQLiteStorageManager`** (`src/nooa/storage/sqlite.py`) for cross-session persistence instead of any new DB.
+- **`SkillWriting`** (`src/nooa/tools/library_writing_lib.py`) as the procedural "skill library" memory — extend it rather than inventing a parallel one.
 - **Context blocks** (`self.context[...]` / `set_dynamic`) to surface retrieved memories into prompts.
 
 **Avoid / do not duplicate:**
@@ -698,15 +698,15 @@ i.e., the existing design guidance is that this legacy memory should be **replac
 **Net-new only if semantic retrieval is required:** there is no embedding/vector capability in the installed environment, so a true RAG/vector-memory tier means adding a dependency. Lightest path consistent with the existing stack: `numpy` is already present, so a small in-process cosine/ANN store over numpy is feasible with zero new heavy deps; otherwise `uv add chromadb` (embedded `PersistentClient`) for a managed store. Decide embeddings provider via the framework's existing LLM client rather than pulling `sentence-transformers`.
 
 ##### Key file paths
-- `/root/projects/nemo_oo_agents/src/nemo_oo_agents/agents/summarization.py`
-- `/root/projects/nemo_oo_agents/src/nemo_oo_agents/tools/library_writing_lib.py`
-- `/root/projects/nemo_oo_agents/src/nemo_oo_agents/storage/sqlite.py`
-- `/root/projects/nemo_oo_agents/src/nemo_oo_agents/runtime/event_manager.py`, `.../runtime/event_query.py`, `.../events.py`
-- `/root/projects/nemo_oo_agents/examples/arc_agi/DESIGN.md` (lines 675-686 — the "drop/reuse/provided-by-nemo" mapping)
-- `/root/projects/nemo_oo_agents/examples/advanced/memory.py`
-- `/root/projects/nemo_oo_agents/progressive-learning/arc_agi/memory.py` (legacy, drop)
-- `/root/projects/nemo_oo_agents/progressive-learning/arc_agi/elasticsearch.py` (legacy, drop)
-- `/root/projects/nemo_oo_agents/progressive-learning/beam/similarity/chroma.py` + `.../similarity/{core,dense,sparse,tfidf}.py`, `.../embedding/text.py` (submodule reference only; not installed)
+- `/root/projects/nooa/src/nooa/agents/summarization.py`
+- `/root/projects/nooa/src/nooa/tools/library_writing_lib.py`
+- `/root/projects/nooa/src/nooa/storage/sqlite.py`
+- `/root/projects/nooa/src/nooa/runtime/event_manager.py`, `.../runtime/event_query.py`, `.../events.py`
+- `/root/projects/nooa/examples/arc_agi/DESIGN.md` (lines 675-686 — the "drop/reuse/provided-by-nemo" mapping)
+- `/root/projects/nooa/examples/advanced/memory.py`
+- `/root/projects/nooa/progressive-learning/arc_agi/memory.py` (legacy, drop)
+- `/root/projects/nooa/progressive-learning/arc_agi/elasticsearch.py` (legacy, drop)
+- `/root/projects/nooa/progressive-learning/beam/similarity/chroma.py` + `.../similarity/{core,dense,sparse,tfidf}.py`, `.../embedding/text.py` (submodule reference only; not installed)
 
 ## Part B — Cognitive Science & Prior Art
 
@@ -1739,7 +1739,7 @@ Note: this is a design deliverable only — no files were created or modified. T
 
 # Long-Term Memory Add-On: Integration Architecture
 
-A toggleable, opt-in memory subsystem for nemo_oo_agents with two surfaces: (1) **conscious tools** (`recall/search/remember/associate`) and (2) a **wrapper/hook** that injects retrieved memories pre-turn and runs "dreaming" consolidation post-task. **Zero core edits required** — every hook below maps to an existing extension point.
+A toggleable, opt-in memory subsystem for nooa with two surfaces: (1) **conscious tools** (`recall/search/remember/associate`) and (2) a **wrapper/hook** that injects retrieved memories pre-turn and runs "dreaming" consolidation post-task. **Zero core edits required** — every hook below maps to an existing extension point.
 
 ### 1. Hook → extension-point map (every hook cited to file:line)
 
@@ -1774,7 +1774,7 @@ Two layers, mirroring the framework's own opt-in convention ("don't install it" 
 **Layer A — `install()` (primary, fully additive).** No base-class change for existing agents:
 
 ```python
-from nemo_oo_agents.memory import MemoryManager, MemoryConfig
+from nooa.memory import MemoryManager, MemoryConfig
 
 agent = MyAgent(llm=llm)                       # unchanged, zero memory overhead
 MemoryManager.install(agent, config=MemoryConfig(enabled=True, top_k=5))

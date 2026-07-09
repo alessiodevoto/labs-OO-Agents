@@ -26,14 +26,14 @@ import logging
 import re
 from typing import TYPE_CHECKING, Any
 
-from nemo_oo_agents import Agent, CodeActStrategy, strategy
-from nemo_oo_agents.agentdoc import spec
-from nemo_oo_agents.config import CodeActConfig
-from nemo_oo_agents.context_blocks import DynamicContext
-from nemo_oo_agents.unifiedllm import FakeLLMClient
+from nooa import Agent, CodeActStrategy, strategy
+from nooa.agentdoc import spec
+from nooa.config import CodeActConfig
+from nooa.context_blocks import DynamicContext
+from nooa.unifiedllm import FakeLLMClient
 
 if TYPE_CHECKING:
-    from nemo_oo_agents.unifiedllm import UnifiedLLM
+    from nooa.unifiedllm import UnifiedLLM
 
 logger = logging.getLogger(__name__)
 

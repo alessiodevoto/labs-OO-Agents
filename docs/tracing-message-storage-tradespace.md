@@ -53,9 +53,9 @@ Every tool surveyed stores the full growing context window redundantly per call:
 
 ---
 
-## Current State of nemo_oo_agents
+## Current State of nooa
 
-**Golden path:** `nemo-oo start-dev` starts the local viewer at `localhost:5001`. `enable_tracing()` with no arguments probes that endpoint; if reachable, all spans are sent via OTLP HTTP (`POST /v1/traces`). Files (OTLP JSONL, `{session_id}.jsonl`) are a secondary option — still supported via `exporters.jsonl()` and importable into the viewer, but not the default.
+**Golden path:** `nooa start-dev` starts the local viewer at `localhost:5001`. `enable_tracing()` with no arguments probes that endpoint; if reachable, all spans are sent via OTLP HTTP (`POST /v1/traces`). Files (OTLP JSONL, `{session_id}.jsonl`) are a secondary option — still supported via `exporters.jsonl()` and importable into the viewer, but not the default.
 
 LLM call spans use OpenInference flattened attributes:
 

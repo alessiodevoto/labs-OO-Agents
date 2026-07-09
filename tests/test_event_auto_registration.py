@@ -10,7 +10,7 @@ import logging
 
 import pytest
 
-from nemo_oo_agents.context_blocks.events import _EVENT_REGISTRY, EventBase, Metadata
+from nooa.context_blocks.events import _EVENT_REGISTRY, EventBase, Metadata
 
 
 @pytest.fixture(autouse=True)
@@ -132,7 +132,7 @@ class TestCollisionWarning:
         class CollisionA(EventBase):
             event_type: str = "collision_test_type"
 
-        with caplog.at_level(logging.WARNING, logger="nemo_oo_agents.context_blocks.events"):
+        with caplog.at_level(logging.WARNING, logger="nooa.context_blocks.events"):
 
             class CollisionB(EventBase):
                 event_type: str = "collision_test_type"
@@ -150,7 +150,7 @@ class TestCollisionWarning:
         # "WidgetStatus" is now auto-registered.
         assert _EVENT_REGISTRY["WidgetStatus"] is WidgetStatus
 
-        with caplog.at_level(logging.WARNING, logger="nemo_oo_agents.context_blocks.events"):
+        with caplog.at_level(logging.WARNING, logger="nooa.context_blocks.events"):
 
             class UnrelatedName(EventBase):
                 event_type: str = "WidgetStatus"
@@ -169,7 +169,7 @@ class TestCollisionWarning:
 
         assert _EVENT_REGISTRY.get("shared_type") is AlphaEvent
 
-        with caplog.at_level(logging.WARNING, logger="nemo_oo_agents.context_blocks.events"):
+        with caplog.at_level(logging.WARNING, logger="nooa.context_blocks.events"):
 
             class BetaEvent(EventBase):
                 event_type: str = "shared_type"
@@ -214,14 +214,14 @@ class TestExistingEventsStillWork:
     """Verify that all existing core event types have correct event_type values."""
 
     def test_context_blocks_events(self):
-        from nemo_oo_agents.context_blocks.events import AssistantEvent, ToolCallEvent, UserEvent
+        from nooa.context_blocks.events import AssistantEvent, ToolCallEvent, UserEvent
 
         assert UserEvent(content="hi").event_type == "UserEvent"
         assert AssistantEvent(content="hi").event_type == "AssistantEvent"
         assert ToolCallEvent(tool_call_id="t", name="n", arguments={}).event_type == "ToolCallEvent"
 
     def test_nemo_events(self):
-        from nemo_oo_agents.events import (
+        from nooa.events import (
             AfterTurn,
             BeforeTurn,
             Error,
@@ -259,7 +259,7 @@ class TestExistingEventsStillWork:
         )
 
     def test_tui_events(self):
-        from nemo_oo_agents_cli.tui.tui_events import (
+        from nooa_tui.tui.tui_events import (
             TUIAgentMessage,
             TUISessionRename,
             TUISessionStart,
@@ -272,13 +272,13 @@ class TestExistingEventsStillWork:
         assert TUIAgentMessage().event_type == "TUIAgentMessage"
 
     def test_rich_output_event(self):
-        from nemo_oo_agents.tools.web_publisher import RichOutput
+        from nooa.tools.web_publisher import RichOutput
 
         assert RichOutput().event_type == "RichOutput"
 
     def test_core_events_in_registry(self):
         """All core event types should be in the global registry."""
-        from nemo_oo_agents.events import (
+        from nooa.events import (
             AfterTurn,
             BeforeTurn,
             Error,
@@ -317,7 +317,7 @@ class TestSQLiteBackendUsesRegistry:
 
         from pydantic import Field
 
-        from nemo_oo_agents.storage.sqlite import SQLiteEventBackend
+        from nooa.storage.sqlite import SQLiteEventBackend
 
         class CustomPayload(EventBase):
             """Auto-registered — no manual register_event_type needed."""
@@ -338,7 +338,7 @@ class TestSQLiteBackendUsesRegistry:
 
     def test_auto_registered_metadata_subclass_sqlite_roundtrip(self, sqlite_conn):
         """Auto-registered Metadata subclass survives SQLite round-trip."""
-        from nemo_oo_agents.storage.sqlite import SQLiteEventBackend
+        from nooa.storage.sqlite import SQLiteEventBackend
 
         class AutoMetaEvent(Metadata):
             label: str = ""
@@ -358,7 +358,7 @@ class TestSQLiteBackendUsesRegistry:
 
         from pydantic import Field
 
-        from nemo_oo_agents.storage.sqlite import SQLiteEventBackend
+        from nooa.storage.sqlite import SQLiteEventBackend
 
         class ExplicitSQLiteEvent(EventBase):
             event_type: Literal["my_explicit_sqlite"] = Field(
@@ -386,7 +386,7 @@ class TestRegisterEventTypeStillWorks:
 
     def test_register_event_type_accepts_auto_registered_class(self):
         """register_event_type() should not error on auto-registered classes."""
-        from nemo_oo_agents.runtime.event_manager import EventManager
+        from nooa.runtime.event_manager import EventManager
 
         class ManualRegEvent(EventBase):
             pass
@@ -397,7 +397,7 @@ class TestRegisterEventTypeStillWorks:
 
     def test_register_event_type_rejects_non_eventbase(self):
         """register_event_type() still rejects non-EventBase classes."""
-        from nemo_oo_agents.runtime.event_manager import EventManager
+        from nooa.runtime.event_manager import EventManager
 
         em = EventManager()
         with pytest.raises(TypeError, match="Expected an EventBase subclass"):

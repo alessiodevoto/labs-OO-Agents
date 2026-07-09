@@ -4,7 +4,7 @@ Usage in notebook:
     from presentation_utils import setup, trace, agent_pprint, list_traces
     setup()
 
-    from nemo_oo_agents.unifiedllm import get_llm_client
+    from nooa.unifiedllm import get_llm_client
     llm = get_llm_client("claude-sonnet-4-5-20250514")
 """
 
@@ -24,7 +24,7 @@ def setup():
 
     load_dotenv(override=True)
 
-    from nemo_oo_agents.tracing import enable_tracing, exporters
+    from nooa.tracing import enable_tracing, exporters
 
     enable_tracing(exporters=[exporters.jsonl(TRACE_DIR)])
     print(f"Tracing enabled: {TRACE_DIR}")
@@ -32,7 +32,7 @@ def setup():
 
 def trace(name: str):
     """Point tracing to a new session for this demo."""
-    from nemo_oo_agents.tracing import set_session
+    from nooa.tracing import set_session
 
     uid = uuid4().hex[:8]
     set_session(f"{name}_{uid}")

@@ -16,9 +16,9 @@ from typing import Annotated, Any
 
 from pydantic import BaseModel, Field, field_validator
 
-from nemo_oo_agents import Agent
-from nemo_oo_agents.decorators import strategy
-from nemo_oo_agents.strategies import CodeActStrategy
+from nooa import Agent
+from nooa.decorators import strategy
+from nooa.strategies import CodeActStrategy
 from tests.capability.agents.truncation_formats import _patch_eval_pipeline_loader
 
 _patch_eval_pipeline_loader()

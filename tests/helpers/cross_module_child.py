@@ -4,9 +4,9 @@
 
 from __future__ import annotations
 
-from nemo_oo_agents import strategy
-from nemo_oo_agents.strategies import CodeActStrategy
-from nemo_oo_agents.unifiedllm import FakeLLMClient
+from nooa import strategy
+from nooa.strategies import CodeActStrategy
+from nooa.unifiedllm import FakeLLMClient
 from tests.helpers.cross_module_parent import ParentAgent
 
 # Child-module symbols.

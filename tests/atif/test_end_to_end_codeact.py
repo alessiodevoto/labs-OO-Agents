@@ -15,11 +15,11 @@ from pathlib import Path
 
 import pytest
 
-from nemo_oo_agents import Agent, strategy
-from nemo_oo_agents.atif import Trajectory, atif_scope, install_atif
-from nemo_oo_agents.config import CodeActConfig
-from nemo_oo_agents.strategies import CodeActStrategy
-from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
+from nooa import Agent, strategy
+from nooa.atif import Trajectory, atif_scope, install_atif
+from nooa.config import CodeActConfig
+from nooa.strategies import CodeActStrategy
+from nooa.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
 from tests.atif.normative import assert_atif_normative
 
 # ---------------------------------------------------------------------------

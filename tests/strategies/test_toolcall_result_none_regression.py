@@ -21,21 +21,21 @@ from typing import Any
 
 import pytest
 
-from nemo_oo_agents import Agent, strategy
-from nemo_oo_agents.config import CodeActConfig
-from nemo_oo_agents.context_blocks.events import ToolCallEvent, ToolResult
-from nemo_oo_agents.context_blocks.formatter import (
+from nooa import Agent, strategy
+from nooa.config import CodeActConfig
+from nooa.context_blocks.events import ToolCallEvent, ToolResult
+from nooa.context_blocks.formatter import (
     XMLBlockFormatter,
     _event_block_to_messages,
 )
-from nemo_oo_agents.context_blocks.models import (
+from nooa.context_blocks.models import (
     ResolvedBlock,
     Role,
 )
-from nemo_oo_agents.errors import GenerationError
-from nemo_oo_agents.events import ResultStatus
-from nemo_oo_agents.strategies.codeact import CodeActStrategy
-from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
+from nooa.errors import GenerationError
+from nooa.events import ResultStatus
+from nooa.strategies.codeact import CodeActStrategy
+from nooa.unifiedllm import FakeLLMClient, LLMResponse, ToolCall
 
 # ---------------------------------------------------------------------------
 # Helpers

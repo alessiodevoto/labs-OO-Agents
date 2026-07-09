@@ -4,7 +4,7 @@ import os
 
 from dotenv import load_dotenv
 
-from nemo_oo_agents.unifiedllm import CompletionClient
+from nooa.unifiedllm import CompletionClient
 
 load_dotenv(override=True)
 

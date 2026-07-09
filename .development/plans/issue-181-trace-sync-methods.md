@@ -1,6 +1,6 @@
 # Issue 181 — Trace sync (`def`) methods on Agent subclasses
 
-GitLab: https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents/-/issues/181
+GitLab: https://gitlab-master.nvidia.com/interactive-agents/nooa/-/issues/181
 
 ## Problem
 
@@ -185,8 +185,8 @@ Add:
 
 ## Files touched
 
-- `src/nemo_oo_agents/runtime/method_wrapper.py` — add `create_sync_agent_method_wrapper`.
-- `src/nemo_oo_agents/metaclass.py` — extend `__new__` loop with sync branch.
+- `src/nooa/runtime/method_wrapper.py` — add `create_sync_agent_method_wrapper`.
+- `src/nooa/metaclass.py` — extend `__new__` loop with sync branch.
 - `tests/test_metaclass.py` — update one existing test, add new tests listed above.
 
 ## Risk

@@ -16,10 +16,10 @@ from opentelemetry.sdk.trace.export import (
     SimpleSpanProcessor,
 )
 
-from nemo_oo_agents.tracing import _add_exporters
-from nemo_oo_agents.tracing._otlp_file_exporter import OtlpJsonFileExporter
-from nemo_oo_agents.tracing._otlp_http_exporter import OtlpJsonHttpExporter
-from nemo_oo_agents.tracing._secret_scrubber import SecretScrubSpanProcessor
+from nooa.tracing import _add_exporters
+from nooa.tracing._otlp_file_exporter import OtlpJsonFileExporter
+from nooa.tracing._otlp_http_exporter import OtlpJsonHttpExporter
+from nooa.tracing._secret_scrubber import SecretScrubSpanProcessor
 
 
 def _processors(provider: TracerProvider):

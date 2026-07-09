@@ -40,7 +40,7 @@ from typing import TypedDict
 
 import pytest
 
-from nemo_oo_agents import Agent
+from nooa import Agent
 
 
 class SimpleResult(TypedDict):
@@ -234,7 +234,7 @@ async def test_real_llm_repeated_runs():
     """
     import os
 
-    from nemo_oo_agents.unifiedllm import CompletionClient
+    from nooa.unifiedllm import CompletionClient
     from tests.capability.agents.router import RouterTestWrapper
 
     # Use a fast, cheap model

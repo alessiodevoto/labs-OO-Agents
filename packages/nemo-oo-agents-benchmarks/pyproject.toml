@@ -12,8 +12,8 @@ dependencies = [
     # unifiedllm shipped as separate top-level packages; benchmarks imports
     # nemo_oo_agents.{context_blocks,unifiedllm} which cannot run against it.
     # Bump this floor only when benchmarks actually requires a newer core API.
-    "nemo-oo-agents>=0.2.0",
-    "nemo-oo-agents-cli>=0.2.0",
+    "nemo-labs-oo-agents>=0.2.0",
+    "nemo-labs-oo-agents-cli>=0.2.0",
     "click>=8.1.0",
     "pandas>=2.0.0",
 ]
@@ -134,7 +134,8 @@ bigcodebench = [
 nemo-harbor = "nemo_oo_agents_benchmarks.runner:main"
 
 [tool.uv.sources]
-nemo-oo-agents = { workspace = true }
+nemo-labs-oo-agents = { workspace = true }
+nemo-labs-oo-agents-cli = { workspace = true }
 
 [build-system]
 requires = ["hatchling>=1.26.0", "uv-dynamic-versioning>=0.14.0"]

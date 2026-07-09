@@ -3,7 +3,7 @@
 import io
 import sys
 
-from nemo_oo_agents.runtime.pprint import _pformat, pprint
+from nooa.runtime.pprint import _pformat, pprint
 
 
 class TestPformat:

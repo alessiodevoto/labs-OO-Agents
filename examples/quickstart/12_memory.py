@@ -17,17 +17,18 @@ Demonstrates the additive memory subsystem end to end WITHOUT needing an LLM
 
 import time
 
-from nemo_oo_agents import Agent, hidden
-from nemo_oo_agents.events import Task
-from nemo_oo_agents.memory import (
+from nooa_tui.memory import (
     Memory,
     MemoryConfig,
     MemoryManager,
     MemoryToolsMixin,
     MemoryType,
 )
-from nemo_oo_agents.memory.config import ForgetPolicy, ReflectionPolicy
-from nemo_oo_agents.unifiedllm import FakeLLMClient
+from nooa_tui.memory.config import ForgetPolicy, ReflectionPolicy
+
+from nooa import Agent, hidden
+from nooa.events import Task
+from nooa.unifiedllm import FakeLLMClient
 
 DAY = 24 * 3600.0
 

@@ -26,9 +26,9 @@ input path here if a structured LoCoMo dataset is wired up.
 
 from __future__ import annotations
 
-from nemo_oo_agents import Agent, PredictStrategy, strategy
-from nemo_oo_agents.config.truncation_config import TruncationConfig
-from nemo_oo_agents.unifiedllm import FakeLLMClient
+from nooa import Agent, PredictStrategy, strategy
+from nooa.config.truncation_config import TruncationConfig
+from nooa.unifiedllm import FakeLLMClient
 
 
 class LoCoMoAgent(Agent, llm=FakeLLMClient()):

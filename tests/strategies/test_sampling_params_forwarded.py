@@ -13,9 +13,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from pydantic import BaseModel
 
-from nemo_oo_agents.config.strategy_config import PredictConfig, ReflexionConfig
-from nemo_oo_agents.strategies.predict import PredictStrategy
-from nemo_oo_agents.strategies.reflexion import ReflectionOutput, ReflexionStrategy
+from nooa.config.strategy_config import PredictConfig, ReflexionConfig
+from nooa.strategies.predict import PredictStrategy
+from nooa.strategies.reflexion import ReflectionOutput, ReflexionStrategy
 
 
 class _Resp(BaseModel):

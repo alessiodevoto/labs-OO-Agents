@@ -7,8 +7,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from nemo_oo_agents import Agent, strategy
-from nemo_oo_agents.unifiedllm import FakeLLMClient, LLMResponse
+from nooa import Agent, strategy
+from nooa.unifiedllm import FakeLLMClient, LLMResponse
 
 
 def _resp(content: str) -> LLMResponse:
@@ -31,14 +31,14 @@ class TestPurePythonStrategyProperties:
 
     def test_name_is_pure_python(self):
         """PurePythonStrategy.name should be 'PURE_PYTHON'."""
-        from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
+        from nooa.strategies.pure_python import PurePythonStrategy
 
         strategy = PurePythonStrategy()
         assert strategy.name == "PURE_PYTHON"
 
     def test_block_overrides_provides_strategy_prompt(self):
         """PurePythonStrategy.get_block_overrides() should provide strategy_prompt block."""
-        from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
+        from nooa.strategies.pure_python import PurePythonStrategy
 
         strategy = PurePythonStrategy()
         blocks = strategy.get_block_overrides()
@@ -51,28 +51,28 @@ class TestPurePythonStrategyConfig:
 
     def test_default_max_iterations(self):
         """Default max_iterations should be 10."""
-        from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
+        from nooa.strategies.pure_python import PurePythonStrategy
 
         strategy = PurePythonStrategy()
         assert strategy.max_iterations == 10
 
     def test_default_max_retries(self):
         """Default max_retries should be 3."""
-        from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
+        from nooa.strategies.pure_python import PurePythonStrategy
 
         strategy = PurePythonStrategy()
         assert strategy.max_retries == 3
 
     def test_custom_max_iterations(self):
         """Should accept custom max_iterations via config."""
-        from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
+        from nooa.strategies.pure_python import PurePythonStrategy
 
         strategy = PurePythonStrategy(max_iterations=5)
         assert strategy.max_iterations == 5
 
     def test_custom_max_retries(self):
         """Should accept custom max_retries via config."""
-        from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
+        from nooa.strategies.pure_python import PurePythonStrategy
 
         strategy = PurePythonStrategy(max_retries=2)
         assert strategy.max_retries == 2
@@ -83,15 +83,15 @@ class TestPurePythonStrategyInheritance:
 
     def test_is_generation_strategy(self):
         """PurePythonStrategy should inherit from GenerationStrategy."""
-        from nemo_oo_agents.strategies.base import GenerationStrategy
-        from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
+        from nooa.strategies.base import GenerationStrategy
+        from nooa.strategies.pure_python import PurePythonStrategy
 
         strategy = PurePythonStrategy()
         assert isinstance(strategy, GenerationStrategy)
 
     def test_has_execute_method(self):
         """PurePythonStrategy should implement execute()."""
-        from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
+        from nooa.strategies.pure_python import PurePythonStrategy
 
         strategy = PurePythonStrategy()
         assert hasattr(strategy, "execute")
@@ -104,9 +104,9 @@ class TestPurePythonStrategyExecute:
     @pytest.mark.asyncio
     async def test_execute_simple_return(self, mock_runtime):
         """execute() should handle simple return value generation."""
-        from nemo_oo_agents.events import ExecutionResult
-        from nemo_oo_agents.strategies.current_call import CurrentCall
-        from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
+        from nooa.events import ExecutionResult
+        from nooa.strategies.current_call import CurrentCall
+        from nooa.strategies.pure_python import PurePythonStrategy
 
         # Create a bound method that returns 42
         def get_answer(self):
@@ -153,9 +153,9 @@ class TestPurePythonStrategyExecute:
     @pytest.mark.asyncio
     async def test_execute_uses_max_iterations(self):
         """execute() should respect custom max_iterations config."""
-        from nemo_oo_agents.errors import GenerationError
-        from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
-        from nemo_oo_agents.unifiedllm import FakeLLMClient
+        from nooa.errors import GenerationError
+        from nooa.strategies.pure_python import PurePythonStrategy
+        from nooa.unifiedllm import FakeLLMClient
 
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(PurePythonStrategy(max_iterations=2, max_retries=10))
@@ -186,8 +186,8 @@ class TestPurePythonStrategyExecute:
     @pytest.mark.asyncio
     async def test_llm_messages_added_to_history_with_content(self):
         """LLM assistant messages should be added to history."""
-        from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
-        from nemo_oo_agents.unifiedllm import FakeLLMClient
+        from nooa.strategies.pure_python import PurePythonStrategy
+        from nooa.unifiedllm import FakeLLMClient
 
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(PurePythonStrategy(max_iterations=5))
@@ -237,7 +237,7 @@ class TestPurePythonFencedCodeBlocks:
     @pytest.mark.asyncio
     async def test_fenced_code_block_is_accepted(self):
         """LLM returning code in ```python ... ``` fences should work."""
-        from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
+        from nooa.strategies.pure_python import PurePythonStrategy
 
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(PurePythonStrategy())
@@ -259,7 +259,7 @@ return x * 2
     @pytest.mark.asyncio
     async def test_fenced_code_block_without_language_tag(self):
         """LLM returning code in ``` ... ``` fences (no language) should work."""
-        from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
+        from nooa.strategies.pure_python import PurePythonStrategy
 
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(PurePythonStrategy())
@@ -281,7 +281,7 @@ return f"Hello, {name}!"
     @pytest.mark.asyncio
     async def test_fenced_multiline_code_block_is_accepted(self):
         """LLM returning multiline code in fences should work."""
-        from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
+        from nooa.strategies.pure_python import PurePythonStrategy
 
         class TestAgent(Agent, llm=_TEST_LLM):
             def __init__(self, **kwargs):
@@ -310,7 +310,7 @@ return result
     @pytest.mark.asyncio
     async def test_fenced_code_stored_clean_in_history(self):
         """Fenced code should be stored WITHOUT fences in history for LLM learning."""
-        from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
+        from nooa.strategies.pure_python import PurePythonStrategy
 
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(PurePythonStrategy())
@@ -360,7 +360,7 @@ class TestPurePythonMalformedOutputs:
         Simple XML wrappers like <tool_code>...</tool_code> are now stripped,
         allowing the inner Python code to execute successfully.
         """
-        from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
+        from nooa.strategies.pure_python import PurePythonStrategy
 
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(PurePythonStrategy())
@@ -390,7 +390,7 @@ return x + y
         The real-world example from the bug report includes attributes
         like expr="..." and timestamp="...".
         """
-        from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
+        from nooa.strategies.pure_python import PurePythonStrategy
 
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(PurePythonStrategy())
@@ -417,8 +417,8 @@ return result
     @pytest.mark.asyncio
     async def test_nested_xml_tags_cause_clear_error(self):
         """Nested XML tags should produce a clear error message."""
-        from nemo_oo_agents.errors import GenerationError
-        from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
+        from nooa.errors import GenerationError
+        from nooa.strategies.pure_python import PurePythonStrategy
 
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(PurePythonStrategy(max_retries=1, max_iterations=2))
@@ -457,7 +457,7 @@ return x * 2
     @pytest.mark.asyncio
     async def test_xml_error_allows_llm_to_retry_and_succeed(self):
         """LLM can recover from XML format error when given clear feedback."""
-        from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
+        from nooa.strategies.pure_python import PurePythonStrategy
 
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(PurePythonStrategy(max_retries=3, max_iterations=3))
@@ -494,7 +494,7 @@ return f"Hello, {name}!"
         Code that legitimately uses XML strings like return "<config>value</config>"
         should work fine since we only strip wrapper tags around the entire response.
         """
-        from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
+        from nooa.strategies.pure_python import PurePythonStrategy
 
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(PurePythonStrategy())
@@ -520,7 +520,7 @@ return f"Hello, {name}!"
         Some LLMs combine both formats: <tool_code>```python...```</tool_code>
         Both layers should be stripped.
         """
-        from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
+        from nooa.strategies.pure_python import PurePythonStrategy
 
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(PurePythonStrategy())
@@ -549,7 +549,7 @@ return result
     @pytest.mark.asyncio
     async def test_history_stores_clean_code_after_xml_stripping(self):
         """History should store the clean code (without XML wrapper) for LLM learning."""
-        from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
+        from nooa.strategies.pure_python import PurePythonStrategy
 
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(PurePythonStrategy())
@@ -626,7 +626,7 @@ def mock_runtime():
         @property
         def truncation_config(self):
             """Truncation configuration."""
-            from nemo_oo_agents.config.truncation_config import DEFAULT_TRUNCATION_CONFIG
+            from nooa.config.truncation_config import DEFAULT_TRUNCATION_CONFIG
 
             return DEFAULT_TRUNCATION_CONFIG
 
@@ -668,8 +668,8 @@ class TestPurePythonTurnEvents:
     @pytest.mark.asyncio
     async def test_emits_before_and_after_turn_events_on_success(self):
         """Strategy should emit BeforeTurn and AfterTurn on successful execution."""
-        from nemo_oo_agents.events import AfterTurn, BeforeTurn
-        from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
+        from nooa.events import AfterTurn, BeforeTurn
+        from nooa.strategies.pure_python import PurePythonStrategy
 
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(PurePythonStrategy())
@@ -722,9 +722,9 @@ class TestPurePythonTurnEvents:
     @pytest.mark.asyncio
     async def test_emits_after_turn_event_on_failure(self):
         """Strategy should emit AfterTurn with success=False on failure."""
-        from nemo_oo_agents.errors import GenerationError
-        from nemo_oo_agents.events import AfterTurn, BeforeTurn
-        from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
+        from nooa.errors import GenerationError
+        from nooa.events import AfterTurn, BeforeTurn
+        from nooa.strategies.pure_python import PurePythonStrategy
 
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(PurePythonStrategy(max_retries=2))
@@ -770,8 +770,8 @@ class TestPurePythonTurnEvents:
     @pytest.mark.asyncio
     async def test_turn_number_increments_across_iterations(self):
         """Turn number should increment with each iteration."""
-        from nemo_oo_agents.events import BeforeTurn
-        from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
+        from nooa.events import BeforeTurn
+        from nooa.strategies.pure_python import PurePythonStrategy
 
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(PurePythonStrategy())
@@ -812,8 +812,8 @@ class TestPurePythonTurnEvents:
     @pytest.mark.asyncio
     async def test_turn_events_have_generation_id(self):
         """Turn events should have a non-empty generation_id."""
-        from nemo_oo_agents.events import AfterTurn, BeforeTurn
-        from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
+        from nooa.events import AfterTurn, BeforeTurn
+        from nooa.strategies.pure_python import PurePythonStrategy
 
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(PurePythonStrategy())
@@ -846,8 +846,8 @@ class TestPurePythonTurnEvents:
     @pytest.mark.asyncio
     async def test_turn_events_not_recorded_in_history(self):
         """Turn events should NOT appear in event_manager (record=False)."""
-        from nemo_oo_agents.events import AfterTurn, BeforeTurn
-        from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
+        from nooa.events import AfterTurn, BeforeTurn
+        from nooa.strategies.pure_python import PurePythonStrategy
 
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(PurePythonStrategy())
@@ -886,8 +886,8 @@ class TestPurePythonTurnEvents:
     @pytest.mark.asyncio
     async def test_turn_events_have_matching_before_after_pairs(self):
         """Each BeforeTurn should have a matching AfterTurn."""
-        from nemo_oo_agents.events import AfterTurn, BeforeTurn
-        from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
+        from nooa.events import AfterTurn, BeforeTurn
+        from nooa.strategies.pure_python import PurePythonStrategy
 
         class TestAgent(Agent, llm=_TEST_LLM):
             @strategy(PurePythonStrategy())

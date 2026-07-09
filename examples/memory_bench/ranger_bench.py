@@ -43,10 +43,11 @@ import asyncio
 import logging
 from dataclasses import dataclass, field
 
-from nemo_oo_agents import Agent
-from nemo_oo_agents.memory import MemoryConfig, MemoryManager, MemoryType
-from nemo_oo_agents.memory.config import VectorConfig
-from nemo_oo_agents.unifiedllm import FakeLLMClient
+from nooa_tui.memory import MemoryConfig, MemoryManager, MemoryType
+from nooa_tui.memory.config import VectorConfig
+
+from nooa import Agent
+from nooa.unifiedllm import FakeLLMClient
 
 log = logging.getLogger("ranger_bench")
 

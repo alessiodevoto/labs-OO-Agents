@@ -176,8 +176,8 @@ Recommended machine types:
 ssh local-$USER@<fqdn>
 
 # Clone the repo
-git clone https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents.git
-cd nemo_oo_agents
+git clone https://gitlab-master.nvidia.com/interactive-agents/nooa.git
+cd nooa
 
 # Install uv (Python package manager)
 curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -250,7 +250,7 @@ which wastes ~165GB of disk space.
 
 ```bash
 # Create .env file in the repo root
-cat > ~/nemo_oo_agents/.env << 'EOF'
+cat > ~/nooa/.env << 'EOF'
 # NVIDIA Inference API (routes to Bedrock for Anthropic models)
 NVIDIA_INTERNAL_API_KEY=sk-<your-key>
 
@@ -260,13 +260,13 @@ mkdir -p "$TMPDIR"
 EOF
 
 # Source it
-source ~/nemo_oo_agents/.env
+source ~/nooa/.env
 ```
 
 ### 7. Clone Harbor (for adapters)
 
 ```bash
-cd ~/nemo_oo_agents
+cd ~/nooa
 git clone https://gitlab-master.nvidia.com/interactive-agents/harbor.git 3p/harbor-nemo
 
 # Also need the upstream harbor for registry
@@ -276,7 +276,7 @@ git clone https://github.com/codeacme17/harbor.git ~/3p/harbor
 ### 8. Run a benchmark
 
 ```bash
-cd ~/nemo_oo_agents
+cd ~/nooa
 
 # Terminal Bench 1 (baseline agent, ~2 hours for all 241 tasks)
 harbor run --config util/harbor/terminal_bench_local_docker.yaml
@@ -330,19 +330,19 @@ checking token usage, dummy responses, exceptions, and known bad log strings
 (`LLM Provider NOT provided`, `Unknown agent_type`, `uv: command not found`,
 `Cannot import 'hatchling.build'`, etc.).
 
-For Opus 4.6 SWE-bench, use the local nemo-oo alias `claude-opus-4-6` (mapped
+For Opus 4.6 SWE-bench, use the local nooa alias `claude-opus-4-6` (mapped
 in `llm_config_default.yaml` to `openai/aws/anthropic/bedrock-claude-opus-4-6`
 via the NVIDIA OpenAI-compatible gateway) and set:
 
 ```yaml
 env:
-  NEMO_OO_LLM_CONFIG: "/installed-agent/nemo_oo_agents/llm_config.yaml"
+  NEMO_OO_LLM_CONFIG: "/installed-agent/nooa/llm_config.yaml"
 agents:
   - model_name: claude-opus-4-6
 ```
 
 The raw Harbor/API model id `aws/anthropic/bedrock-claude-opus-4-6` is not a
-LiteLLM provider route by itself inside nemo-oo; if it is passed through as the
+LiteLLM provider route by itself inside nooa; if it is passed through as the
 agent model, LiteLLM raises `LLM Provider NOT provided` and the benchmark run is
 invalid even though the verifier reports normal 0 rewards.
 
@@ -352,9 +352,9 @@ invalid even though the verifier reports normal 0 rewards.
 - If `/tmp` is full: `sudo rm -rf /tmp/apptainer_staging_*/`
 
 **"LLM Provider NOT provided" error:**
-- Harbor writes `llm_config.yaml` to `/installed-agent/nemo_oo_agents/`.
-- Set `NEMO_OO_LLM_CONFIG=/installed-agent/nemo_oo_agents/llm_config.yaml` in the YAML `environment.env`.
-- Use a nemo-oo model alias listed in that config (for Opus 4.6: `claude-opus-4-6`) or a LiteLLM-ready route with provider prefix (`openai/...`). Do not pass raw `aws/anthropic/...` ids through to the agent.
+- Harbor writes `llm_config.yaml` to `/installed-agent/nooa/`.
+- Set `NEMO_OO_LLM_CONFIG=/installed-agent/nooa/llm_config.yaml` in the YAML `environment.env`.
+- Use a nooa model alias listed in that config (for Opus 4.6: `claude-opus-4-6`) or a LiteLLM-ready route with provider prefix (`openai/...`). Do not pass raw `aws/anthropic/...` ids through to the agent.
 - Run `python util/harbor/validate_harbor_smoke.py <smoke jobs_dir> --min-completed 1` before scaling.
 
 **SSH authentication failures:**
@@ -427,8 +427,8 @@ timeouts) and are **not** helped by a longer per-task timeout.
 
 ### 7. LLM-provider config path
 `Unknown LLM provider` / `LLM Provider NOT provided`: harbor writes
-`llm_config.yaml` to `/installed-agent/nemo_oo_agents/`; set
-`NEMO_OO_LLM_CONFIG=/installed-agent/nemo_oo_agents/llm_config.yaml` in the
+`llm_config.yaml` to `/installed-agent/nooa/`; set
+`NEMO_OO_LLM_CONFIG=/installed-agent/nooa/llm_config.yaml` in the
 config's `env`/`env_passthrough`, and make sure the model is listed in harbor's
 LLM-config string.
 
@@ -494,7 +494,7 @@ Follow the pattern in `run_locomo_debug.py` and `run_dabstep_debug.py`:
 - [ ] `adapter_metadata.json` — benchmark provenance and sizes
 - [ ] `README.md` — data setup, generation commands, scoring explained
 
-### nemo_oo_agents (`util/harbor/`)
+### nooa (`util/harbor/`)
 
 - [ ] `<name>_baseline.yaml` — Harbor run config (copy `locomo_baseline.yaml`, adjust dataset path and concurrency)
 - [ ] `run_<name>_debug.py` — debug script (copy `run_locomo_debug.py` pattern)
@@ -841,7 +841,7 @@ The venv tarball (`nemo-venv-base-cp312-x86_64.tar.gz`) is self-sufficient:
 
 1. **Third-party deps** — all wheels pre-installed (pydantic, litellm, etc.)
 2. **`.pth` files** — make first-party packages importable via path manipulation
-   (points to `/installed-agent/nemo_oo_agents/src/` etc.)
+   (points to `/installed-agent/nooa/src/` etc.)
 3. **`nemo-harbor` entry point** — correct shebang + import
 
 This eliminates the need for `pip install -e` at runtime. Harbor's install code
@@ -878,7 +878,7 @@ SWEBench run scores 0% across the board, check these:
    ```
 
 3. **The overlay's `installed-agent` can be stale.** The `.pth` files point at
-   `/installed-agent/nemo_oo_agents/packages/nemo-oo-agents-benchmarks/src`. If
+   `/installed-agent/nooa/packages/nemo-oo-agents-benchmarks/src`. If
    that tree predates the agent you're using (e.g. `swebench/todo` from MR !320),
    the runner errors `Unknown agent_type: 'swebench/todo'` and writes no patch.
    **Fix:** refresh the agent source in the overlay's `installed-agent` to match
@@ -886,5 +886,5 @@ SWEBench run scores 0% across the board, check these:
    `agents/__init__.py`).
 
 Symptom triage: `find <run>/ -path '*/verifier/reward.txt' -exec cat {} \; | sort | uniq -c`
-all-zero → check `<task>/agent/nemo_oo_agents_benchmarks.log` (agent_type error)
+all-zero → check `<task>/agent/nooa_benchmarks.log` (agent_type error)
 and `<task>/verifier/test-stdout.txt` (uv error / hatchling error).

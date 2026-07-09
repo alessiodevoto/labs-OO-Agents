@@ -1,17 +1,17 @@
 # ruff: noqa: F403,F405
 """Quickstart 06: Tracing — all method types traced with parent-child spans.
 
-Tracing is automatic: if `nemo-oo start-dev` is running, traces appear
+Tracing is automatic: if `nooa start-dev` is running, traces appear
 in the viewer without any setup code. Just create an agent and go.
 
 Workflow:
-  1. nemo-oo start-dev   # start trace viewer and OTLP receiver
+  1. nooa start-dev   # start trace viewer and OTLP receiver
   2. uv run python examples/quickstart/06_tracing.py
   3. View traces at http://localhost:5001
 """
 
-from nemo_oo_agents import hidden
-from nemo_oo_agents.util.quickstart import *
+from nooa import hidden
+from nooa.util.quickstart import *
 
 
 class MathAgent(Agent, llm=llm):
@@ -40,7 +40,7 @@ class MathAgent(Agent, llm=llm):
 
 @autorun
 async def main():
-    # Tracing is auto-enabled when `nemo-oo start-dev` is running.
+    # Tracing is auto-enabled when `nooa start-dev` is running.
     # To write JSONL files instead, call enable_tracing(trace_dir="./traces") explicitly.
 
     agent = MathAgent()

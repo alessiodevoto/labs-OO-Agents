@@ -18,7 +18,7 @@ rationale and the matrix data behind it.
 
 import re
 
-from nemo_oo_agents.agentdoc import pformat, truncating_pformat
+from nooa.agentdoc import pformat, truncating_pformat
 
 
 class TestListMarker:

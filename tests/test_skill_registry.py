@@ -6,8 +6,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from nemo_oo_agents.skill import Skill
-from nemo_oo_agents.skill_registry import SkillRegistry
+from nooa.skill import Skill
+from nooa.skill_registry import SkillRegistry
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -33,7 +33,7 @@ def agent():
 @pytest.fixture
 def registry(agent):
     """SkillRegistry with no real entry points discovered."""
-    with patch("nemo_oo_agents.skill_registry.entry_points", return_value=[]):
+    with patch("nooa.skill_registry.entry_points", return_value=[]):
         return SkillRegistry(agent)
 
 
@@ -49,13 +49,13 @@ class TestDiscovery:
     def test_discovered_finds_entry_points(self, agent):
         ep = MagicMock()
         ep.name = "nemo.shell"
-        with patch("nemo_oo_agents.skill_registry.entry_points", return_value=[ep]):
+        with patch("nooa.skill_registry.entry_points", return_value=[ep]):
             reg = SkillRegistry(agent)
         assert "nemo.shell" in reg.discovered()
 
     def test_discovered_handles_exception(self, agent):
         with patch(
-            "nemo_oo_agents.skill_registry.entry_points",
+            "nooa.skill_registry.entry_points",
             side_effect=Exception("broken"),
         ):
             reg = SkillRegistry(agent)
@@ -64,7 +64,7 @@ class TestDiscovery:
     def test_entry_returns_record_for_discovered_skill(self, agent):
         ep = MagicMock()
         ep.name = "nemo.shell"
-        with patch("nemo_oo_agents.skill_registry.entry_points", return_value=[ep]):
+        with patch("nooa.skill_registry.entry_points", return_value=[ep]):
             reg = SkillRegistry(agent)
         entry = reg.entry("nemo.shell")
         assert entry is not None
@@ -103,7 +103,7 @@ class TestLoading:
         ep.name = "nemo.fake"
         ep.load.return_value = FakeSkill
 
-        with patch("nemo_oo_agents.skill_registry.entry_points", return_value=[ep]):
+        with patch("nooa.skill_registry.entry_points", return_value=[ep]):
             reg = SkillRegistry(agent)
 
         reg.load(["nemo.fake"])
@@ -119,7 +119,7 @@ class TestLoading:
         ep2.name = "nemo.b"
         ep2.load.return_value = FakeSkill
 
-        with patch("nemo_oo_agents.skill_registry.entry_points", return_value=[ep1, ep2]):
+        with patch("nooa.skill_registry.entry_points", return_value=[ep1, ep2]):
             reg = SkillRegistry(agent)
 
         reg.load(["nemo.*"])
@@ -131,7 +131,7 @@ class TestLoading:
         ep.name = "nemo.bad"
         ep.load.return_value = "not a skill"
 
-        with patch("nemo_oo_agents.skill_registry.entry_points", return_value=[ep]):
+        with patch("nooa.skill_registry.entry_points", return_value=[ep]):
             reg = SkillRegistry(agent)
 
         reg.load(["nemo.bad"])
@@ -171,7 +171,7 @@ class TestActivation:
         ep.name = "nemo.auto"
         ep.load.return_value = FakeSkill
 
-        with patch("nemo_oo_agents.skill_registry.entry_points", return_value=[ep]):
+        with patch("nooa.skill_registry.entry_points", return_value=[ep]):
             reg = SkillRegistry(agent)
 
         reg.activate(["nemo.auto"])
@@ -204,7 +204,7 @@ class _FakeAgentWithContext:
     """Agent mock with a context_manager."""
 
     def __init__(self):
-        from nemo_oo_agents.runtime.context_manager import ContextManager
+        from nooa.runtime.context_manager import ContextManager
 
         self.context_manager = ContextManager()
 
@@ -217,7 +217,7 @@ def agent_ctx():
 @pytest.fixture
 def registry_ctx(agent_ctx):
     """SkillRegistry with context_manager available on the agent."""
-    with patch("nemo_oo_agents.skill_registry.entry_points", return_value=[]):
+    with patch("nooa.skill_registry.entry_points", return_value=[]):
         return SkillRegistry(agent_ctx)
 
 
@@ -282,7 +282,7 @@ class TestContextBlockRegistration:
     def test_skill_registry_registers_own_context_block(self, agent_ctx):
         """SkillRegistry itself has context_block and registers it on activate."""
         # SkillRegistry is registered on the agent as "skills" attr
-        with patch("nemo_oo_agents.skill_registry.entry_points", return_value=[]):
+        with patch("nooa.skill_registry.entry_points", return_value=[]):
             reg = SkillRegistry(agent_ctx)
         agent_ctx.skills = reg
         # Manually trigger context block registration for the registry itself

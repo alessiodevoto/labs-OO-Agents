@@ -1,6 +1,6 @@
 # NeMo OO Agents Capability Tests - eval_pipeline Configuration
 #
-# This experiment tests nemo_oo_agents core capabilities:
+# This experiment tests nooa core capabilities:
 # 1. Scale awareness - when to answer directly vs write code
 # 2. Generation methods - when to use `...` for LLM judgment
 # 3. REPL exploration - using introspection for complex state
@@ -65,7 +65,7 @@ target_files:
 # NVIDIA-internal aliases (claude-haiku-azure, nemotron3-nano-30b, gpt-5.2, etc.)
 # ship in the nemo-oo-agents-nvidia package; install it (or the [nvidia]
 # extra) and the aliases resolve automatically. Run
-# `nemo-oo config show` to inspect which YAML files are loading.
+# `nooa config show` to inspect which YAML files are loading.
 #
 # Any model name supported by litellm also works as-is.
 # =============================================================================

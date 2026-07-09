@@ -11,10 +11,10 @@ that strategy-level truncation re-renders unrelated call history for the
 child summarizer prompt and can itself cause prompt-too-long failures.
 """
 
-from nemo_oo_agents.agents import SummarizationAgent
-from nemo_oo_agents.config.strategy_config import PredictConfig
-from nemo_oo_agents.strategies.current_call import CurrentCall
-from nemo_oo_agents.strategies.predict import PredictStrategy
+from nooa.agents import SummarizationAgent
+from nooa.config.strategy_config import PredictConfig
+from nooa.strategies.current_call import CurrentCall
+from nooa.strategies.predict import PredictStrategy
 
 
 def test_summarize_strategy_override_present():
@@ -92,10 +92,10 @@ def test_render_range_caps_total_input_to_model_budget():
     """_render_range_to_markdown bounds its TOTAL output to the summarizer model
     budget, head-dropping the oldest events with a marker — so a huge range can't
     blow past the model context window on the summarize() call."""
-    from nemo_oo_agents import Agent
-    from nemo_oo_agents.agents import SummarizationAgent
-    from nemo_oo_agents.events import Message
-    from nemo_oo_agents.unifiedllm import FakeLLMClient
+    from nooa import Agent
+    from nooa.agents import SummarizationAgent
+    from nooa.events import Message
+    from nooa.unifiedllm import FakeLLMClient
 
     # Small, known window so the per-token budget (0.7*window) is easy to exceed.
     llm = FakeLLMClient()
@@ -129,10 +129,10 @@ def test_render_range_caps_total_input_to_model_budget():
 def test_render_range_no_cap_when_window_unknown():
     """No model window -> no cap (don't wipe input on a misconfig; the API error
     path is the backstop)."""
-    from nemo_oo_agents import Agent
-    from nemo_oo_agents.agents import SummarizationAgent
-    from nemo_oo_agents.events import Message
-    from nemo_oo_agents.unifiedllm import FakeLLMClient
+    from nooa import Agent
+    from nooa.agents import SummarizationAgent
+    from nooa.events import Message
+    from nooa.unifiedllm import FakeLLMClient
 
     llm = FakeLLMClient()
     llm._context_window = 0  # unknown/disabled

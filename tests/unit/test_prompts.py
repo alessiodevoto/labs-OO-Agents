@@ -1,19 +1,19 @@
-"""Tests for nemo_oo_agents.prompts — print_prompt() runtime API and rendering helpers."""
+"""Tests for nooa.prompts — print_prompt() runtime API and rendering helpers."""
 
 import pytest
 
-import nemo_oo_agents
-from nemo_oo_agents import Agent, CodeActStrategy, PromptData, strategy
-from nemo_oo_agents.prompts import (
+import nooa
+from nooa import Agent, CodeActStrategy, PromptData, strategy
+from nooa.prompts import (
     _get_prefill,
     _get_task_prompt,
     build_prompt_data,
     print_prompt,
     render_prompt_data,
 )
-from nemo_oo_agents.strategies.current_call import CurrentCall
-from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
-from nemo_oo_agents.unifiedllm import FakeLLMClient
+from nooa.strategies.current_call import CurrentCall
+from nooa.strategies.pure_python import PurePythonStrategy
+from nooa.unifiedllm import FakeLLMClient
 
 _LLM = FakeLLMClient()
 
@@ -144,7 +144,7 @@ class TestGetPrefill:
 
     def test_other_strategy_no_inspect_prefill(self):
         """Unknown strategy produces no inspect_prefill but preserves pre_ellipsis."""
-        from nemo_oo_agents import PredictStrategy
+        from nooa import PredictStrategy
 
         strategy_obj = PredictStrategy()
         call = CurrentCall(id="c10", method_name="classify", decorator="plan", kwargs={"x": 1})
@@ -154,7 +154,7 @@ class TestGetPrefill:
 
     def test_codeact_config_prefill_none_disables_inspect(self):
         """#331: print_prompt must honor CodeActConfig.prefill=None (inspect disabled)."""
-        from nemo_oo_agents.config.strategy_config import CodeActConfig
+        from nooa.config.strategy_config import CodeActConfig
 
         strategy_obj = CodeActStrategy(config=CodeActConfig(prefill=None))
         call = CurrentCall(
@@ -173,7 +173,7 @@ class TestGetPrefill:
             def get_code(self, call, config=None):
                 return "# custom-prefill-marker"
 
-        from nemo_oo_agents.config.strategy_config import CodeActConfig
+        from nooa.config.strategy_config import CodeActConfig
 
         strategy_obj = CodeActStrategy(config=CodeActConfig(prefill=_CustomPrefill()))
         call = CurrentCall(
@@ -354,11 +354,11 @@ class TestPrintPromptRuntime:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_exported_from_nemo_oo_agents(self):
-        """print_prompt is available as nemo_oo_agents.print_prompt."""
-        assert hasattr(nemo_oo_agents, "print_prompt")
-        assert nemo_oo_agents.print_prompt is print_prompt
+    async def test_exported_from_nooa(self):
+        """print_prompt is available as nooa.print_prompt."""
+        assert hasattr(nooa, "print_prompt")
+        assert nooa.print_prompt is print_prompt
 
-    def test_prompt_data_exported_from_nemo_oo_agents(self):
-        """PromptData is importable from the top-level nemo_oo_agents namespace."""
-        assert nemo_oo_agents.PromptData is PromptData
+    def test_prompt_data_exported_from_nooa(self):
+        """PromptData is importable from the top-level nooa namespace."""
+        assert nooa.PromptData is PromptData

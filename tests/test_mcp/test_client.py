@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Tests for mcp_nemo_oo_agents module."""
+"""Tests for mcp_nooa module."""
 
 import httpx
 import pytest
@@ -11,15 +11,15 @@ from datetime import timedelta  # noqa: E402
 from typing import Literal  # noqa: E402
 from unittest.mock import AsyncMock, MagicMock, patch  # noqa: E402
 
-from nemo_oo_agents.mcp import oauth  # noqa: E402
-from nemo_oo_agents.mcp.client import (  # noqa: E402
+from nooa.mcp import oauth  # noqa: E402
+from nooa.mcp.client import (  # noqa: E402
     MCPBaseClient,
     MCPSSEClient,
     MCPStdioClient,
     MCPStreamableHTTPClient,
     create_mcp_client,
 )
-from nemo_oo_agents.mcp.tool import MCPTool, MCPToolSpec, _make_dynamic_class  # noqa: E402
+from nooa.mcp.tool import MCPTool, MCPToolSpec, _make_dynamic_class  # noqa: E402
 
 
 # Fixtures
@@ -299,8 +299,8 @@ def test_tool_call_timeout_default(client_class: type[MCPBaseClient], client_kwa
 @pytest.mark.parametrize(
     "client_fixture, transport_patch",
     [
-        ("stdio_client", "nemo_oo_agents.mcp.client.stdio_client"),
-        ("sse_client", "nemo_oo_agents.mcp.client.sse_client"),
+        ("stdio_client", "nooa.mcp.client.stdio_client"),
+        ("sse_client", "nooa.mcp.client.sse_client"),
     ],
 )
 async def test_connect_context_manager(
@@ -320,7 +320,7 @@ async def test_connect_context_manager(
             mock_write,
         )
 
-        with patch("nemo_oo_agents.mcp.client.ClientSession") as mock_session_class:
+        with patch("nooa.mcp.client.ClientSession") as mock_session_class:
             mock_session_class.return_value.__aenter__.return_value = mock_client_session
 
             async with client.connect_to_server() as session:
@@ -338,14 +338,14 @@ async def test_streamable_http_connect_context_manager(
     mock_write = MagicMock()
     mock_get_session_id = MagicMock(return_value="session-123")
 
-    with patch("nemo_oo_agents.mcp.client.streamable_http_client") as mock_http:
+    with patch("nooa.mcp.client.streamable_http_client") as mock_http:
         mock_http.return_value.__aenter__.return_value = (
             mock_read,
             mock_write,
             mock_get_session_id,
         )
 
-        with patch("nemo_oo_agents.mcp.client.ClientSession") as mock_session_class:
+        with patch("nooa.mcp.client.ClientSession") as mock_session_class:
             mock_session_class.return_value.__aenter__.return_value = mock_client_session
 
             # Before connection, mcp_session_id should be None
@@ -377,11 +377,11 @@ async def test_streamable_http_headers_passed_to_httpx_client(
     """StreamableHTTPClient passes headers correctly to httpx.AsyncClient."""
     client: MCPStreamableHTTPClient = request.getfixturevalue(client_fixture)
 
-    with patch("nemo_oo_agents.mcp.client.httpx.AsyncClient") as mock_httpx_client:
+    with patch("nooa.mcp.client.httpx.AsyncClient") as mock_httpx_client:
         mock_client_instance = AsyncMock()
         mock_httpx_client.return_value.__aenter__.return_value = mock_client_instance
 
-        with patch("nemo_oo_agents.mcp.client.streamable_http_client") as mock_http:
+        with patch("nooa.mcp.client.streamable_http_client") as mock_http:
             mock_read = MagicMock()
             mock_write = MagicMock()
             mock_get_session_id = MagicMock(return_value=None)
@@ -391,7 +391,7 @@ async def test_streamable_http_headers_passed_to_httpx_client(
                 mock_get_session_id,
             )
 
-            with patch("nemo_oo_agents.mcp.client.ClientSession"):
+            with patch("nooa.mcp.client.ClientSession"):
                 async with client.connect_to_server():
                     pass
 
@@ -455,11 +455,11 @@ def test_create_from_server_honors_configured_oauth_mode():
     }
 
     with (
-        patch("nemo_oo_agents.mcp.tool.create_mcp_client", side_effect=UnauthorizedClient),
-        patch("nemo_oo_agents.mcp.tool.handle_mcp_oauth") as mock_oauth,
+        patch("nooa.mcp.tool.create_mcp_client", side_effect=UnauthorizedClient),
+        patch("nooa.mcp.tool.handle_mcp_oauth") as mock_oauth,
     ):
         mock_oauth.return_value = oauth.OAuthToken(access_token="token")
-        from nemo_oo_agents.mcp.tool import MCPManager
+        from nooa.mcp.tool import MCPManager
 
         MCPManager.create_from_server("jira", servers=servers)
 
@@ -504,8 +504,8 @@ def test_create_from_server_caller_headers_override_config():
         }
     }
 
-    with patch("nemo_oo_agents.mcp.tool.create_mcp_client", side_effect=RecordingClient):
-        from nemo_oo_agents.mcp.tool import MCPManager
+    with patch("nooa.mcp.tool.create_mcp_client", side_effect=RecordingClient):
+        from nooa.mcp.tool import MCPManager
 
         MCPManager.create_from_server(
             "jira",

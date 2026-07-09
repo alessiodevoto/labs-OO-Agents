@@ -9,10 +9,10 @@ archived events are represented by the Summary that replaced them in active_tags
 
 import pytest
 
-from nemo_oo_agents.context_blocks.events import AssistantEvent, ToolCallEvent, UserEvent
-from nemo_oo_agents.runtime.context_builder import _phase_events
-from nemo_oo_agents.runtime.event_manager import EventManager
-from nemo_oo_agents.storage.sqlite import SQLiteEventBackend
+from nooa.context_blocks.events import AssistantEvent, ToolCallEvent, UserEvent
+from nooa.runtime.context_builder import _phase_events
+from nooa.runtime.event_manager import EventManager
+from nooa.storage.sqlite import SQLiteEventBackend
 
 # ---------------------------------------------------------------------------
 # Parametrized EventManager fixture
@@ -60,8 +60,8 @@ def test_archived_context_blocks_events_not_in_context(event_manager):
 
 
 def test_archived_nemo_events_not_in_context(event_manager):
-    """nemo_oo_agents events collapsed into a Summary must not appear in context."""
-    from nemo_oo_agents.events import LLMOutput, Task
+    """nooa events collapsed into a Summary must not appear in context."""
+    from nooa.events import LLMOutput, Task
 
     em = event_manager
     em.add(Task(prompt="do the thing"))  # tag "1"
@@ -130,7 +130,7 @@ def test_phase_events_display_order_after_collapse(event_manager):
     The Summary must appear WHERE the collapsed events were, not at the end
     of the insertion sequence.
     """
-    from nemo_oo_agents.events import Task
+    from nooa.events import Task
 
     em = event_manager
     em.add(Task(prompt="first"))  # "1"
@@ -154,8 +154,8 @@ def test_phase_events_display_order_after_collapse(event_manager):
 
 def test_phase_events_with_type_query_on_real_event_manager(event_manager):
     """EventQuery(type=...) filters correctly — uses values() not filter()."""
-    from nemo_oo_agents.events import Error, Task
-    from nemo_oo_agents.runtime.event_query import EventQuery
+    from nooa.events import Error, Task
+    from nooa.runtime.event_query import EventQuery
 
     em = event_manager
     em.add(Task(prompt="do it"))  # "1"
@@ -175,8 +175,8 @@ def test_phase_events_query_does_not_include_archived_events(event_manager):
     An EventQuery(type="Task") must match only the active Task (tag "3"),
     not the archived originals (tags "1", "2") behind the Summary.
     """
-    from nemo_oo_agents.events import Task
-    from nemo_oo_agents.runtime.event_query import EventQuery
+    from nooa.events import Task
+    from nooa.runtime.event_query import EventQuery
 
     em = event_manager
     em.add(Task(prompt="first"))  # "1"

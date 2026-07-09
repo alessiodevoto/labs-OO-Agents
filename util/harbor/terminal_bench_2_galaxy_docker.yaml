@@ -10,16 +10,16 @@
 # Prerequisites on Galaxy:
 #   1. lab user in docker group (done 2026-05-12)
 #   2. Harbor installed: source /home/lab/miniforge3/bin/activate
-#   3. Harbor registry at /home/lab/rcabral/nemo_oo_agents/../3p/harbor/registry.json
+#   3. Harbor registry at /home/lab/rcabral/nooa/../3p/harbor/registry.json
 #      OR rsync from ipp1-3404:
 #        rsync -a /localhome/local-rcabral/3p/harbor/registry.json \
 #          lab@10.87.108.113:/home/lab/3p/harbor/registry.json
 #   4. Bootstrap overlay at /home/lab/3p/harbor_bootstrap_overlay_v2
-#   5. Env vars in /home/lab/rcabral/nemo_oo_agents/.env (export KEY=value form):
+#   5. Env vars in /home/lab/rcabral/nooa/.env (export KEY=value form):
 #        NVIDIA_INTERNAL_API_KEY=<key>
 #
-# Run from /home/lab/rcabral/nemo_oo_agents:
-#   source /home/lab/rcabral/nemo_oo_agents/.env
+# Run from /home/lab/rcabral/nooa:
+#   source /home/lab/rcabral/nooa/.env
 #   source /home/lab/miniforge3/bin/activate
 #   harbor run --config util/harbor/terminal_bench_2_galaxy_docker.yaml
 

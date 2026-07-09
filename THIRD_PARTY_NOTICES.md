@@ -21,7 +21,7 @@ dependencies and their licenses.
 
 ---
 
-## `nemo-oo-agents-cli` (CLI + TUI)
+## `nemo-labs-oo-agents-cli` (CLI + TUI)
 
 ### click
 - **License:** BSD-3-Clause

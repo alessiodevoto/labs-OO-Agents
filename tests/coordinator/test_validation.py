@@ -8,10 +8,10 @@ Focus on:
 
 import pytest
 
-from nemo_oo_agents import Agent
-from nemo_oo_agents.errors import ValidationError
-from nemo_oo_agents.runtime.actor import ActorRuntime
-from nemo_oo_agents.unifiedllm import FakeLLMClient
+from nooa import Agent
+from nooa.errors import ValidationError
+from nooa.runtime.actor import ActorRuntime
+from nooa.unifiedllm import FakeLLMClient
 
 # Module-level test LLM (can be overridden at instantiation)
 _TEST_LLM = FakeLLMClient()

@@ -21,14 +21,14 @@ import re
 import textwrap
 from typing import TYPE_CHECKING, Any
 
-from nemo_oo_agents import Agent, CodeActStrategy, strategy
-from nemo_oo_agents.agentdoc import doc, hidden
-from nemo_oo_agents.config import CodeActConfig
-from nemo_oo_agents.context_blocks import DynamicContext
-from nemo_oo_agents.tools.shell_tools import ShellTools
-from nemo_oo_agents.tools.shell_tools_legacy import ShellToolsLegacy
-from nemo_oo_agents.tools.todo import TodoManager
-from nemo_oo_agents.unifiedllm import FakeLLMClient
+from nooa import Agent, CodeActStrategy, strategy
+from nooa.agentdoc import doc, hidden
+from nooa.config import CodeActConfig
+from nooa.context_blocks import DynamicContext
+from nooa.tools.shell_tools import ShellTools
+from nooa.tools.shell_tools_legacy import ShellToolsLegacy
+from nooa.tools.todo import TodoManager
+from nooa.unifiedllm import FakeLLMClient
 
 _CONDA_ACTIVATE = "export PATH=/opt/harbor/cpython312/bin:$PATH; source /opt/miniconda3/etc/profile.d/conda.sh && conda activate testbed 2>/dev/null || true"
 
@@ -44,7 +44,7 @@ def _make_shell(cwd: str = "/testbed"):
     if raw and raw not in ("legacy", "default", "1", "5"):
         logger.warning("Unknown SHELL_VARIANT=%r; using the default shell", raw)
     try:
-        from nemo_oo_agents.runtime.harness_metrics import get_harness_metrics
+        from nooa.runtime.harness_metrics import get_harness_metrics
 
         get_harness_metrics().set_shell_variant(variant)
     except Exception:  # noqa: BLE001
@@ -57,7 +57,7 @@ def _make_shell(cwd: str = "/testbed"):
 
 
 if TYPE_CHECKING:
-    from nemo_oo_agents.unifiedllm import UnifiedLLM
+    from nooa.unifiedllm import UnifiedLLM
 
 logger = logging.getLogger(__name__)
 
@@ -221,7 +221,7 @@ class SWEBenchTodoAgent(
         self._last_verify: dict[str, Any] | None = None
         self._verify_bounces = 0
         self._pending_nudge: str | None = None
-        from nemo_oo_agents import Context
+        from nooa import Context
 
         self.context_manager["self.shell"] = Context(doc(type(self.shell)), prefix=True)
 
@@ -323,7 +323,7 @@ class SWEBenchTodoAgent(
 
         # Reset stateful tools so each evaluation starts clean.
         self.shell = _make_shell(cwd)
-        from nemo_oo_agents import Context
+        from nooa import Context
 
         self.context_manager["self.shell"] = Context(doc(type(self.shell)), prefix=True)
         self.todo.clear()

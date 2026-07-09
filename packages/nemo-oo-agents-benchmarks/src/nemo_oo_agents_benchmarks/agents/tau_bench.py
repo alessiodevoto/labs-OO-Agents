@@ -19,14 +19,14 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel
 
-from nemo_oo_agents import Agent, CodeActStrategy, strategy
-from nemo_oo_agents.agent import INHERIT, _InheritSentinel
-from nemo_oo_agents.config import CodeActConfig, FormatConfig, TruncationConfig
-from nemo_oo_agents.context_blocks import DynamicContext
-from nemo_oo_agents.unifiedllm import FakeLLMClient
+from nooa import Agent, CodeActStrategy, strategy
+from nooa.agent import INHERIT, _InheritSentinel
+from nooa.config import CodeActConfig, FormatConfig, TruncationConfig
+from nooa.context_blocks import DynamicContext
+from nooa.unifiedllm import FakeLLMClient
 
 if TYPE_CHECKING:
-    from nemo_oo_agents.unifiedllm import UnifiedLLM
+    from nooa.unifiedllm import UnifiedLLM
 
 # Module-level imports available to LLM-generated code at runtime
 import datetime  # noqa: F401

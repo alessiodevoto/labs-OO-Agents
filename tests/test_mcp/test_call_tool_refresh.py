@@ -3,7 +3,7 @@
 import httpx
 import pytest
 
-from nemo_oo_agents.mcp.tool import MCPTool
+from nooa.mcp.tool import MCPTool
 
 
 def _http_401() -> httpx.HTTPStatusError:

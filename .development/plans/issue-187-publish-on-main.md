@@ -1,6 +1,6 @@
 # issue-187: build & publish versioned packages on every main commit
 
-GitLab issue: https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents/-/issues/187
+GitLab issue: https://gitlab-master.nvidia.com/interactive-agents/nooa/-/issues/187
 
 ## Goal
 
@@ -76,7 +76,7 @@ No CI rewrite to `==<exact>`. Rejected because:
    `[tool.uv-dynamic-versioning]` + `[tool.hatch.version]` + wheel target;
    `version = ".."` → `dynamic = ["version"]`.
 2. `packages/nemo-oo-agents-benchmarks/pyproject.toml` — same change.
-3. `packages/nemo-oo-agents-cli/pyproject.toml` — same change.
+3. `packages/nemo-labs-oo-agents-cli/pyproject.toml` — same change.
 4. `.gitlab-ci.yml` — delete ~80 lines of version-derivation and sed
    rewrites; build/publish jobs just run `uv build` + `uv publish` with
    `GIT_DEPTH: "0"` so `git describe` has full history. Rules unchanged

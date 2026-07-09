@@ -10,13 +10,13 @@ These RUNTIME_EVENTs bracket the ``acall()`` round-trip inside
 
 import pytest
 
-from nemo_oo_agents import Agent, strategy
-from nemo_oo_agents.context_blocks.models import Role
-from nemo_oo_agents.errors import GenerationError
-from nemo_oo_agents.events import LLMCallEnd, LLMCallStart
-from nemo_oo_agents.runtime.event_manager import EventManager
-from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
-from nemo_oo_agents.unifiedllm import FakeLLMClient
+from nooa import Agent, strategy
+from nooa.context_blocks.models import Role
+from nooa.errors import GenerationError
+from nooa.events import LLMCallEnd, LLMCallStart
+from nooa.runtime.event_manager import EventManager
+from nooa.strategies.pure_python import PurePythonStrategy
+from nooa.unifiedllm import FakeLLMClient
 
 
 def test_llmcall_events_are_runtime_events_never_recorded():

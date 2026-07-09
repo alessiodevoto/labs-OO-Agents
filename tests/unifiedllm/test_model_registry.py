@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from nemo_oo_agents.unifiedllm import (
+from nooa.unifiedllm import (
     MODELS,
     CompletionClient,
     RetryConfig,
@@ -25,8 +25,8 @@ def _isolate_registry(tmp_path, monkeypatch):
     """Reset registry + redirect user/project dirs to a clean temp dir.
 
     Without this, tests inherit whatever the real user has in
-    ``~/.config/nemo_oo/llm_config.yaml`` (or in the project's
-    ``.nemo_oo/`` directory) and become flaky.
+    ``~/.config/nooa/llm_config.yaml`` (or in the project's
+    ``.nooa/`` directory) and become flaky.
 
     Bundled-default entry-points are stubbed empty so the test suite
     is insensitive to whether ``nemo-oo-agents-nvidia`` (or other
@@ -38,7 +38,7 @@ def _isolate_registry(tmp_path, monkeypatch):
     project.mkdir()
     monkeypatch.setenv("NEMO_OO_USER_DIR", str(user))
     monkeypatch.setenv("NEMO_OO_PROJECT_DIR", str(project))
-    monkeypatch.setattr("nemo_oo_agents.llm_config.bundled_config_paths", lambda: [])
+    monkeypatch.setattr("nooa.llm_config.bundled_config_paths", lambda: [])
     monkeypatch.delenv("NEMO_OO_LLM_CONFIG", raising=False)
     monkeypatch.chdir(tmp_path)
 
@@ -82,7 +82,7 @@ class TestEmptyDefaultRegistry:
 
     def test_registry_empty_when_no_files(self, tmp_path):
         """No user/project/env files → registry stays empty after ensure_loaded()."""
-        from nemo_oo_agents.unifiedllm import registry as _registry
+        from nooa.unifiedllm import registry as _registry
 
         # Reset _loaded so ensure_loaded actually runs.
         _registry._loaded = False
@@ -117,7 +117,7 @@ class TestGetRegistryConfig:
         assert get_registry_config("does-not-exist") == {}
 
     def test_triggers_auto_load(self, tmp_path):
-        from nemo_oo_agents.unifiedllm import registry as _registry
+        from nooa.unifiedllm import registry as _registry
 
         _write_project_config(
             _project_dir(tmp_path),
@@ -271,7 +271,7 @@ class TestGetLlmClient:
 
         import logging
 
-        with caplog.at_level(logging.INFO, logger="nemo_oo_agents.unifiedllm.registry"):
+        with caplog.at_level(logging.INFO, logger="nooa.unifiedllm.registry"):
             get_llm_client("my-alias")
         assert "registry hit" in caplog.text.lower()
 
@@ -279,7 +279,7 @@ class TestGetLlmClient:
         """When ``reload_registry`` has not been called, the first
         ``get_llm_client`` triggers auto-discovery via the standard chain.
         """
-        from nemo_oo_agents.unifiedllm import registry as _registry
+        from nooa.unifiedllm import registry as _registry
 
         _write_project_config(
             _project_dir(tmp_path),
@@ -355,7 +355,7 @@ class TestApiKeyHandling:
 
         import logging
 
-        with caplog.at_level(logging.WARNING, logger="nemo_oo_agents.unifiedllm.registry"):
+        with caplog.at_level(logging.WARNING, logger="nooa.unifiedllm.registry"):
             llm = get_llm_client("numeric-env")
 
         assert llm.config.get("api_key") is None
@@ -384,7 +384,7 @@ class TestApiKeyHandling:
 
         import logging
 
-        with caplog.at_level(logging.WARNING, logger="nemo_oo_agents.unifiedllm.registry"):
+        with caplog.at_level(logging.WARNING, logger="nooa.unifiedllm.registry"):
             llm = get_llm_client("test-keyed-model", api_key="explicit-key")
 
         assert llm.config.get("api_key") == "explicit-key"
@@ -463,7 +463,7 @@ class TestConfigLayering:
         )
         monkeypatch.setenv("NEMO_OO_LLM_CONFIG", str(env_config))
 
-        from nemo_oo_agents.llm_config import llm_config_chain
+        from nooa.llm_config import llm_config_chain
 
         registry = reload_registry(*llm_config_chain())
         assert registry["who-wins"]["model_name"] == "from-env"
@@ -509,7 +509,7 @@ class TestReloadRegistry:
 
     def test_no_args_marks_loaded(self, tmp_path):
         """``reload_registry()`` sets ``_loaded`` so ensure_loaded() is a no-op afterward."""
-        from nemo_oo_agents.unifiedllm import registry as _registry
+        from nooa.unifiedllm import registry as _registry
 
         reload_registry()
         assert _registry._loaded is True

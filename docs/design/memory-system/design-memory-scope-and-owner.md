@@ -4,7 +4,7 @@
 > (`on` = shared project store, `local` = per-session) and owner = explicit
 > config else the agent's class name, with the legacy-spelling heal.
 > **Trigger:** dogfooding — `/memory on` produced per-session memory silos under
-> `.nemo_oo/sessions/`, defeating cross-session recall; and the `owner` values
+> `.nooa/sessions/`, defeating cross-session recall; and the `owner` values
 > observed in real stores are illegible and inconsistent.
 > **Companions:** [`plan-todo-identity-references-observability.md`](./plan-todo-identity-references-observability.md)
 > §3 (owner semantics) · [`addendum-agent-facing-contract.md`](./addendum-agent-facing-contract.md)
@@ -25,7 +25,7 @@ like "isolation" but compose multiplicatively:
 
 **The key fact:** `owner="*"` widens the *row filter within one store*. It can
 never see across store **files**. With `session` scope every session writes its
-own `.nemo_oo/sessions/<session-id>-memory.db`, so cross-session recall is
+own `.nooa/sessions/<session-id>-memory.db`, so cross-session recall is
 impossible *regardless of owner* — the rows live in files nobody opens again
 (session resume via `-c` being the one exception).
 
@@ -35,7 +35,7 @@ impossible *regardless of owner* — the rows live in files nobody opens again
   `scope = "session" if subcmd == "on" else subcmd`). Store =
   `Path(agent_db).with_name(f"{session_id}-memory.db")`.
 - `/memory project` (M7) → the shared per-working-dir store
-  `<working_dir>/.nemo_oo/memory/memory.sqlite`. This is the configuration the
+  `<working_dir>/.nooa/memory/memory.sqlite`. This is the configuration the
   dogfooding question asks for — **it exists today**, it just isn't what `on`
   gives you, and nothing points at it.
 - Owner = `tui_agent_memory_key(agent, config)` =
@@ -46,15 +46,15 @@ impossible *regardless of owner* — the rows live in files nobody opens again
 Observed in this repo's real dogfooding stores (the motivating evidence):
 
 ```
-.nemo_oo/sessions/04aaac87-...-memory.db     (a silo; rows unowned)
-.nemo_oo/sessions/82030aac-...-memory.db     owner = "nemo_oo_agents_cli.tui.agent:TUIAgent"
-.nemo_oo/memory/memory.sqlite                owner = "" and "TUIAgent"
+.nooa/sessions/04aaac87-...-memory.db     (a silo; rows unowned)
+.nooa/sessions/82030aac-...-memory.db     owner = "nooa_cli.tui.agent:TUIAgent"
+.nooa/memory/memory.sqlite                owner = "" and "TUIAgent"
 ```
 
 Three spellings of the same conceptual agent across three files: the library
 default (`type(agent).__name__` → `TUIAgent`), the TUI key
 (`module:qualname`), and pre-owner rows (`""`). Nobody can type
-`recall(owner="nemo_oo_agents_cli.tui.agent:TUIAgent")` reliably — least of
+`recall(owner="nooa_cli.tui.agent:TUIAgent")` reliably — least of
 all the LLM, which is the actual caller.
 
 ## 2. Problem 1 — the default scope silos memories
@@ -107,7 +107,7 @@ utility instead — `nemo oo memory merge <src.db>... <dst.sqlite>`:
 copies active memories (embedding blobs included) + edges into the
 destination via the normal `store.add` path, stamping rows that have no owner
 with a `--owner` argument. Priority P2; a one-line hint in `/memory status`
-("N session stores exist under .nemo_oo/sessions — merge with …") makes the
+("N session stores exist under .nooa/sessions — merge with …") makes the
 strays discoverable.
 
 ## 3. Problem 2 — owner identity is illegible and inconsistent
@@ -121,7 +121,7 @@ irrelevant — `module:qualname` is a fine config key. M7 then reused it as the
 rendered in the guide ("your identity: …"), typed by the LLM in
 `recall(owner="…")`, shown as a column in `/memories` and the viewer, and used
 by teammates to ask "what did the planner learn?". For that job
-`nemo_oo_agents_cli.tui.agent:TUIAgent` fails on every count, and it also
+`nooa_cli.tui.agent:TUIAgent` fails on every count, and it also
 **diverges from the library default** (`type(agent).__name__`), which is how
 the same agent ended up under three spellings.
 
@@ -302,7 +302,7 @@ and the user dimension for multi-user stores.
 
 
 
-1. **Multi-user shared stores** — `.nemo_oo/memory/memory.sqlite` is per
+1. **Multi-user shared stores** — `.nooa/memory/memory.sqlite` is per
    checkout and gitignored, so "shared" today means *across sessions and
    agents on one machine*. If a team ever shares a store (network volume),
    owner needs a user dimension (`elad/planner`); out of scope until real.
@@ -310,5 +310,5 @@ and the user dimension for multi-user stores.
    Deferred to the end of the dogfooding period, per the plan's exit
    questions.
 3. **Session-store garbage collection** — silos accumulate under
-   `.nemo_oo/sessions/`; `delete_session` cleans its own, but abandoned ones
+   `.nooa/sessions/`; `delete_session` cleans its own, but abandoned ones
    linger. A `nemo oo memory gc` sibling of the merge utility (P2).

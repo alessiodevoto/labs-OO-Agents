@@ -25,8 +25,8 @@ environment:
       target: /opt/harbor
       read_only: true
     - type: bind
-      source: /localhome/local-pfurgale/dev/nemo_oo_agents_empty_stop_guard
-      target: /src/nemo_oo_agents
+      source: /localhome/local-pfurgale/dev/nooa_empty_stop_guard
+      target: /src/nooa
       read_only: true
 
 agents:
@@ -35,8 +35,8 @@ agents:
     kwargs:
       agent_type: swebench/todo
       tools: swebench
-      nemo_oo_agents_git_url: file:///src/nemo_oo_agents
-      nemo_oo_agents_git_ref: fix/codeact-empty-stop-guard
+      nooa_git_url: file:///src/nooa
+      nooa_git_ref: fix/codeact-empty-stop-guard
 
 datasets:
   - path: util/harbor/tasks/swebench_empty_response_5

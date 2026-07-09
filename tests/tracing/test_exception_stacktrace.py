@@ -14,8 +14,8 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from otlp_test_helpers import read_all_otlp_jsonl_spans
 
-from nemo_oo_agents.tracing._hooks_impl import OpenInferenceHooks
-from nemo_oo_agents.tracing._otlp_file_exporter import OtlpJsonFileExporter
+from nooa.tracing._hooks_impl import OpenInferenceHooks
+from nooa.tracing._otlp_file_exporter import OtlpJsonFileExporter
 
 
 def _raise_nested_error() -> None:

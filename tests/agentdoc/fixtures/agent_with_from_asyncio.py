@@ -4,8 +4,8 @@
 
 from asyncio import gather, sleep  # noqa: F401
 
-from nemo_oo_agents import Agent
-from nemo_oo_agents.unifiedllm import FakeLLMClient
+from nooa import Agent
+from nooa.unifiedllm import FakeLLMClient
 
 
 class AgentWithFromAsyncio(Agent, llm=FakeLLMClient()):

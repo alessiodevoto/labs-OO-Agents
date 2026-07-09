@@ -6,7 +6,7 @@ uv run python examples/quickstart/05_progressive_disclosure.py
 
 from typing import Any
 
-from nemo_oo_agents.util.quickstart import *
+from nooa.util.quickstart import *
 
 _WAREHOUSE = {
     "ART-001": Artwork("Starry Night Print", "Van Gogh Studio", appraised_value=15000.0),

@@ -36,10 +36,10 @@ import pytest
 from dotenv import find_dotenv, load_dotenv
 from pydantic import BaseModel
 
-from nemo_oo_agents import Agent
-from nemo_oo_agents.decorators import strategy
-from nemo_oo_agents.strategies import PredictStrategy
-from nemo_oo_agents.unifiedllm import get_llm_client
+from nooa import Agent
+from nooa.decorators import strategy
+from nooa.strategies import PredictStrategy
+from nooa.unifiedllm import get_llm_client
 
 load_dotenv(find_dotenv(usecwd=True), override=True)
 

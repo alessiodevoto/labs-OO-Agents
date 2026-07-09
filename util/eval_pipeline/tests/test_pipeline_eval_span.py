@@ -94,7 +94,7 @@ class TestProcessSampleEvalSpan:
         # Mock tracing exports (no-op)
         try:
             monkeypatch.setattr(
-                "openinference_instrumentation_nemo_oo_agents.flush_traces",
+                "openinference_instrumentation_nooa.flush_traces",
                 lambda: None,
             )
         except (ImportError, AttributeError):

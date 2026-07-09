@@ -1,6 +1,6 @@
 ---
 name: nemo-oo-agents
-description: "Guidance for building LLM-powered agents with the NeMo OO Agents Python framework. Use when building agents with nemo_oo_agents, implementing CodeAct or structured output strategies, or working with the unifiedllm library. Important: Contains specific installation instructions and development patterns -- read before installing or writing any agent code."
+description: "Guidance for building LLM-powered agents with the NeMo OO Agents Python framework. Use when building agents with nooa, implementing CodeAct or structured output strategies, or working with the unifiedllm library. Important: Contains specific installation instructions and development patterns -- read before installing or writing any agent code."
 compatibility: Python >= 3.12, uv for dependency management, .env file for API keys (NVIDIA_INTERNAL_API_KEY).
 metadata:
   skill_type: library
@@ -21,7 +21,7 @@ NeMo OO Agents is a Python framework for building LLM-powered agents using famil
 ## Installation
 
 ```bash
-uv add "nemo-oo-agents @ git+https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents.git@2d1816e7421ba35b8a70ebba7911d349c57ebee6"
+uv add "nemo-oo-agents @ git+https://gitlab-master.nvidia.com/interactive-agents/nooa.git@2d1816e7421ba35b8a70ebba7911d349c57ebee6"
 ```
 
 ### API Keys
@@ -141,9 +141,9 @@ Use this as your starting point for any new agent.
 
 ```python
 import asyncio
-from nemo_oo_agents import Agent
+from nooa import Agent
 from unifiedllm import get_llm_client
-from nemo_oo_agents.tracing import enable_tracing, exporters
+from nooa.tracing import enable_tracing, exporters
 
 llm = get_llm_client("aws/anthropic/claude-haiku-4-5-v1")
 
@@ -352,8 +352,8 @@ class MyAgent(Agent, llm=llm):
 When a specific method is simple enough (one clear input, one clear output, no iteration needed), use `PredictStrategy` for a direct single LLM call — faster and cheaper than CodeAct.
 
 ```python
-from nemo_oo_agents import strategy
-from nemo_oo_agents.strategies import PredictStrategy
+from nooa import strategy
+from nooa.strategies import PredictStrategy
 
 class MyAgent(Agent, llm=llm):
 
@@ -416,7 +416,7 @@ A complete, runnable example:
 
 ```python
 import asyncio
-from nemo_oo_agents import Agent
+from nooa import Agent
 from unifiedllm import get_llm_client
 
 llm = get_llm_client("aws/anthropic/claude-haiku-4-5-v1")
@@ -505,9 +505,9 @@ Strategies control HOW generation methods execute:
 | `PredictStrategy` | Classification, extraction | Fast single-shot structured output, no code execution |
 
 ```python
-from nemo_oo_agents import strategy
-from nemo_oo_agents.strategies import PredictStrategy, CodeActStrategy
-from nemo_oo_agents.config import CodeActConfig
+from nooa import strategy
+from nooa.strategies import PredictStrategy, CodeActStrategy
+from nooa.config import CodeActConfig
 
 class MyAgent(Agent, llm=llm):
 
@@ -582,9 +582,9 @@ class DataAgent(Agent, llm=llm):
 **Built-in tools:**
 
 ```python
-from nemo_oo_agents.tools.bash_tool import BashTool
-from nemo_oo_agents.tools.file_tool import FileTool
-from nemo_oo_agents.tools.todo_manager import TodoManager
+from nooa.tools.bash_tool import BashTool
+from nooa.tools.file_tool import FileTool
+from nooa.tools.todo_manager import TodoManager
 
 class DevAgent(Agent, llm=llm):
     bash = BashTool()       # Run shell commands
@@ -674,11 +674,11 @@ signature.
 **3. Missing imports for CodeAct-generated code:**
 ```python
 # BAD: CodeAct generates `json.loads(response)` but json isn't imported
-from nemo_oo_agents import Agent
+from nooa import Agent
 
 # GOOD: import modules the LLM is likely to need in generated code
 import json
-from nemo_oo_agents import Agent
+from nooa import Agent
 ```
 
 **4. No deterministic helpers -- everything in one CodeAct loop:**
@@ -776,12 +776,12 @@ class Pipeline(Agent, llm=llm):
 
 ### Tracing (Auto-Enabled)
 
-Tracing is **automatic**. Every `Agent.__init__()` call probes `localhost:5001`; if the development server is running, spans are sent via OTLP automatically -- no code changes needed. The tracing package ships with `nemo_oo_agents` so nothing extra to install.
+Tracing is **automatic**. Every `Agent.__init__()` call probes `localhost:5001`; if the development server is running, spans are sent via OTLP automatically -- no code changes needed. The tracing package ships with `nooa` so nothing extra to install.
 
 **Development workflow:**
 ```bash
 # Terminal 1: start the trace viewer
-nemo-oo start-dev   # Launches viewer at http://localhost:5001
+nooa start-dev   # Launches viewer at http://localhost:5001
 
 # Terminal 2: run your agent -- traces appear automatically
 uv run python main.py
@@ -790,7 +790,7 @@ uv run python main.py
 **Explicit tracing** is needed when you want to control where spans go -- writing JSONL to disk, pointing at a custom OTLP endpoint, using Langfuse/Phoenix, or providing a custom exporter:
 
 ```python
-from nemo_oo_agents.tracing import enable_tracing, exporters
+from nooa.tracing import enable_tracing, exporters
 
 # JSONL files on disk (for offline analysis or CI)
 # NOTE: trace_dir is a DIRECTORY, not a file path. Files are written as
@@ -823,7 +823,7 @@ Traces capture every LLM call, code execution, and tool invocation with parent-c
 See exactly what the LLM receives for any method -- essential for debugging:
 
 ```python
-from nemo_oo_agents import print_prompt, build_prompt_data
+from nooa import print_prompt, build_prompt_data
 from unifiedllm import FakeLLMClient
 
 # Create agent with a fake LLM (no API calls)
@@ -845,8 +845,8 @@ kill -USR2 <pid>    # Dumps traceback + current cell code (auto-installed at imp
 ```
 
 ```python
-from nemo_oo_agents import enable_logging
-enable_logging(level="DEBUG")    # Framework logger hierarchy at nemo_oo_agents
+from nooa import enable_logging
+enable_logging(level="DEBUG")    # Framework logger hierarchy at nooa
 ```
 
 ### Testing with FakeLLMClient
@@ -868,7 +868,7 @@ assert fake.call_count == 2
 ### Debugging Tips
 
 1. **Inspect the prompt first**: Use `print_prompt` to see what the LLM actually receives -- most bugs are visible in the rendered prompt
-2. **Run `nemo-oo start-dev`** before you run your agent and traces appear automatically -- no code changes needed
+2. **Run `nooa start-dev`** before you run your agent and traces appear automatically -- no code changes needed
 3. **Check the docstring**: It IS part of the prompt the LLM gets. Unclear docstrings produce unreliable results.
 4. **Check the class docstring**: It's part of the system prompt. Keep it concise -- verbose class docstrings waste tokens on every call.
 5. **Reduce scope**: Test one method in isolation before composing
@@ -899,7 +899,7 @@ The LLM can also manage context blocks in CodeAct (`self.context["plan"] = "Step
 
 **Scoped overrides** -- temporarily override context for a specific call:
 ```python
-from nemo_oo_agents import ScopedContext
+from nooa import ScopedContext
 
 with ScopedContext({"focus": "Only answer about pricing"}):
     result = await agent.respond(question)
@@ -919,7 +919,7 @@ Control what the LLM can see. This matters because everything visible in `<self>
 
 **Method-level hiding** -- hide internal helpers:
 ```python
-from nemo_oo_agents import hidden
+from nooa import hidden
 
 class MyAgent(Agent, llm=llm):
     @hidden
@@ -939,18 +939,18 @@ class MyAgent(Agent, llm=llm):
 
 **Import-level hiding** -- prevent framework internals from polluting CodeAct's execution context:
 ```python
-from nemo_oo_agents import hidden
+from nooa import hidden
 
 # Without this, SkillManager, BaseModel, etc. appear in <execution_context>
 with hidden:
-    from nemo_oo_agents import SkillManager, TextSkill
-    from nemo_oo_agents.agents import TokenBudgetSummarizer
+    from nooa import SkillManager, TextSkill
+    from nooa.agents import TokenBudgetSummarizer
 ```
 
 **Field-level hiding** -- exclude fields from `<self>` rendering:
 ```python
 from typing import Annotated
-from nemo_oo_agents import hidden
+from nooa import hidden
 
 class MyAgent(Agent, llm=llm):
     _cache: Annotated[dict, hidden] = {}  # Not shown to LLM
@@ -961,7 +961,7 @@ class MyAgent(Agent, llm=llm):
 Handle multimodal content -- **only works with multimodal-capable LLMs** (e.g. Claude 4.x, GPT-4o, Gemini). Text-only models will error when passed `Image`, `Audio`, or `Video`.
 
 ```python
-from nemo_oo_agents import Image, Audio, Video, File
+from nooa import Image, Audio, Video, File
 
 class MediaAgent(Agent, llm=llm):
     async def describe_image(self, image: Image) -> str:
@@ -974,7 +974,7 @@ class MediaAgent(Agent, llm=llm):
 Inject curated context (guidelines, examples, domain knowledge):
 
 ```python
-from nemo_oo_agents import SkillManager, TextSkill
+from nooa import SkillManager, TextSkill
 
 class MyAgent(Agent, llm=llm):
     def __init__(self):
@@ -987,7 +987,7 @@ class MyAgent(Agent, llm=llm):
 Connect external tool servers via Model Context Protocol:
 
 ```python
-from mcp_nemo_oo_agents import MCPManager
+from mcp_nooa import MCPManager
 
 class MyAgent(Agent, llm=llm):
     external_tool = MCPManager.create_from_server("server-name")
@@ -1000,7 +1000,7 @@ Configure servers in `.mcp.json` at the project root.
 Query and filter agent history:
 
 ```python
-from nemo_oo_agents import EventQuery
+from nooa import EventQuery
 
 # Query past events
 recent = agent.events.query(limit=20)
@@ -1018,8 +1018,8 @@ Built-in event query factories: `current_call()`, `by_type()`, `last_n()`.
 For long-running conversations, auto-compress older history:
 
 ```python
-from nemo_oo_agents.agents import TokenBudgetSummarizer, MethodSummarizer
-from nemo_oo_agents.config import TokenBudgetConfig
+from nooa.agents import TokenBudgetSummarizer, MethodSummarizer
+from nooa.config import TokenBudgetConfig
 
 # Compress when token budget exceeded
 TokenBudgetSummarizer.install(agent, config=TokenBudgetConfig(max_tokens=1000))
@@ -1033,7 +1033,7 @@ MethodSummarizer.install(agent)
 Persist agent state across restarts with `SQLiteStorageManager`:
 
 ```python
-from nemo_oo_agents.storage import SQLiteStorageManager
+from nooa.storage import SQLiteStorageManager
 
 storage = SQLiteStorageManager("agent_state.db")
 agent = MyAgent(storage=storage)  # resumes from last snapshot
@@ -1046,7 +1046,7 @@ Events, context blocks, LLM-defined methods, and user attributes are all seriali
 Beyond `max_iterations`, tune the agent loop per method:
 
 ```python
-from nemo_oo_agents.config import CodeActConfig, ExecutionConfig, TruncationConfig
+from nooa.config import CodeActConfig, ExecutionConfig, TruncationConfig
 
 @strategy(CodeActStrategy(config=CodeActConfig(
     max_iterations=15,
@@ -1120,7 +1120,7 @@ import json           # noqa: F401  ← available to LLM-generated code
 import re             # noqa: F401
 from pathlib import Path
 
-from nemo_oo_agents import Agent
+from nooa import Agent
 from unifiedllm import get_llm_client
 from trace_explorer import TraceExplorer  # noqa: F401
 

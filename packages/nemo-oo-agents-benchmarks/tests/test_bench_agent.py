@@ -8,8 +8,8 @@ import pytest
 from nemo_oo_agents_benchmarks.agents import bench_agent as bench_agent_module
 from nemo_oo_agents_benchmarks.agents.bench_agent import BenchAgent, TaskResult
 
-from nemo_oo_agents.agentdoc import doc
-from nemo_oo_agents.unifiedllm import FakeLLMClient
+from nooa.agentdoc import doc
+from nooa.unifiedllm import FakeLLMClient
 
 
 class _FakeShell:
@@ -82,7 +82,7 @@ def test_bench_agent_exposes_context_and_events_apis():
 
 def test_context_usage_block_includes_collapse_hint():
     """Context usage tells agents how to compact old event history."""
-    from nemo_oo_agents.context_blocks.models import ContextWindowStats
+    from nooa.context_blocks.models import ContextWindowStats
 
     agent = BenchAgent(llm=FakeLLMClient())
     agent.runtime._last_context_stats = ContextWindowStats(

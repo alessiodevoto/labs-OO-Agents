@@ -15,12 +15,12 @@ import litellm
 import pytest
 from litellm.types.utils import ChatCompletionMessageToolCall, Function
 
-from nemo_oo_agents import Agent, strategy
-from nemo_oo_agents.config import CodeActConfig
-from nemo_oo_agents.errors import GenerationError
-from nemo_oo_agents.strategies.codeact import CodeActStrategy
-from nemo_oo_agents.unifiedllm import CompletionClient, ResponsesClient
-from nemo_oo_agents.unifiedllm.unifiedllm import (
+from nooa import Agent, strategy
+from nooa.config import CodeActConfig
+from nooa.errors import GenerationError
+from nooa.strategies.codeact import CodeActStrategy
+from nooa.unifiedllm import CompletionClient, ResponsesClient
+from nooa.unifiedllm.unifiedllm import (
     _map_completion_finish_reason,
     _map_responses_finish_reason,
 )

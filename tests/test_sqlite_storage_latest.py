@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from nemo_oo_agents import Agent
-from nemo_oo_agents.storage import SQLiteStorageManager
-from nemo_oo_agents.unifiedllm import CompletionClient
+from nooa import Agent
+from nooa.storage import SQLiteStorageManager
+from nooa.unifiedllm import CompletionClient
 
 
 def _make_storage() -> SQLiteStorageManager:

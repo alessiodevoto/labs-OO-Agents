@@ -77,11 +77,11 @@ def _setup_tracing(model: str, agent_type: str) -> None:
     For Docker containers set ``OTLP_ENDPOINT=http://host.docker.internal:5001``.
     """
     try:
-        from nemo_oo_agents.tracing import (
+        from nooa.tracing import (
             enable_tracing,
             probe_otlp_endpoint,
         )
-        from nemo_oo_agents.tracing import exporters as nemo_exporters
+        from nooa.tracing import exporters as nemo_exporters
     except ImportError:
         logger.warning("nemo_oo_agents.tracing not available, no tracing")
         return
@@ -183,7 +183,7 @@ async def _run(
     working_dir: str | None = None,
 ) -> int:
     """Async main: instantiate, wire, run.  Returns exit code (0 = success)."""
-    from nemo_oo_agents.unifiedllm import get_llm_client
+    from nooa.unifiedllm import get_llm_client
 
     # Build LLM client — honour env-var overrides for local vLLM deployments.
     llm_overrides: dict[str, str] = {}
@@ -206,7 +206,7 @@ async def _run(
     # All agents share the same interface: {"user_message": instruction}.
     # Benchmark-specific parsing (system prompts, data paths, etc.) happens
     # inside the agent's _run_evaluation method.
-    from nemo_oo_agents.runtime.token_usage import get_task_tokens, start_task_tokens
+    from nooa.runtime.token_usage import get_task_tokens, start_task_tokens
 
     logger.info("Running agent %s (model=%s)...", agent_type, model)
     start_task_tokens()

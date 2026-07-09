@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from nemo_oo_agents.memory.schema import Memory, MemoryType
+from nooa_tui.memory.schema import Memory, MemoryType
 
 Session = tuple[str, list[str]]
 

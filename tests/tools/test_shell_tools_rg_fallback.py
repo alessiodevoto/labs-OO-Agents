@@ -6,7 +6,7 @@ import shutil
 
 import pytest
 
-from nemo_oo_agents.tools.shell_tools_legacy import ShellToolsLegacy as ShellTools
+from nooa.tools.shell_tools_legacy import ShellToolsLegacy as ShellTools
 
 has_rg = pytest.mark.skipif(shutil.which("rg") is None, reason="ripgrep not installed")
 

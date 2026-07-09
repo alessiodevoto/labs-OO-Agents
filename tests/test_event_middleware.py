@@ -2,8 +2,8 @@
 
 import pytest
 
-from nemo_oo_agents.runtime.event_manager import EventManager, _make_next
-from nemo_oo_agents.runtime.middleware import (
+from nooa.runtime.event_manager import EventManager, _make_next
+from nooa.runtime.middleware import (
     ExecutePythonContext,
     LLMCallContext,
 )
@@ -290,7 +290,7 @@ class TestInitMiddleware:
 
 class TestEventManagerMiddleware:
     def test_event_manager_has_middleware(self):
-        from nemo_oo_agents.runtime.event_manager import EventManager
+        from nooa.runtime.event_manager import EventManager
 
         em = EventManager()
         assert hasattr(em, "_middleware")
@@ -299,7 +299,7 @@ class TestEventManagerMiddleware:
         assert "execute_python" in em._middleware
 
     def test_event_manager_use(self):
-        from nemo_oo_agents.runtime.event_manager import EventManager
+        from nooa.runtime.event_manager import EventManager
 
         em = EventManager()
         unsub = em.intercept("llm_call", _passthrough)
@@ -309,7 +309,7 @@ class TestEventManagerMiddleware:
 
     @pytest.mark.asyncio
     async def test_event_manager_run(self):
-        from nemo_oo_agents.runtime.event_manager import EventManager
+        from nooa.runtime.event_manager import EventManager
 
         em = EventManager()
         trail = []
@@ -330,7 +330,7 @@ class TestEventManagerMiddleware:
     @pytest.mark.asyncio
     async def test_middleware_exception_propagates(self):
         """Middleware that raises propagates the exception to the caller."""
-        from nemo_oo_agents.runtime.event_manager import EventManager
+        from nooa.runtime.event_manager import EventManager
 
         em = EventManager()
 
@@ -348,7 +348,7 @@ class TestEventManagerMiddleware:
     @pytest.mark.asyncio
     async def test_nxt_called_twice_runs_core_twice(self):
         """Middleware calling nxt() twice runs the rest of the chain twice."""
-        from nemo_oo_agents.runtime.event_manager import EventManager
+        from nooa.runtime.event_manager import EventManager
 
         em = EventManager()
         core_count = 0
@@ -372,7 +372,7 @@ class TestEventManagerMiddleware:
     @pytest.mark.asyncio
     async def test_registration_order_is_execution_order(self):
         """First registered = outermost (pre first, post last)."""
-        from nemo_oo_agents.runtime.event_manager import EventManager
+        from nooa.runtime.event_manager import EventManager
 
         em = EventManager()
         order = []

@@ -29,7 +29,7 @@ def test_sigint_cleanup():
     port = _unused_local_port()
 
     proc = subprocess.Popen(
-        [sys.executable, "-m", "nemo_oo_agents_cli", "term", "--port", str(port)],
+        [sys.executable, "-m", "nooa_cli", "term", "--port", str(port)],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,

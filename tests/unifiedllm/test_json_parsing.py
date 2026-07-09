@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from nemo_oo_agents.unifiedllm import extract_and_parse_json
+from nooa.unifiedllm import extract_and_parse_json
 
 
 class TestExtractAndParseJson:

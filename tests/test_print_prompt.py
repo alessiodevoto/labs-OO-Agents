@@ -4,8 +4,8 @@
 
 import pytest
 
-from nemo_oo_agents import Agent, build_prompt_data
-from nemo_oo_agents.unifiedllm import FakeLLMClient
+from nooa import Agent, build_prompt_data
+from nooa.unifiedllm import FakeLLMClient
 
 _LLM = FakeLLMClient()
 

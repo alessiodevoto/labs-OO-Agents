@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import random
 
-from nemo_oo_agents.tracing import _IsolatedIdGenerator
+from nooa.tracing import _IsolatedIdGenerator
 
 
 def test_span_ids_unaffected_by_global_seed():

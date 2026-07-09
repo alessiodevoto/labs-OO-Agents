@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from nemo_oo_agents.config.summarizer_config import MethodSummarizerConfig, TokenBudgetConfig
+from nooa.config.summarizer_config import MethodSummarizerConfig, TokenBudgetConfig
 
 
 class TestTokenBudgetConfig:

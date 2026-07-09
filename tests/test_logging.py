@@ -1,4 +1,4 @@
-"""Tests for nemo_oo_agents logging helpers."""
+"""Tests for nooa logging helpers."""
 
 from __future__ import annotations
 
@@ -8,13 +8,13 @@ import uuid
 
 import pytest
 
-from nemo_oo_agents._logging import enable_logging
+from nooa._logging import enable_logging
 
 
 @pytest.fixture()
 def fresh_logger():
     """Yield a unique logger and clean up all handlers added during the test."""
-    name = f"nemo_oo_agents.test_logging.{uuid.uuid4().hex[:8]}"
+    name = f"nooa.test_logging.{uuid.uuid4().hex[:8]}"
     logger = logging.getLogger(name)
     original_handlers = list(logger.handlers)
 
@@ -31,7 +31,7 @@ def fresh_logger():
 
 
 def test_nullhandler_attached():
-    root = logging.getLogger("nemo_oo_agents")
+    root = logging.getLogger("nooa")
     assert any(isinstance(h, logging.NullHandler) for h in root.handlers)
 
 
@@ -39,7 +39,7 @@ def test_nullhandler_attached():
 
 
 def test_enable_logging_importable():
-    from nemo_oo_agents import enable_logging as el
+    from nooa import enable_logging as el
 
     assert callable(el)
 

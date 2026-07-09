@@ -4,9 +4,9 @@
 
 import pytest
 
-from nemo_oo_agents.agentdoc import doc, pformat
-from nemo_oo_agents.agentdoc.ext import DocConfig
-from nemo_oo_agents.agentdoc.introspect import methods, variables
+from nooa.agentdoc import doc, pformat
+from nooa.agentdoc.ext import DocConfig
+from nooa.agentdoc.introspect import methods, variables
 
 
 # Test fixtures
@@ -237,7 +237,7 @@ class TestMethods:
 
     def test_methods_respects_hidden_decorator(self):
         """methods() must honour @hidden, not just the _ prefix."""
-        from nemo_oo_agents.agentdoc import hidden
+        from nooa.agentdoc import hidden
 
         class Service:
             def public_api(self) -> str:
@@ -821,7 +821,7 @@ class TestLargeValueTruncation:
 
     def test_doc_on_huge_builtin_with_max_length(self):
         """doc() on raw containers respects explicit max_length, shows head+tail."""
-        from nemo_oo_agents.agentdoc._pformat import _pformat_to_str
+        from nooa.agentdoc._pformat import _pformat_to_str
 
         huge_list = list(range(100_000))
         result = _pformat_to_str(huge_list, max_length=10, max_string=500, max_depth=3)
@@ -923,7 +923,7 @@ class TestLargeValueTruncation:
 
     def test_plain_class_with_repr_uses_repr_not_fields(self):
         """Plain class with __repr__ should use repr, not extract fields."""
-        from nemo_oo_agents.agentdoc import pformat
+        from nooa.agentdoc import pformat
 
         class ToolLike:
             def __init__(self):
@@ -991,7 +991,7 @@ class TestPformatMatchesRich:
         the matrix data showed the slice-keys form (head + tail with the
         total length up front) is ~25-30 pp easier for LLMs to read.
         """
-        from nemo_oo_agents.agentdoc._pformat import _pformat_to_str as _pformat
+        from nooa.agentdoc._pformat import _pformat_to_str as _pformat
 
         data = "x" * 100
         our_output = _pformat(data, max_string=10)
@@ -1009,7 +1009,7 @@ class TestPformatMatchesRich:
     )
     def test_list_truncation_shows_head_and_tail(self):
         """List truncation uses head+tail format (diverges intentionally from Rich head-only)."""
-        from nemo_oo_agents.agentdoc._pformat import _pformat_to_str as _pformat
+        from nooa.agentdoc._pformat import _pformat_to_str as _pformat
 
         data = list(range(20))
         max_length = 5
@@ -1032,7 +1032,7 @@ class TestPformatMatchesRich:
     )
     def test_dict_truncation_shows_head_and_tail(self):
         """Dict truncation uses head+tail format (diverges intentionally from Rich head-only)."""
-        from nemo_oo_agents.agentdoc._pformat import _pformat_to_str as _pformat
+        from nooa.agentdoc._pformat import _pformat_to_str as _pformat
 
         data = {f"k{i}": i for i in range(20)}
         max_length = 3
@@ -1053,7 +1053,7 @@ class TestPformatAdditionalTypes:
 
     def test_tuple_truncation(self):
         """Tuple truncation uses the slice-keys marker with tuple parens."""
-        from nemo_oo_agents.agentdoc._pformat import _pformat_to_str as _pformat
+        from nooa.agentdoc._pformat import _pformat_to_str as _pformat
 
         data = tuple(range(20))
         result = _pformat(data, max_length=5)
@@ -1065,7 +1065,7 @@ class TestPformatAdditionalTypes:
 
     def test_set_truncation(self):
         """Set truncation uses the items wrapper (no positional anchor)."""
-        from nemo_oo_agents.agentdoc._pformat import _pformat_to_str as _pformat
+        from nooa.agentdoc._pformat import _pformat_to_str as _pformat
 
         data = set(range(20))
         result = _pformat(data, max_length=5)
@@ -1075,7 +1075,7 @@ class TestPformatAdditionalTypes:
 
     def test_frozenset_truncation(self):
         """Frozenset truncation uses the items wrapper."""
-        from nemo_oo_agents.agentdoc._pformat import _pformat_to_str as _pformat
+        from nooa.agentdoc._pformat import _pformat_to_str as _pformat
 
         data = frozenset(range(20))
         result = _pformat(data, max_length=5)
@@ -1090,7 +1090,7 @@ class TestPformatTypes:
         """pformat() on Pydantic type shows Python class syntax."""
         from pydantic import BaseModel
 
-        from nemo_oo_agents.agentdoc._pformat import _pformat_to_str as _pformat
+        from nooa.agentdoc._pformat import _pformat_to_str as _pformat
 
         class UserModel(BaseModel):
             name: str
@@ -1106,7 +1106,7 @@ class TestPformatTypes:
         """pformat() on dataclass type shows decorator and fields."""
         from dataclasses import dataclass
 
-        from nemo_oo_agents.agentdoc._pformat import _pformat_to_str as _pformat
+        from nooa.agentdoc._pformat import _pformat_to_str as _pformat
 
         @dataclass
         class Point:
@@ -1124,7 +1124,7 @@ class TestPformatTypes:
         """pformat() truncates fields with max_length."""
         from pydantic import BaseModel
 
-        from nemo_oo_agents.agentdoc._pformat import _pformat_to_str as _pformat
+        from nooa.agentdoc._pformat import _pformat_to_str as _pformat
 
         class BigModel(BaseModel):
             f1: str
@@ -1146,7 +1146,7 @@ class TestPformatTypes:
         """pformat() on Enum shows members."""
         import enum
 
-        from nemo_oo_agents.agentdoc._pformat import _pformat_to_str as _pformat
+        from nooa.agentdoc._pformat import _pformat_to_str as _pformat
 
         class Color(enum.Enum):
             RED = 1
@@ -1257,7 +1257,7 @@ class TestRichApiCompatibility:
         import sys
         from io import StringIO
 
-        from nemo_oo_agents.agentdoc import pprint
+        from nooa.agentdoc import pprint
 
         data = [1, 2, 3, 4, 5]
 
@@ -1324,7 +1324,7 @@ class TestDocSubclassUnhide:
         """Field hidden in parent but re-declared in child should appear in doc()."""
         from typing import Annotated
 
-        from nemo_oo_agents.agentdoc._visibility import hidden
+        from nooa.agentdoc._visibility import hidden
 
         class Parent:
             x: Annotated[str, hidden] = "secret"
@@ -1340,7 +1340,7 @@ class TestDocSubclassUnhide:
     def test_parent_hidden_field_absent_from_parent_doc(self):
         from typing import Annotated
 
-        from nemo_oo_agents.agentdoc._visibility import hidden
+        from nooa.agentdoc._visibility import hidden
 
         class Parent:
             x: Annotated[str, hidden] = "secret"
@@ -1352,7 +1352,7 @@ class TestDocSubclassUnhide:
         """Field hidden in both parent and child remains hidden."""
         from typing import Annotated
 
-        from nemo_oo_agents.agentdoc._visibility import hidden
+        from nooa.agentdoc._visibility import hidden
 
         class Parent:
             x: Annotated[str, hidden] = "secret"
@@ -1369,7 +1369,7 @@ class TestHiddenProperty:
 
     def test_hidden_property_not_in_doc_instance(self):
         """@property @hidden must not appear in doc(instance)."""
-        from nemo_oo_agents.agentdoc import hidden
+        from nooa.agentdoc import hidden
 
         class MyClass:
             @property
@@ -1388,7 +1388,7 @@ class TestHiddenProperty:
 
     def test_hidden_property_not_in_doc_class(self):
         """@property @hidden must not appear in doc(Class)."""
-        from nemo_oo_agents.agentdoc import hidden
+        from nooa.agentdoc import hidden
 
         class MyClass:
             @property

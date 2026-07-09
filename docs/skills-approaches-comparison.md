@@ -2,7 +2,7 @@
 
 _2026-03-10_
 
-Three layered patterns exist for exposing capabilities to the LLM in nemo_oo_agents. They are
+Three layered patterns exist for exposing capabilities to the LLM in nooa. They are
 **complementary, not competing** — each layer adds something the previous one
 cannot do.
 

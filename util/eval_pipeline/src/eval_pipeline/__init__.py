@@ -4,7 +4,7 @@ This package provides a high-level API for evaluating agents:
 
 Example (Python - recommended):
     from eval_pipeline import Evaluator, ExactMatchScorer
-    from nemo_oo_agents.unifiedllm import CompletionClient
+    from nooa.unifiedllm import CompletionClient
 
     # Create evaluator with your LLM clients
     evaluator = Evaluator(

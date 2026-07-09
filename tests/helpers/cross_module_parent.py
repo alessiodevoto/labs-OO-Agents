@@ -10,9 +10,9 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from nemo_oo_agents import Agent, hidden, strategy
-from nemo_oo_agents.strategies import CodeActStrategy
-from nemo_oo_agents.unifiedllm import FakeLLMClient
+from nooa import Agent, hidden, strategy
+from nooa.strategies import CodeActStrategy
+from nooa.unifiedllm import FakeLLMClient
 
 # Visible module-level symbols — must appear in a child agent's exec_globals.
 SHARED_CONSTANT = 7
