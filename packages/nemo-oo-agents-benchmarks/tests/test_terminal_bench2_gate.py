@@ -43,19 +43,14 @@ class _Agent:
         self.result = result
         self._last_verify = None
         self._verify_bounces = 0
-        self._pending_nudge = None
         self._verify_on_attempt = verify_on_attempt
         self._verify_passed = verify_passed
         self.terminal = _Terminal(check_output if check_output is not None else _Out("ok", 0))
         self.descriptions = []
-        self.nudges = []
 
     async def _solve_task(self, description):
         attempt = len(self.descriptions)
         self.descriptions.append(description)
-        if self._pending_nudge is not None:
-            self.nudges.append(self._pending_nudge)
-            self._pending_nudge = None
         if self._verify_on_attempt is not None and attempt >= self._verify_on_attempt:
             self._last_verify = {
                 "passed": self._verify_passed,
@@ -108,7 +103,8 @@ async def test_gate_bounces_when_no_verify():
     out = await agent.solve_task("task")
     assert out == "done"  # honest unverified result after exhausting bounces
     assert agent._verify_bounces == agent._MAX_VERIFY_BOUNCES
-    assert any("never ran an acceptance check" in n for n in agent.nudges)
+    # The blocker is folded into the description re-run on the next attempt.
+    assert any("never ran an acceptance check" in d for d in agent.descriptions)
 
 
 @pytest.mark.asyncio
@@ -117,7 +113,7 @@ async def test_gate_bounces_then_opens_after_verify():
     out = await agent.solve_task("task")
     assert out == "done"
     assert agent._verify_bounces == 1  # one bounce, then verified
-    assert any("never ran an acceptance check" in n for n in agent.nudges)
+    assert any("never ran an acceptance check" in d for d in agent.descriptions)
 
 
 @pytest.mark.asyncio
@@ -126,7 +122,7 @@ async def test_gate_bounces_on_failed_verify():
     out = await agent.solve_task("task")
     assert out == "done"
     assert agent._verify_bounces == agent._MAX_VERIFY_BOUNCES
-    assert any("last `verify()` FAILED" in n for n in agent.nudges)
+    assert any("last `verify()` FAILED" in d for d in agent.descriptions)
 
 
 @pytest.mark.asyncio

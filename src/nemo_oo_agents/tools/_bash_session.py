@@ -47,8 +47,13 @@ class BashSession:
         await session.close()
     """
 
-    def __init__(self, cwd: str | Path = ".") -> None:
+    def __init__(self, cwd: str | Path = ".", init_command: str | None = None) -> None:
         self._cwd = Path(cwd).resolve()
+        # Optional shell snippet run once every time the session (re)starts —
+        # before any user command — to set up the environment (e.g. activating a
+        # conda env). Re-run on reset() because a fresh bash loses prior env.
+        self._init_command = init_command
+        self._running_init = False
         self._process: asyncio.subprocess.Process | None = None
         self._control_reader: asyncio.StreamReader | None = None
         self._control_transport: asyncio.BaseTransport | None = None
@@ -195,6 +200,26 @@ class BashSession:
         self._process.stdin.write(f"echo {sentinel} >&3\n".encode())
         await self._process.stdin.drain()
         await self._read_control_until(sentinel, timeout=5.0)
+
+        # Run the one-time init command (env setup) before any user command.
+        # ``_running_init`` guards against re-entry if _send_and_wait triggers a
+        # reset (which would call start() again). _send_and_wait drains
+        # stdout/stderr so init output never bleeds into the first user command.
+        if self._init_command and not self._running_init:
+            self._running_init = True
+            try:
+                init_sentinel = f"__CTRL_{secrets.token_hex(8)}__"
+                init_script = (
+                    f"{self._init_command}\n_nemo_ec=$?\n"
+                    f"echo $_nemo_ec >&3\npwd >&3\necho {init_sentinel} >&3\n"
+                )
+                ctrl_lines, _out, _err, _timed = await self._send_and_wait(
+                    init_script, init_sentinel, timeout=60.0
+                )
+                if len(ctrl_lines) >= 2 and ctrl_lines[1].strip().startswith("/"):
+                    self._cwd = Path(ctrl_lines[1].strip())
+            finally:
+                self._running_init = False
 
     def _ensure_lock_on_current_loop(self) -> None:
         """Recreate the lock if the event loop changed since it was created."""

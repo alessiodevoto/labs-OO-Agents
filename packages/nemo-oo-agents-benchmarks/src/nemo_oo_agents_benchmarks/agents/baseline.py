@@ -33,7 +33,6 @@ from typing import TYPE_CHECKING, Any
 
 from nemo_oo_agents import Agent, CodeActStrategy, strategy
 from nemo_oo_agents.config import CodeActConfig
-from nemo_oo_agents.tools import FileTool
 from nemo_oo_agents.unifiedllm import FakeLLMClient
 
 if TYPE_CHECKING:
@@ -64,11 +63,10 @@ except ImportError:
 class BaselineAgent(Agent, llm=FakeLLMClient()):
     """General-purpose baseline agent with data science imports pre-loaded.
 
-    Supports any Harbor benchmark via dynamic environment tool injection.
-    ``self.files`` (FileTool) is available when no environment tools are present.
+    Supports any Harbor benchmark via dynamic environment tool injection.  When
+    no environment tools are present, ``self.bash`` (see ``_run_evaluation``) is
+    injected for reliable shell access.
     """
-
-    files: FileTool | None = None
 
     def __init__(self, llm: UnifiedLLM | None = None, **kwargs: Any) -> None:
         super().__init__(llm=llm, **kwargs)

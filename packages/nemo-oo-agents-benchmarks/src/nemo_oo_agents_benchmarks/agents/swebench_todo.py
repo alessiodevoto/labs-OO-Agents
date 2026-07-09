@@ -49,8 +49,10 @@ def _make_shell(cwd: str = "/testbed"):
         get_harness_metrics().set_shell_variant(variant)
     except Exception:  # noqa: BLE001
         logger.warning("Failed to tag shell_variant in harness metrics", exc_info=True)
-    shell = ShellToolsLegacy(cwd=cwd) if variant == "legacy" else ShellTools(cwd=cwd)
-    shell._init_command = _CONDA_ACTIVATE
+    if variant == "legacy":
+        shell = ShellToolsLegacy(cwd=cwd, init_command=_CONDA_ACTIVATE)
+    else:
+        shell = ShellTools(cwd=cwd, init_command=_CONDA_ACTIVATE)
     return shell
 
 

@@ -5,6 +5,47 @@
 import subprocess
 import sys
 
+from nemo_oo_agents_benchmarks.runner import _inject_tools
+
+
+class _FakeAgent:
+    """Minimal stand-in for an agent that accepts injected tool attributes."""
+
+
+def test_inject_tools_swebench_uses_working_dir():
+    """--working-dir must reach the SWEBenchLocalTools constructor."""
+    agent = _FakeAgent()
+    _inject_tools(agent, frozenset({"swebench"}), "swebench/pro", "/app")
+    assert agent.swebench._workdir == "/app"
+
+
+def test_inject_tools_swebench_defaults_when_no_working_dir():
+    """Without --working-dir the swebench tools fall back to /testbed."""
+    agent = _FakeAgent()
+    _inject_tools(agent, frozenset({"swebench"}), "swebench/basic", None)
+    assert agent.swebench._workdir == "/testbed"
+
+
+def test_inject_tools_terminal_uses_working_dir():
+    """--working-dir must reach the TerminalBenchTools constructor."""
+    agent = _FakeAgent()
+    _inject_tools(agent, frozenset({"terminal"}), "terminal-bench-2", "/custom/dir")
+    assert agent.terminal._workdir == "/custom/dir"
+
+
+def test_inject_tools_terminal_defaults_when_no_working_dir():
+    """Without --working-dir the terminal tools fall back to /app."""
+    agent = _FakeAgent()
+    _inject_tools(agent, frozenset({"terminal"}), "terminal-bench-1", None)
+    assert agent.terminal._workdir == "/app"
+
+
+def test_inject_tools_terminal_autoinjected_for_terminal_bench_agents():
+    """terminal-bench agents get terminal tools even without --tools."""
+    agent = _FakeAgent()
+    _inject_tools(agent, frozenset(), "terminal-bench-2", "/app")
+    assert hasattr(agent, "terminal")
+
 
 def test_runner_help():
     """Runner module must be importable and show help."""
@@ -82,6 +123,14 @@ def test_tools_importable():
     )
     assert result.returncode == 0, result.stderr
     assert "OK" in result.stdout
+
+
+def test_tau_bench_unregistered():
+    """tau-bench must NOT be registered: nothing provides self.taubench, so it
+    would crash on the first context render (see #343)."""
+    from nemo_oo_agents_benchmarks.agents import AGENT_CLASSES
+
+    assert "tau-bench" not in AGENT_CLASSES
 
 
 def test_agent_registry_complete():

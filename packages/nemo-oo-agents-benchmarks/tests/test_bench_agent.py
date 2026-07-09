@@ -13,10 +13,15 @@ from nemo_oo_agents.unifiedllm import FakeLLMClient
 
 
 class _FakeShell:
-    def __init__(self, cwd: str) -> None:
+    def __init__(self, cwd: str, init_command: str | None = None) -> None:
         self.cwd = cwd
+        self.init_command = init_command
         self.commands: list[str] = []
         self._session = object()
+
+    @property
+    def session(self) -> object:
+        return self._session
 
     async def run(self, command: str):
         self.commands.append(command)
@@ -100,7 +105,7 @@ def test_context_usage_block_includes_collapse_hint():
 async def test_run_evaluation_returns_structured_task_result(monkeypatch, tmp_path):
     shells: list[_FakeShell] = []
 
-    def fake_make_shell(cwd: str):
+    def fake_make_shell(cwd: str, init_command=None):
         shell = _FakeShell(cwd)
         shells.append(shell)
         return shell
@@ -136,7 +141,7 @@ async def test_run_evaluation_returns_structured_task_result(monkeypatch, tmp_pa
 
 @pytest.mark.asyncio
 async def test_run_evaluation_returns_failure_on_exception(monkeypatch, tmp_path):
-    def fake_make_shell(cwd: str):
+    def fake_make_shell(cwd: str, init_command=None):
         return _FakeShell(cwd)
 
     async def fake_solve_task(description: str):
@@ -158,7 +163,7 @@ async def test_run_evaluation_returns_failure_on_exception(monkeypatch, tmp_path
 async def test_run_evaluation_requires_problem_statement(monkeypatch, tmp_path):
     """BenchAgent rejects tasks without a usable task description."""
 
-    def fake_make_shell(cwd: str):
+    def fake_make_shell(cwd: str, init_command=None):
         return _FakeShell(cwd)
 
     monkeypatch.setattr(bench_agent_module, "ShellTools", fake_make_shell)
@@ -198,8 +203,8 @@ def test_bench_agent_wires_repo_to_shell_session():
 
     agent = BenchAgent(llm=FakeLLMClient())
 
-    assert agent.repo._root == agent.shell.cwd
-    assert agent.repo._session is agent.shell._session
+    assert agent.repo.root == agent.shell.cwd
+    assert agent.repo.session is agent.shell.session
 
 
 def test_tool_repr_shows_state():
@@ -209,7 +214,7 @@ def test_tool_repr_shows_state():
 
     assert repr(agent.shell) == f"ShellTools(cwd={agent.shell.cwd!s})"
     assert repr(agent.repo) == (
-        f"RepoTools(root={str(agent.repo._root)!r}, session=shared, has_rg=None)"
+        f"RepoTools(root={str(agent.repo.root)!r}, session=shared, has_rg=None)"
     )
 
 
@@ -236,7 +241,7 @@ def test_bench_agent_preseeds_planning_todo():
 async def test_run_evaluation_reseeds_planning_todo_after_clear(monkeypatch, tmp_path):
     """The planning todo is restored after per-task todo reset."""
 
-    def fake_make_shell(cwd: str):
+    def fake_make_shell(cwd: str, init_command=None):
         return _FakeShell(cwd)
 
     async def fake_solve_task(description: str):

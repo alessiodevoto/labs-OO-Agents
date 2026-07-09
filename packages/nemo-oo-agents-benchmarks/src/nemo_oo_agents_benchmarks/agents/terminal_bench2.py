@@ -73,7 +73,6 @@ class TerminalBench2Agent(
         # passes, required artifacts exist and conform).
         self._last_verify: dict[str, Any] | None = None
         self._verify_bounces = 0
-        self._pending_nudge: str | None = None
 
     @staticmethod
     def _parse_check_outcome(output: Any) -> dict[str, Any]:
@@ -195,7 +194,6 @@ class TerminalBench2Agent(
         # a prior green verify (or exhausted bounce counter) into a new task.
         self._last_verify = None
         self._verify_bounces = 0
-        self._pending_nudge = None
 
         self.instructions: str = task_input.get("system_prompt", "")
         self.context["instructions"] = self.instructions
@@ -320,7 +318,6 @@ class TerminalBench2Agent(
             # Surface the blocker prominently on the next pass. TB's _solve_task
             # is a pure-prompt strategy method (no opener code to branch on), so
             # we fold the nudge into the description it re-runs with.
-            self._pending_nudge = nudge
             description = (
                 f"{self._base_description}\n\n"
                 f"=== RETURN BLOCKED BY VERIFICATION GATE ===\n{nudge}\n"
