@@ -302,6 +302,10 @@ The pipeline can send traces to an **OTLP API** (e.g. the nemo_oo_agents viewer)
 | **Set** (e.g. `http://localhost:5001/v1/traces`) | Traces are exported via OTLP to the given endpoint. No local trace files are created under `output_dir` (the pipeline may fetch trace data temporarily for scoring). Each run uses a unique experiment name so runs appear separately in the viewer. |
 | **Unset**         | Traces are written to disk under `output_dir/<experiment>_<timestamp>/traces/*.jsonl`. Scoring reads these files directly. |
 
+Pass `--trace-files` to write local `.jsonl` traces **even when a viewer is
+active**, e.g. to cross-validate viewer traces against disk. `--no-files`
+suppresses all file output regardless of `--trace-files`.
+
 **Example: send traces to the viewer API**
 
 ```bash

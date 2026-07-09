@@ -262,6 +262,8 @@ def load_config(config_path: Path) -> EvalConfig:
                 endpoint=model_cfg.get("endpoint"),
                 api_key_env=model_cfg.get("api_key_env"),
                 max_tokens=model_cfg.get("max_tokens"),
+                temperature=model_cfg.get("temperature"),
+                top_p=model_cfg.get("top_p"),
                 reasoning_effort=model_cfg.get("reasoning_effort"),
                 max_thinking_tokens=model_cfg.get("max_thinking_tokens"),
                 max_retries=model_cfg.get("max_retries"),
@@ -438,6 +440,13 @@ def evaluator_from_config(
                     "api_key": api_key,
                     "max_tokens": s.max_tokens,
                 }
+
+                # Forward sampling params from the registry / config so
+                # models.yaml temperature/top_p actually reach the client.
+                if s.temperature is not None:
+                    config_dict["temperature"] = s.temperature
+                if s.top_p is not None:
+                    config_dict["top_p"] = s.top_p
 
                 # Add reasoning support for Claude and other models
                 if s.reasoning_effort:
