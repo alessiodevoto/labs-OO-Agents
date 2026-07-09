@@ -2216,7 +2216,7 @@ class TestSkillWritingLintAndDeps:
         """Line 328: SecurityValidator E001 (forbidden builtins) → errors list."""
         lw = self._make_lw(tmp_path)
         code = 'exec("malicious")'  # E001: exec is forbidden
-        report = lw._lint_source(code, set())
+        report = lw._lint_source(code)
         assert any("E001" in e for e in report.errors)
 
     def test_get_declared_deps_no_pyproject(self, tmp_path):

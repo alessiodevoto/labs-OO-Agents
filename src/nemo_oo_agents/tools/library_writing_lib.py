@@ -112,8 +112,9 @@ class SkillWriting(Skill):
     - **``completions``** — tuple of subcommand names for tab-completion.
       The TUI autocompletes ``/check <tab>`` → ``deps``, ``lint``, ``tests``.
     - **``argument_hint``** — shown in ``/help`` and tab-completion display.
-    - **``user_only=True``** — prevents the LLM from invoking the command
-      (useful for destructive operations).
+    - **``output_to_agent=False``** — show the command's output to the user
+      in the TUI only, without spending an agent turn (useful for read-only
+      list/status commands).
     - Slash commands are discovered automatically when a skill is activated
       or hot-reloaded. No manual registration needed.
 
@@ -245,7 +246,6 @@ class SkillWriting(Skill):
             return f"Library '{lib_name}' not found at {lib_dir}"
 
         # Lint all .py files (except __init__.py)
-        declared_deps = self._get_declared_deps(lib_name)
         all_errors: list[str] = []
         all_warnings: list[str] = []
 
@@ -253,7 +253,7 @@ class SkillWriting(Skill):
             if py_file.name == "__init__.py":
                 continue
             source = py_file.read_text()
-            report = self._lint_source(source, declared_deps)
+            report = self._lint_source(source)
             rel = py_file.relative_to(lib_dir)
             all_errors.extend(f"{rel}: {e}" for e in report.errors)
             all_warnings.extend(f"{rel}: {w}" for w in report.warnings)
@@ -330,7 +330,7 @@ class SkillWriting(Skill):
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _lint_source(self, source: str, declared_deps: set[str]) -> LintReport:
+    def _lint_source(self, source: str) -> LintReport:
         """Run SecurityValidator on library source code."""
         from nemo_oo_agents.runtime.code_validator import SecurityValidator, ValidationContext
 
@@ -339,13 +339,8 @@ class SkillWriting(Skill):
         except SyntaxError as e:
             return LintReport(errors=[f"SyntaxError: {e}"])
 
-        importable = self._importable_modules() | declared_deps
-
         context = ValidationContext(
             code=source,
-            agent_class=type(self._agent),
-            available_names=set(),
-            importable_modules=importable,
             restricted_imports=frozenset(),
             blocked_modules=frozenset(),
         )

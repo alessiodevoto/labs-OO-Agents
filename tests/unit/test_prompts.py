@@ -118,7 +118,7 @@ class TestGetPrefill:
             decorator="plan",
             kwargs={"data": "hello"},
         )
-        inspect_code, _ = _get_prefill(strategy_obj, call)
+        inspect_code, _ = _get_prefill(strategy_obj, call, None)
         assert inspect_code is not None
         assert "data" in inspect_code
         assert "pprint" in inspect_code
@@ -131,13 +131,13 @@ class TestGetPrefill:
             decorator="plan",
             kwargs={},
         )
-        inspect_code, _ = _get_prefill(strategy_obj, call)
+        inspect_code, _ = _get_prefill(strategy_obj, call, None)
         assert inspect_code is None
 
     def test_pure_python_has_inspect_prefill_by_default(self):
         strategy_obj = PurePythonStrategy()  # InspectInputsPrefill by default
         call = CurrentCall(id="c9", method_name="transform", decorator="plan", kwargs={"items": []})
-        inspect_code, _ = _get_prefill(strategy_obj, call)
+        inspect_code, _ = _get_prefill(strategy_obj, call, None)
         assert inspect_code is not None
         assert "items" in inspect_code
         assert "pprint" in inspect_code
@@ -148,9 +148,42 @@ class TestGetPrefill:
 
         strategy_obj = PredictStrategy()
         call = CurrentCall(id="c10", method_name="classify", decorator="plan", kwargs={"x": 1})
-        inspect_code, pre_ellipsis = _get_prefill(strategy_obj, call)
+        inspect_code, pre_ellipsis = _get_prefill(strategy_obj, call, None)
         assert inspect_code is None
         assert pre_ellipsis is None  # no pre-ellipsis code in this call
+
+    def test_codeact_config_prefill_none_disables_inspect(self):
+        """#331: print_prompt must honor CodeActConfig.prefill=None (inspect disabled)."""
+        from nemo_oo_agents.config.strategy_config import CodeActConfig
+
+        strategy_obj = CodeActStrategy(config=CodeActConfig(prefill=None))
+        call = CurrentCall(
+            id="c11",
+            method_name="analyze",
+            decorator="plan",
+            kwargs={"data": "hello"},
+        )
+        inspect_code, _ = _get_prefill(strategy_obj, call, None)
+        assert inspect_code is None
+
+    def test_codeact_config_custom_prefill_used(self):
+        """#331: a custom configured Prefill drives inspect code, not the hardcoded default."""
+
+        class _CustomPrefill:
+            def get_code(self, call, config=None):
+                return "# custom-prefill-marker"
+
+        from nemo_oo_agents.config.strategy_config import CodeActConfig
+
+        strategy_obj = CodeActStrategy(config=CodeActConfig(prefill=_CustomPrefill()))
+        call = CurrentCall(
+            id="c12",
+            method_name="analyze",
+            decorator="plan",
+            kwargs={"data": "hello"},
+        )
+        inspect_code, _ = _get_prefill(strategy_obj, call, None)
+        assert inspect_code == "# custom-prefill-marker"
 
 
 # ---------------------------------------------------------------------------

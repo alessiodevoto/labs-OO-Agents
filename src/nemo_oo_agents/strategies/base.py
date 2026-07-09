@@ -346,3 +346,19 @@ class GenerationStrategy(ABC, metaclass=AgentMeta):
                 exception=exception,
                 invocation_id=invocation_id,
             )
+
+
+def build_sampling_kwargs(config: "Any") -> dict[str, "Any"]:
+    """Build sampling kwargs for LLM calls, excluding None values.
+
+    Shared by PredictStrategy, CodeActStrategy, and ReflexionStrategy.
+    """
+    return {
+        k: v
+        for k, v in {
+            "max_tokens": config.max_tokens,
+            "temperature": config.temperature,
+            "top_p": config.top_p,
+        }.items()
+        if v is not None
+    }

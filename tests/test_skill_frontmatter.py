@@ -107,84 +107,31 @@ def test_read_skill_properties_missing_description(tmp_path):
         _read_skill_properties(tmp_path)
 
 
-def test_read_skill_properties_optional_fields(tmp_path):
-    (tmp_path / "SKILL.md").write_text(
-        "---\nname: x\ndescription: y\nlicense: Apache-2.0\nallowed-tools: Bash(*)\n---\nbody"
-    )
-    props = _read_skill_properties(tmp_path)
-    assert props.license == "Apache-2.0"
-    assert props.allowed_tools == "Bash(*)"
-    assert props.metadata == {}
-
-
-def test_read_skill_properties_with_metadata(tmp_path):
-    (tmp_path / "SKILL.md").write_text(
-        "---\nname: x\ndescription: y\nmetadata:\n  env: prod\n---\nbody"
-    )
-    props = _read_skill_properties(tmp_path)
-    assert props.metadata == {"env": "prod"}
-
-
 # ---------------------------------------------------------------------------
-# install-as / user-invocable / is_user_command
+# Lenient argument-hint parsing (via _parse_frontmatter)
+#
+# _SkillProperties only carries the fields actually consumed in production
+# (name, description; see issue #331). The lenient frontmatter parser still
+# handles these optional keys, so coverage lives at the _parse_frontmatter
+# layer where the behaviour actually matters.
 # ---------------------------------------------------------------------------
 
 
-def test_install_as_command_is_user_command(tmp_path):
-    (tmp_path / "SKILL.md").write_text(
-        "---\nname: wtf\ndescription: Issue manager\ninstall-as: command\n---\nbody"
-    )
-    props = _read_skill_properties(tmp_path)
-    assert props.install_as == "command"
-    assert props.is_user_command is True
+def test_argument_hint_plain_string():
+    content = "---\nname: x\ndescription: y\nargument-hint: <action> [issue-id]\n---\nbody"
+    meta, _ = _parse_frontmatter(content)
+    assert meta["argument-hint"] == "<action> [issue-id]"
 
 
-def test_user_invocable_true_is_user_command(tmp_path):
-    (tmp_path / "SKILL.md").write_text(
-        "---\nname: x\ndescription: y\nuser-invocable: true\n---\nbody"
-    )
-    props = _read_skill_properties(tmp_path)
-    assert props.user_invocable is True
-    assert props.is_user_command is True
-
-
-def test_user_invocable_false_is_not_user_command(tmp_path):
-    (tmp_path / "SKILL.md").write_text(
-        "---\nname: x\ndescription: y\nuser-invocable: false\n---\nbody"
-    )
-    props = _read_skill_properties(tmp_path)
-    assert props.user_invocable is False
-    assert props.is_user_command is False
-
-
-def test_no_flags_is_user_command_by_default(tmp_path):
-    """CC default: user-invocable is True. No flags → user command."""
-    (tmp_path / "SKILL.md").write_text("---\nname: x\ndescription: y\n---\nbody")
-    props = _read_skill_properties(tmp_path)
-    assert props.is_user_command is True
-
-
-def test_argument_hint_plain_string(tmp_path):
-    (tmp_path / "SKILL.md").write_text(
-        "---\nname: x\ndescription: y\nargument-hint: <action> [issue-id]\n---\nbody"
-    )
-    props = _read_skill_properties(tmp_path)
-    assert props.argument_hint == "<action> [issue-id]"
-
-
-def test_argument_hint_invalid_yaml_is_raw_string(tmp_path):
+def test_argument_hint_invalid_yaml_is_raw_string():
     """Values like '"<title>" [-p priority]' are invalid YAML but must parse as a string."""
-    (tmp_path / "SKILL.md").write_text(
-        '---\nname: x\ndescription: y\nargument-hint: "<title>" [-p priority] [-a assignee]\n---\nbody'
-    )
-    props = _read_skill_properties(tmp_path)
-    assert props.argument_hint == '"<title>" [-p priority] [-a assignee]'
+    content = '---\nname: x\ndescription: y\nargument-hint: "<title>" [-p priority] [-a assignee]\n---\nbody'
+    meta, _ = _parse_frontmatter(content)
+    assert meta["argument-hint"] == '"<title>" [-p priority] [-a assignee]'
 
 
-def test_argument_hint_yaml_list_coerced_to_string(tmp_path):
+def test_argument_hint_yaml_list_coerced_to_string():
     """argument-hint: [label] is valid YAML (a list) but must be coerced to a string."""
-    (tmp_path / "SKILL.md").write_text(
-        "---\nname: x\ndescription: y\nargument-hint: [label]\n---\nbody"
-    )
-    props = _read_skill_properties(tmp_path)
-    assert isinstance(props.argument_hint, str)
+    content = "---\nname: x\ndescription: y\nargument-hint: [label]\n---\nbody"
+    meta, _ = _parse_frontmatter(content)
+    assert isinstance(meta["argument-hint"], str)

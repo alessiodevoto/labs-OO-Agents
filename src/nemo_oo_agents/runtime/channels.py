@@ -206,7 +206,6 @@ class Channel[T]:
         name: str,
         mode: ChannelMode,
         *,
-        agent: Any = None,
         event_manager: Any = None,
         on_get: Callable[[T], None] | None = None,
         on_put: Callable[[], None] | None = None,
@@ -220,7 +219,6 @@ class Channel[T]:
             )
         self.name = name
         self.mode: ChannelMode = mode
-        self._agent = agent
         self._event_manager = event_manager
         self._items: deque[T] = deque()
         self._waiters: deque[asyncio.Future[Any]] = deque()
@@ -481,10 +479,6 @@ class Channel[T]:
 
     # ---- lifecycle -------------------------------------------------------
 
-    def bind_agent(self, agent: Any) -> None:
-        """Late-bind the agent (for channels constructed before super().__init__)."""
-        self._agent = agent
-
     def __repr__(self) -> str:
         if self.mode == "queue":
             return f"Channel(name={self.name!r}, mode='queue', pending={len(self._items)})"
@@ -584,7 +578,7 @@ class QueueManager:
 
     Construct channels via the factories::
 
-        qm = QueueManager(agent=self, event_manager=self.event_manager)
+        qm = QueueManager(event_manager=self.event_manager)
         self.user_messages_in = qm.queue("user_messages")
         self.user_messages = self.user_messages_in.reader
         self.completions = qm.event("completions")
@@ -594,8 +588,7 @@ class QueueManager:
         items = await qm.race()   # list[(name, item)] — winner first
     """
 
-    def __init__(self, agent: Any = None, *, event_manager: Any = None) -> None:
-        self._agent = agent
+    def __init__(self, *, event_manager: Any = None) -> None:
         self._event_manager = event_manager
         # Insertion order matters — race() picks the winner by this
         # order, matching the FIFO-by-position contract the fast path
@@ -690,9 +683,7 @@ class QueueManager:
             if not replace:
                 raise ValueError(f"channel {name!r} already registered")
             self.remove_channel(name)
-        ch: Channel[T] = Channel(
-            name, "queue", agent=self._agent, on_get=on_get, on_put=self._set_notify
-        )
+        ch: Channel[T] = Channel(name, "queue", on_get=on_get, on_put=self._set_notify)
         self._channels[name] = ch
         return ch
 
@@ -722,7 +713,6 @@ class QueueManager:
         ch: Channel[T] = Channel(
             name,
             "event",
-            agent=self._agent,
             event_manager=self._event_manager,
             on_put=self._set_notify,
             preview=preview,

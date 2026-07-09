@@ -341,7 +341,7 @@ class BaseTUIAgent(Agent, llm=_DEFAULT_LLM):
         super().__init__(llm=llm or _DEFAULT_LLM, **kwargs)
         self._render_message = None
         self.vars = SnapshotVars()
-        self.queue_manager = QueueManager(agent=self, event_manager=self.event_manager)
+        self.queue_manager = QueueManager(event_manager=self.event_manager)
         self._user_messages_in = self.queue_manager.queue("user_messages")
         self.user_messages = self._user_messages_in.reader
         self._slash_commands_in = self.queue_manager.queue("slash_commands")

@@ -54,7 +54,7 @@ from nemo_oo_agents.events import (
 )
 from nemo_oo_agents.runtime.harness_metrics import get_harness_metrics
 from nemo_oo_agents.runtime.hooks import call_after_hook, call_before_hook
-from nemo_oo_agents.strategies.base import RuntimeServices
+from nemo_oo_agents.strategies.base import RuntimeServices, build_sampling_kwargs
 from nemo_oo_agents.strategies.codeact_errors import format_validation_error
 from nemo_oo_agents.strategies.composite import CompositeStrategy
 from nemo_oo_agents.strategies.generated_code import (
@@ -321,15 +321,7 @@ class CodeActStrategy(CompositeStrategy):
 
     def _build_sampling_kwargs(self) -> dict[str, Any]:
         """Build sampling kwargs for llm calls, excluding None values."""
-        return {
-            k: v
-            for k, v in {
-                "max_tokens": self.config.max_tokens,
-                "temperature": self.config.temperature,
-                "top_p": self.config.top_p,
-            }.items()
-            if v is not None
-        }
+        return build_sampling_kwargs(self.config)
 
     @property
     def name(self) -> str:

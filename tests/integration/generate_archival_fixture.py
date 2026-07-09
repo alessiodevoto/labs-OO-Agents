@@ -66,9 +66,7 @@ async def _measure_tokens(agent, llm):
     llm_token = _current_llm_var.set(llm)
     method_token = _current_method_var.set(method)
     try:
-        await agent.runtime._build_messages(
-            method, call_args=(agent, "hi"), call_kwargs={}, tools=[]
-        )
+        await agent.runtime._build_messages(method, call_args=(agent, "hi"), call_kwargs={})
     finally:
         _current_llm_var.reset(llm_token)
         _current_method_var.reset(method_token)

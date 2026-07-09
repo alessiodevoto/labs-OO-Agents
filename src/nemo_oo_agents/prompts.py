@@ -67,21 +67,30 @@ async def _get_task_prompt(runtime: Any, strategy: Any, call: Any) -> str:
 # ---------------------------------------------------------------------------
 # Prefill
 # ---------------------------------------------------------------------------
-def _get_prefill(strategy: Any, call: Any) -> tuple[str | None, str | None]:
+def _get_prefill(strategy: Any, call: Any, agent: Any) -> tuple[str | None, str | None]:
     """Return ``(inspect_code, pre_ellipsis_code)`` for *strategy* and *call*.
+
+    Mirrors the runtime prefill path (``CodeActStrategy._run_prefill``): the
+    configured ``CodeActConfig.prefill`` plugin drives the inspect prefill,
+    resolved against the agent's truncation config. ``prefill`` may be ``None``
+    (inspect prefill disabled) or a custom ``Prefill`` instance.
 
     For strategies that don't have explicit prefill support, ``pre_ellipsis``
     is still returned so that code the user wrote is never silently discarded.
     """
+    from nemo_oo_agents.config.truncation_config import DEFAULT_TRUNCATION_CONFIG
     from nemo_oo_agents.strategies.codeact import CodeActStrategy
     from nemo_oo_agents.strategies.codeact_lite import CodeActLiteStrategy
-    from nemo_oo_agents.strategies.prefill import InspectInputsPrefill
     from nemo_oo_agents.strategies.pure_python import PurePythonStrategy
 
     pre_ellipsis = call.pre_ellipsis_code
 
     if isinstance(strategy, (CodeActStrategy, CodeActLiteStrategy)):
-        return InspectInputsPrefill().get_code(call), pre_ellipsis
+        prefill = strategy.config.prefill
+        if prefill is None:
+            return None, pre_ellipsis
+        truncation_config = getattr(agent, "_truncation", DEFAULT_TRUNCATION_CONFIG)
+        return prefill.get_code(call, config=truncation_config), pre_ellipsis
 
     if isinstance(strategy, PurePythonStrategy):
         # PurePythonStrategy always has a prefill (InspectInputsPrefill by default)
@@ -140,7 +149,7 @@ async def _build_prompt_data_from_agent(
     )
 
     task_prompt = await _get_task_prompt(agent.runtime, strategy, call)
-    inspect_code, pre_ellipsis = _get_prefill(strategy, call)
+    inspect_code, pre_ellipsis = _get_prefill(strategy, call, agent)
 
     return PromptData(
         system_prompt=system_prompt,
