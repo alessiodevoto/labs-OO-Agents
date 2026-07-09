@@ -36,7 +36,9 @@ class StorageManager(Protocol):
     directly. The implementation reads/writes the agent's internals
     however it sees fit (JSON, DB rows, protobuf, etc.).
 
-    Example::
+    Example (``PostgresStorageManager`` is a hypothetical
+    implementation shown only to illustrate the interface; the storage
+    backend shipped with this package is ``SQLiteStorageManager``)::
 
         storage = PostgresStorageManager("postgresql://...")
         agent = MyAgent(storage=storage)
@@ -75,9 +77,13 @@ class StorageManager(Protocol):
                 DB key, etc.).
 
         Raises:
-            SerializationError: If a value can't be serialized by this
-                implementation (e.g., non-JSON-serializable attribute
-                that isn't marked ``transient``).
+            SerializationError: If a context-block value can't be
+                serialized by this implementation. Non-serializable
+                agent attributes are not fatal: they are logged with a
+                warning and skipped rather than raising. To exclude a
+                field from snapshots deliberately, annotate it with
+                ``Annotated[T, nosnapshot]`` or set ``__nosnapshot__ =
+                True`` on its class (see ``storage/markers.py``).
         """
         ...
 

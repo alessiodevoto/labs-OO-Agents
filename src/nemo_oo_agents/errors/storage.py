@@ -8,9 +8,12 @@ from nemo_oo_agents.errors import NemoOOAgentsError
 class SerializationError(NemoOOAgentsError):
     """Error serializing agent state for a snapshot.
 
-    Raised by StorageManager.save_snapshot() when a value can't be
-    serialized (e.g., non-JSON-serializable attribute that isn't
-    marked ``transient``).
+    Raised by StorageManager.save_snapshot() when a context-block value
+    can't be serialized. Non-serializable agent attributes are not
+    fatal — they are logged with a warning and skipped rather than
+    raising. To exclude a field from snapshots deliberately, annotate it
+    with ``Annotated[T, nosnapshot]`` or set ``__nosnapshot__ = True`` on
+    its class (see ``storage/markers.py``).
     """
 
     pass

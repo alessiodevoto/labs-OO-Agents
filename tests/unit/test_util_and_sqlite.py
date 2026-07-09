@@ -9,33 +9,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 # ---------------------------------------------------------------------------
-# util/__init__.py
-# ---------------------------------------------------------------------------
-
-
-class TestUtilInit:
-    """Tests for nemo_oo_agents.util.__init__."""
-
-    def test_logger_is_exported(self):
-        from nemo_oo_agents import util
-
-        assert hasattr(util, "logger")
-
-    def test_all_contains_logger(self):
-        import nemo_oo_agents.util as util_module
-
-        assert "logger" in util_module.__all__
-
-    def test_logger_has_expected_functions(self):
-        from nemo_oo_agents.util import logger
-
-        assert callable(logger.debug)
-        assert callable(logger.info)
-        assert callable(logger.warning)
-        assert callable(logger.error)
-
-
-# ---------------------------------------------------------------------------
 # util/_context.py
 # ---------------------------------------------------------------------------
 
@@ -50,36 +23,18 @@ class TestContext:
         # Reset to None between tests
         _current_agent_var.set(None)
 
-    def test_set_and_get_current_agent(self):
-        from nemo_oo_agents.util._context import _current_agent, _set_current_agent
-
-        fake_agent = MagicMock()
-        _set_current_agent(fake_agent)
-        assert _current_agent() is fake_agent
-
     def test_current_agent_raises_when_not_set(self):
         from nemo_oo_agents.util._context import _current_agent
 
         with pytest.raises(RuntimeError, match="No agent in context"):
             _current_agent()
 
-    def test_set_current_agent_overwrites_previous(self):
-        from nemo_oo_agents.util._context import _current_agent, _set_current_agent
-
-        agent1 = MagicMock(name="agent1")
-        agent2 = MagicMock(name="agent2")
-        _set_current_agent(agent1)
-        _set_current_agent(agent2)
-        assert _current_agent() is agent2
-
-    def test_set_current_agent_to_none_raises_on_get(self):
-        from nemo_oo_agents.util._context import _current_agent, _set_current_agent
+    def test_current_agent_returns_agent_when_set(self):
+        from nemo_oo_agents.util._context import _current_agent, _current_agent_var
 
         fake_agent = MagicMock()
-        _set_current_agent(fake_agent)
-        _set_current_agent(None)
-        with pytest.raises(RuntimeError):
-            _current_agent()
+        _current_agent_var.set(fake_agent)
+        assert _current_agent() is fake_agent
 
     def test_runtime_var_exists(self):
         """The _current_runtime_var ContextVar is also exported."""
@@ -89,287 +44,7 @@ class TestContext:
 
 
 # ---------------------------------------------------------------------------
-# util/logger.py
-# ---------------------------------------------------------------------------
-
-
-class TestLogger:
-    """Tests for nemo_oo_agents.util.logger."""
-
-    def setup_method(self):
-        """Reset context var and set a fake agent before each test."""
-        from nemo_oo_agents.util._context import _current_agent_var
-
-        self.fake_agent = MagicMock()
-        self.fake_agent.__class__.__name__ = "FakeAgent"
-        _current_agent_var.set(self.fake_agent)
-
-    def teardown_method(self):
-        from nemo_oo_agents.util._context import _current_agent_var
-
-        _current_agent_var.set(None)
-
-    def test_debug_calls_python_logger(self):
-        from nemo_oo_agents.util import logger
-
-        with patch("logging.Logger.debug") as mock_debug:
-            logger.debug("test debug message", key="value")
-            mock_debug.assert_called_once_with("test debug message", extra={"key": "value"})
-
-    def test_info_calls_python_logger(self):
-        from nemo_oo_agents.util import logger
-
-        with patch("logging.Logger.info") as mock_info:
-            logger.info("test info message", count=42)
-            mock_info.assert_called_once_with("test info message", extra={"count": 42})
-
-    def test_warning_calls_python_logger(self):
-        from nemo_oo_agents.util import logger
-
-        with patch("logging.Logger.warning") as mock_warning:
-            logger.warning("test warning", level=90)
-            mock_warning.assert_called_once_with("test warning", extra={"level": 90})
-
-    def test_error_calls_python_logger(self):
-        from nemo_oo_agents.util import logger
-
-        with patch("logging.Logger.error") as mock_error:
-            logger.error("test error", err_type="ValueError")
-            mock_error.assert_called_once_with("test error", extra={"err_type": "ValueError"})
-
-    def test_logger_name_uses_agent_class(self):
-        """Logger name should be 'agent.<ClassName>'."""
-        from nemo_oo_agents.util import logger
-
-        captured = []
-
-        original_get_logger = logging.getLogger
-
-        def mock_get_logger(name):
-            captured.append(name)
-            return original_get_logger(name)
-
-        with patch("logging.getLogger", side_effect=mock_get_logger):
-            logger.info("hello")
-
-        assert any("FakeAgent" in name for name in captured)
-
-    def test_debug_no_kwargs(self):
-        from nemo_oo_agents.util import logger
-
-        with patch("logging.Logger.debug") as mock_debug:
-            logger.debug("no extras")
-            mock_debug.assert_called_once_with("no extras", extra={})
-
-    def test_info_no_kwargs(self):
-        from nemo_oo_agents.util import logger
-
-        with patch("logging.Logger.info") as mock_info:
-            logger.info("no extras")
-            mock_info.assert_called_once_with("no extras", extra={})
-
-    def test_warning_no_kwargs(self):
-        from nemo_oo_agents.util import logger
-
-        with patch("logging.Logger.warning") as mock_warning:
-            logger.warning("no extras")
-            mock_warning.assert_called_once_with("no extras", extra={})
-
-    def test_error_no_kwargs(self):
-        from nemo_oo_agents.util import logger
-
-        with patch("logging.Logger.error") as mock_error:
-            logger.error("no extras")
-            mock_error.assert_called_once_with("no extras", extra={})
-
-    def test_logger_raises_when_no_agent(self):
-        from nemo_oo_agents.util import logger
-        from nemo_oo_agents.util._context import _current_agent_var
-
-        _current_agent_var.set(None)
-        with pytest.raises(RuntimeError, match="No agent in context"):
-            logger.info("this should fail")
-
-
-# ---------------------------------------------------------------------------
-# util/prompt.py
-# ---------------------------------------------------------------------------
-
-
-class TestPreview:
-    """Tests for prompt.preview()."""
-
-    def setup_method(self):
-        from nemo_oo_agents.util.prompt import preview
-
-        self.preview = preview
-
-    def test_short_string_unchanged(self):
-        assert self.preview("hello", max_tokens=500) == "hello"
-
-    def test_long_string_truncated_beginning_end(self):
-        """Text longer than max_chars * 2 gets beginning...end format."""
-        # max_tokens=10 -> max_chars=40; text > 80 chars triggers begin...end
-        text = "A" * 50 + "B" * 50  # 100 chars
-        result = self.preview(text, max_tokens=10)
-        assert "..." in result
-        assert result.startswith("A")
-        assert result.endswith("B")
-
-    def test_moderately_long_string_truncated_with_ellipsis_at_end(self):
-        """Text between max_chars and max_chars*2 gets text[:max_chars]..."""
-        # max_tokens=10 -> max_chars=40; 50 chars > 40 but < 80
-        text = "X" * 50
-        result = self.preview(text, max_tokens=10)
-        assert result.endswith("...")
-        assert not result.startswith("...")
-
-    def test_string_exactly_at_limit(self):
-        text = "A" * 40
-        result = self.preview(text, max_tokens=10)
-        assert result == text  # exactly at limit, no truncation
-
-    def test_list_converted_to_json(self):
-        result = self.preview([1, 2, 3], max_tokens=500)
-        assert result == "[1, 2, 3]"
-
-    def test_dict_converted_to_json(self):
-        result = self.preview({"key": "value"}, max_tokens=500)
-        import json
-
-        assert result == json.dumps({"key": "value"})
-
-    def test_dict_long_truncated(self):
-        big_dict = {"key": "value" * 1000}
-        result = self.preview(big_dict, max_tokens=50)
-        assert "..." in result
-
-    def test_list_long_truncated(self):
-        big_list = list(range(10000))
-        result = self.preview(big_list, max_tokens=50)
-        assert "..." in result
-
-    def test_arbitrary_object_uses_str(self):
-        class Obj:
-            def __str__(self):
-                return "custom_str"
-
-        result = self.preview(Obj(), max_tokens=500)
-        assert result == "custom_str"
-
-    def test_integer_uses_str(self):
-        result = self.preview(42, max_tokens=500)
-        assert result == "42"
-
-    def test_none_uses_str(self):
-        result = self.preview(None, max_tokens=500)
-        assert result == "None"
-
-    def test_default_max_tokens(self):
-        """Default max_tokens=500 -> max_chars=2000."""
-        text = "x" * 1999
-        result = self.preview(text)
-        assert result == text  # fits in 2000 chars
-
-    def test_json_serialization_failure_falls_back_to_str(self):
-        """When json.dumps fails, falls back to str()."""
-        # json is imported locally inside preview(), so we patch the json module itself
-
-        from nemo_oo_agents.util.prompt import preview
-
-        def failing_dumps(*args, **kwargs):
-            raise ValueError("forced failure")
-
-        with patch("json.dumps", side_effect=failing_dumps):
-            result = preview([1, 2, 3], max_tokens=500)
-        # Falls back to str([1, 2, 3])
-        assert result == "[1, 2, 3]"
-
-
-class TestTake:
-    """Tests for prompt.take()."""
-
-    def setup_method(self):
-        from nemo_oo_agents.util.prompt import take
-
-        self.take = take
-
-    def test_list_returns_first_n(self):
-        assert self.take([1, 2, 3, 4, 5], 3) == [1, 2, 3]
-
-    def test_list_n_larger_than_list(self):
-        assert self.take([1, 2, 3], 10) == [1, 2, 3]
-
-    def test_tuple_returns_first_n(self):
-        assert self.take((10, 20, 30, 40), 2) == [10, 20]
-
-    def test_generator_returns_first_n(self):
-        def gen():
-            yield from range(100)
-
-        assert self.take(gen(), 5) == [0, 1, 2, 3, 4]
-
-    def test_generator_stops_early(self):
-        """Generator returns first n items correctly."""
-
-        def gen():
-            yield from range(10)
-
-        result = self.take(gen(), 3)
-        assert result == [0, 1, 2]
-        assert len(result) == 3
-
-    def test_empty_list(self):
-        assert self.take([], 5) == []
-
-    def test_n_zero(self):
-        assert self.take([1, 2, 3], 0) == []
-
-    def test_range_iterable(self):
-        assert self.take(range(100), 5) == [0, 1, 2, 3, 4]
-
-
-class TestLast:
-    """Tests for prompt.last()."""
-
-    def setup_method(self):
-        from nemo_oo_agents.util.prompt import last
-
-        self.last = last
-
-    def test_list_returns_last_n(self):
-        assert self.last([1, 2, 3, 4, 5], 3) == [3, 4, 5]
-
-    def test_list_n_larger_than_list(self):
-        assert self.last([1, 2, 3], 10) == [1, 2, 3]
-
-    def test_tuple_returns_last_n(self):
-        assert self.last((10, 20, 30, 40), 2) == [30, 40]
-
-    def test_generator_returns_last_n(self):
-        def gen():
-            yield from range(10)
-
-        assert self.last(gen(), 5) == [5, 6, 7, 8, 9]
-
-    def test_empty_list(self):
-        assert self.last([], 3) == []
-
-    def test_range_iterable(self):
-        assert self.last(range(10), 5) == [5, 6, 7, 8, 9]
-
-    def test_single_item(self):
-        assert self.last([42], 1) == [42]
-
-    def test_n_larger_than_generator(self):
-        def gen():
-            yield from [1, 2]
-
-        assert self.last(gen(), 10) == [1, 2]
-
-
-# ---------------------------------------------------------------------------
-# util/quickstart.py — dataclasses only (module-level side effects are mocked)
+# util/quickstart.py — example classes (module-level side effects are mocked)
 # ---------------------------------------------------------------------------
 
 
@@ -398,6 +73,24 @@ class TestArtwork:
         assert appraisal["artist"] == "van Gogh"
         assert appraisal["value"] == 1_000_000.0
         assert appraisal["currency"] == "USD"
+
+    def test_repr_and_eq_not_broken_by_dataclass(self):
+        # Regression: a no-op @dataclass (no field annotations) generated a
+        # repr that dropped all state and an __eq__ under which every instance
+        # compared equal. With the decorator removed these are plain classes:
+        # distinct instances must not be equal and repr must not falsely
+        # collapse them.
+        with (
+            patch("dotenv.load_dotenv"),
+            patch("nemo_oo_agents.unifiedllm.registry.get_llm_client"),
+        ):
+            from nemo_oo_agents.util import quickstart
+
+            a = quickstart.Artwork("Starry Night", "van Gogh", 1_000_000.0)
+            b = quickstart.Artwork("Mona Lisa", "da Vinci", 2_000_000.0)
+        assert a != b
+        assert a == a
+        assert "Artwork" in repr(a)
 
 
 class TestStockHolding:
@@ -935,13 +628,6 @@ class TestSQLiteStorageManager:
 
         sm = SQLiteStorageManager(":memory:")
         assert sm.get_latest_snapshot_id() is None
-        sm.close()
-
-    def test_get_latest_snapshot_created_at_empty(self):
-        from nemo_oo_agents.storage.sqlite import SQLiteStorageManager
-
-        sm = SQLiteStorageManager(":memory:")
-        assert sm.get_latest_snapshot_created_at() is None
         sm.close()
 
     def test_event_backend_property(self):

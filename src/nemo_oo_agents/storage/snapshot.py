@@ -152,6 +152,13 @@ class AgentSnapshot(BaseModel):
             )
 
         for block in self.context:
+            # ``from_agent`` skips protected (framework) keys, so snapshots
+            # produced by this codebase never carry them and the
+            # ``is_protected`` branches below are unreachable for round-tripped
+            # data. They are kept deliberately as defensive handling for
+            # externally-supplied snapshot JSON — hand-edited or legacy
+            # payloads that may still contain protected keys — so such keys are
+            # restored via the protected setters rather than corrupting state.
             is_protected = block.key in agent.context_manager.protected_keys
             if isinstance(block, DynamicContextBlock):
                 if is_protected:

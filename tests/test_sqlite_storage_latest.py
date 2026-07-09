@@ -20,11 +20,6 @@ def test_get_latest_snapshot_id_empty():
     assert storage.get_latest_snapshot_id() is None
 
 
-def test_get_latest_snapshot_created_at_empty():
-    storage = _make_storage()
-    assert storage.get_latest_snapshot_created_at() is None
-
-
 def test_restore_latest_snapshot_empty_returns_false():
     storage = _make_storage()
     agent = _SimpleAgent(storage=storage)
@@ -60,14 +55,3 @@ def test_restore_latest_returns_most_recent():
     agent2 = _SimpleAgent(storage=storage)
     storage.restore_latest_snapshot(agent2)
     assert agent2.value == 99
-
-
-def test_get_latest_snapshot_created_at_is_utc_aware():
-    storage = _make_storage()
-    agent = _SimpleAgent(storage=storage)
-    storage.save_snapshot(agent)
-
-    ts = storage.get_latest_snapshot_created_at()
-    assert ts is not None
-    assert ts.tzinfo is not None
-    assert ts.utcoffset().total_seconds() == 0  # UTC

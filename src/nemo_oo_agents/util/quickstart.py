@@ -6,7 +6,6 @@ Provides some quickstart settings to get you started with some reasonable defaul
 
 import asyncio
 from collections.abc import Callable, Coroutine
-from dataclasses import dataclass
 from typing import Any
 
 from dotenv import load_dotenv
@@ -38,7 +37,6 @@ def autorun(func: Callable[[], Coroutine[Any, Any, Any]]) -> Callable[[], Corout
     return func
 
 
-@dataclass
 class Artwork:
     """A piece of art with an appraisal."""
 
@@ -57,7 +55,6 @@ class Artwork:
         }
 
 
-@dataclass
 class StockHolding:
     """A stock position with shares and price."""
 
@@ -71,7 +68,6 @@ class StockHolding:
         return self._shares * self._price_per_share
 
 
-@dataclass
 class Jewelry:
     """A piece of jewelry valued by carats."""
 
@@ -85,7 +81,6 @@ class Jewelry:
         return self._carats * self._rate_per_carat
 
 
-@dataclass
 class Collectible:
     """A collectible item whose value depends on condition."""
 
