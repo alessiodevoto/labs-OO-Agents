@@ -35,7 +35,6 @@ if TYPE_CHECKING:
     from nemo_oo_agents.config.truncation_config import TruncationConfig
     from nemo_oo_agents.context_blocks.models import ContextWindowStats
     from nemo_oo_agents.runtime.event_query import EventQuery
-    from nemo_oo_agents.runtime.harness_metrics import HarnessMetrics
     from nemo_oo_agents.runtime.restrictions import RestrictionsConfig
 
 from nemo_oo_agents.events import (
@@ -54,6 +53,7 @@ from nemo_oo_agents.runtime.context_vars import (
     _parent_agent_var,
 )
 from nemo_oo_agents.runtime.harness_metrics import (
+    HarnessMetrics,
     get_harness_metrics,
     restore_harness_metrics,
     start_harness_metrics,
@@ -750,8 +750,6 @@ class ActorRuntime:
                 summary_text,
                 log_prefix="context-error-archival",
             )
-            from nemo_oo_agents.runtime.harness_metrics import HarnessMetrics
-
             hm = get_harness_metrics()
             if isinstance(hm, HarnessMetrics):
                 hm.context_limits_events_collapsed += n_to_archive
@@ -2992,6 +2990,13 @@ class ActorRuntime:
                 model_context_window=getattr(llm_client, "context_window", None),
                 reserved_output_tokens=reserved_output,
             )
+
+        # ``render_context`` is a framework-agnostic leaf and does not touch the
+        # runtime's metrics. The runtime owns ``HarnessMetrics``, so it
+        # increments the eviction counter here from the count the renderer
+        # reported via its stats (see issue #330).
+        if result.stats.context_blocks_dropped and isinstance(hm, HarnessMetrics):
+            hm.context_limits_blocks_evicted += result.stats.context_blocks_dropped
 
         # Publish the rendered message list to the tracing sideband so
         # the litellm journal callback can compress block bodies into a

@@ -186,17 +186,16 @@ def render_context(
     message_blocks = serialized_messages
 
     # Total-context eviction: mark over-budget blocks EVICTED in place.
+    # The eviction count is reported to the caller via
+    # ``ContextWindowStats.context_blocks_dropped`` (below). The runtime owns
+    # its ``HarnessMetrics`` singleton and increments
+    # ``context_limits_blocks_evicted`` from that value — this leaf library
+    # never reaches into the runtime's metrics (see issue #330).
     context_blocks_dropped = 0
     if context_limit is not None:
         system_blocks, context_blocks_dropped = _apply_context_total_limit(
             system_blocks, context_limit, count_fn
         )
-        if context_blocks_dropped:
-            from nemo_oo_agents.runtime.harness_metrics import HarnessMetrics, get_harness_metrics
-
-            hm = get_harness_metrics()
-            if isinstance(hm, HarnessMetrics):
-                hm.context_limits_blocks_evicted += context_blocks_dropped
 
     # Stats — structural only. Token figures are NOT estimated here; the
     # runtime writes the provider-reported prompt_tokens back after the call.

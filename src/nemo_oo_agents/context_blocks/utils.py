@@ -4,13 +4,7 @@
 
 import re
 
-
-# Lazy import to avoid circular dependency:
-# context_blocks -> nemo_oo_agents.agentdoc -> nemo_oo_agents -> ... -> context_blocks
-def truncating_pformat(*args, **kwargs):  # noqa: F811
-    from nemo_oo_agents.agentdoc import truncating_pformat as _real
-
-    return _real(*args, **kwargs)
+from nemo_oo_agents.agentdoc import truncating_pformat as truncating_pformat
 
 
 def camel_to_snake(name: str) -> str:

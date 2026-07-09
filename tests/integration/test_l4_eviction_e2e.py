@@ -154,8 +154,14 @@ class TestContextBlockEviction:
         output_str = str(result.output)
         assert "content_0" in output_str
 
-    def test_harness_metrics_track_eviction(self):
-        """context_limits_blocks_evicted is populated on eviction."""
+    def test_render_context_does_not_touch_runtime_metrics(self):
+        """render_context is a framework-agnostic leaf: it reports evictions via
+        stats and never reaches into the runtime's HarnessMetrics (issue #330).
+
+        The eviction count is surfaced on ``stats.context_blocks_dropped``; the
+        runtime is responsible for folding that into
+        ``context_limits_blocks_evicted``.
+        """
         blocks = [
             ResolvedBlock(
                 key=f"block_{i}",
@@ -174,8 +180,34 @@ class TestContextBlockEviction:
                 context_limit=200,
                 count_tokens=_count_words,
             )
-            assert hm.context_limits_blocks_evicted > 0
-            assert hm.context_limits_blocks_evicted == result.stats.context_blocks_dropped
+            # Evictions are reported via stats ...
+            assert result.stats.context_blocks_dropped > 0
+            # ... but the leaf library must NOT mutate the runtime metric.
+            assert hm.context_limits_blocks_evicted == 0
+
+    @pytest.mark.asyncio
+    async def test_harness_metrics_track_eviction_end_to_end(self):
+        """context_limits_blocks_evicted is populated on eviction via the runtime.
+
+        Drives the actor's ``_build_messages`` (the real caller of
+        ``render_context``) so the eviction count flows from the renderer's
+        stats into the runtime-owned HarnessMetrics — the value must match
+        ``stats.context_blocks_dropped``.
+        """
+        agent = _mk_agent(context_window=4096, max_context_tokens=50)
+        # Oversized, non-static context block guarantees eviction under the budget.
+        agent.context["big_block"] = "data " * 500
+
+        tok = _current_llm_var.set(agent._llm)
+        try:
+            with harness_metrics_session() as hm:
+                await agent.runtime._build_messages(agent.respond, ("hi",))
+                stats = agent.runtime._last_context_stats
+                assert stats is not None
+                assert stats.context_blocks_dropped > 0
+                assert hm.context_limits_blocks_evicted == stats.context_blocks_dropped
+        finally:
+            _current_llm_var.reset(tok)
 
 
 # ── pformat(unquote_strings=True) ───────────────────────────────────────
