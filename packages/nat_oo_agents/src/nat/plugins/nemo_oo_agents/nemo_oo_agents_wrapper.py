@@ -93,6 +93,13 @@ class NemoOOAgentsWrapperConfig(FunctionBaseConfig, name="nemo_oo_agents_wrapper
         default=True,
         description="Whether to enable NeMo OO Agents OTel tracing",
     )
+    otlp_endpoint: str | None = Field(
+        default=None,
+        description="OTLP HTTP endpoint for exporting NeMo OO Agents spans "
+        "(e.g. 'http://localhost:4318/v1/traces'). When set (and enable_tracing "
+        "is True), spans are exported to this collector alongside the JSONL "
+        "trace viewer. Opt-in: no OTLP export is configured when omitted.",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -242,7 +249,7 @@ async def register(config: NemoOOAgentsWrapperConfig, b: Builder):
             # and add any OTLP exporters alongside the JSONL exporter.
             from .otel_bridge import setup_shared_tracer
 
-            setup_shared_tracer()
+            setup_shared_tracer(config.otlp_endpoint)
 
         # 4. Dynamically import the agent module + class
         if config.agent.count(":") != 1:

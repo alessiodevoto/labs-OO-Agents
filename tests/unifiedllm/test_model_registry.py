@@ -15,6 +15,7 @@ from nemo_oo_agents.unifiedllm import (
     RetryConfig,
     ensure_loaded,
     get_llm_client,
+    get_registry_config,
     reload_registry,
 )
 
@@ -87,6 +88,51 @@ class TestEmptyDefaultRegistry:
         _registry._loaded = False
         ensure_loaded()
         assert MODELS == {}
+
+
+class TestGetRegistryConfig:
+    """Public snapshot accessor over the raw MODELS dict."""
+
+    def test_returns_snapshot_copy_for_known_alias(self, tmp_path):
+        path = _write_project_config(
+            _project_dir(tmp_path),
+            """
+            models:
+              my-alias:
+                model_name: openai/my-org/my-model
+                api_base: https://gw.example.com/v1
+            """,
+        )
+        reload_registry(path)
+
+        cfg = get_registry_config("my-alias")
+        assert cfg["model_name"] == "openai/my-org/my-model"
+        assert cfg["api_base"] == "https://gw.example.com/v1"
+
+        # Mutating the returned dict must not corrupt the live registry.
+        cfg["api_base"] = "tampered"
+        assert MODELS["my-alias"]["api_base"] == "https://gw.example.com/v1"
+
+    def test_returns_empty_dict_for_unknown_alias(self):
+        assert get_registry_config("does-not-exist") == {}
+
+    def test_triggers_auto_load(self, tmp_path):
+        from nemo_oo_agents.unifiedllm import registry as _registry
+
+        _write_project_config(
+            _project_dir(tmp_path),
+            """
+            models:
+              lazy-alias:
+                model_name: openai/lazy
+            """,
+        )
+        # Simulate an un-bootstrapped process: registry not yet loaded.
+        _registry._loaded = False
+        MODELS.clear()
+
+        cfg = get_registry_config("lazy-alias")
+        assert cfg.get("model_name") == "openai/lazy"
 
 
 class TestGetLlmClient:

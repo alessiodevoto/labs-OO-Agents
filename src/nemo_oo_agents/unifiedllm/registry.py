@@ -238,6 +238,26 @@ def ensure_loaded() -> None:
         reload_registry()
 
 
+def get_registry_config(name: str) -> dict[str, Any]:
+    """Return a defensive snapshot of the raw registry config for *name*.
+
+    Public accessor over the raw ``MODELS`` dict for external readers (the
+    ``nat`` plugin, ``eval_pipeline``, viewer) that need the untyped
+    passthrough dict without importing the module-private ``MODELS`` /
+    ``_registry_lock``. Prefer :func:`nemo_oo_agents.config.get_model_config`
+    when a typed :class:`~nemo_oo_agents.config.ModelConfig` is enough.
+
+    Triggers :func:`ensure_loaded` first so standalone processes (no TUI
+    bootstrap) still see registered aliases, then copies the entry under
+    the registry lock so a concurrent :func:`reload_registry` — which does
+    ``MODELS.clear()`` then ``update()`` — can never expose a half-cleared
+    dict. Returns an empty dict when *name* is not registered.
+    """
+    ensure_loaded()
+    with _registry_lock:
+        return dict(MODELS.get(name, {}))
+
+
 def get_llm_client(name: str, *, client_type: str | None = None, **overrides) -> UnifiedLLM:
     """Create an LLM client, optionally using registry config.
 
