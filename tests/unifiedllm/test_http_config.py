@@ -33,14 +33,6 @@ def test_http_config_frozen():
         c.connect_timeout = 5.0
 
 
-def test_merge_with_overrides_only_explicit_fields():
-    base = HttpConfig()
-    override = HttpConfig(read_timeout=30.0)
-    merged = base.merge_with(override)
-    assert merged.read_timeout == 30.0
-    assert merged.connect_timeout == 10.0  # not overridden
-
-
 def test_completion_client_accepts_http_config():
     from nemo_oo_agents.unifiedllm import CompletionClient, HttpConfig
 

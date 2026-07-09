@@ -370,11 +370,6 @@ class ContextWindowStats(BaseModel):
     ] = None
 
     @property
-    def context_blocks_evicted(self) -> int:
-        """Alias for context_blocks_dropped (preferred terminology)."""
-        return self.context_blocks_dropped
-
-    @property
     def total_tokens(self) -> int | None:
         """Provider-reported prompt tokens, or None before the first response."""
         return self.prompt_tokens

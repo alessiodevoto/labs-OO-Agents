@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from typing import Any, Literal, cast
 
 import litellm
-from pydantic import BaseModel, RootModel, ValidationError
+from pydantic import BaseModel, RootModel
 
 from .http_config import HttpConfig
 from .retry import EmptyContentError, sync_retry, with_retry
@@ -1290,11 +1290,6 @@ class UnifiedLLM(ABC):
 
         return messages
 
-    @property
-    def token_calibration(self) -> TokenCalibration:
-        """Shared calibration state across all UnifiedLLM instances."""
-        return _token_calibration
-
     def count_tokens(self, text: str) -> int:
         """Count tokens using model-appropriate tokenizer.
 
@@ -1310,21 +1305,6 @@ class UnifiedLLM(ABC):
         """
         raw = litellm.token_counter(model=self.model, text=text)
         return _token_calibration.calibrate(self.model, raw)
-
-    def count_tokens_raw(self, text: str) -> int:
-        """Raw (uncalibrated) token count — for computing calibration ratios."""
-        return litellm.token_counter(model=self.model, text=text)
-
-    def supports_vision(self) -> bool:
-        """Check if this model supports vision (image inputs).
-
-        Uses litellm's model registry to determine vision capability.
-        Returns False for unknown models.
-        """
-        try:
-            return litellm.supports_vision(model=self.model)
-        except Exception:
-            return False
 
     def get_model_info(self) -> "Any":
         """Get model metadata from litellm registry.
@@ -1434,138 +1414,6 @@ class UnifiedLLM(ABC):
     ) -> LLMResponse:
         """Async version of call"""
         pass
-
-    def _format_error_message(self, error: Exception) -> str:
-        """Format parsing errors into helpful feedback for the LLM"""
-        if isinstance(error, ValidationError):
-            error_messages = []
-            for err in error.errors():
-                location = " -> ".join(str(loc) for loc in err.get("loc", []))
-                message = err.get("msg", "Unknown error")
-                error_messages.append(f"Field '{location}': {message}")
-
-            return (
-                "Your previous response did not match the required format. "
-                "Please fix the following validation errors:\n"
-                + "\n".join(f"  - {msg}" for msg in error_messages)
-            )
-
-        elif isinstance(error, json.JSONDecodeError):
-            return (
-                "Your previous response contained invalid JSON. "
-                f"Error at position {error.pos}: {error.msg}. "
-                "Please provide a valid JSON response."
-            )
-
-        return f"Error parsing your response: {str(error)}"
-
-    def call_llm_with_retry(
-        self,
-        messages: list[dict[str, Any]],
-        tools: list[Tool],
-        output_model: type[BaseModel] | None,
-        max_retries: int = 3,
-        **kwargs,
-    ) -> LLMResponse:
-        """
-        Call LLM with automatic retry on parsing errors.
-
-        Args:
-            messages: Chat history
-            tools: Available tools
-            output_model: Optional Pydantic model for structured output
-            max_retries: Maximum number of retry attempts (default 3)
-            **kwargs: Additional parameters for LLM
-
-        Returns:
-            LLMResponse with parsed content and validation applied
-
-        Raises:
-            Exception: After max retries exhausted
-        """
-        messages_copy = messages.copy()
-
-        for retry in range(max_retries):
-            try:
-                response = self.call(
-                    messages=messages_copy,
-                    tools=tools,
-                    output_model=output_model,
-                    **kwargs,
-                )
-
-                # Apply sync validation if output_model supports it
-                if (
-                    output_model
-                    and isinstance(response.content, BaseModel)
-                    and hasattr(output_model, "validate_sync")
-                ):
-                    response.content = output_model.validate_sync(response.content)  # type: ignore[attr-defined]
-
-                return response
-
-            except (ValidationError, json.JSONDecodeError, ValueError) as e:
-                if retry == max_retries - 1:
-                    raise Exception("LLM output parsing error. Max retries reached.") from e
-
-                error_message = self._format_error_message(e)
-                messages_copy.append({"role": "user", "content": error_message})
-
-        raise Exception("LLM output parsing error. Max retries reached.")
-
-    async def acall_llm_with_retry(
-        self,
-        messages: list[dict[str, Any]],
-        tools: list[Tool],
-        output_model: type[BaseModel] | None,
-        max_retries: int = 3,
-        **kwargs,
-    ) -> LLMResponse:
-        """
-        Call LLM with automatic retry on parsing errors (async version).
-
-        Args:
-            messages: Chat history
-            tools: Available tools
-            output_model: Optional Pydantic model for structured output
-            max_retries: Maximum number of retry attempts (default 3)
-            **kwargs: Additional parameters for LLM
-
-        Returns:
-            LLMResponse with parsed content and validation applied
-
-        Raises:
-            Exception: After max retries exhausted
-        """
-        messages_copy = messages.copy()
-
-        for retry in range(max_retries):
-            try:
-                response = await self.acall(
-                    messages=messages_copy,
-                    tools=tools,
-                    output_model=output_model,
-                    **kwargs,
-                )
-
-                # Apply async validation if output_model supports it
-                if (
-                    output_model
-                    and isinstance(response.content, BaseModel)
-                    and hasattr(output_model, "validate_async")
-                ):
-                    response.content = await output_model.validate_async(response.content)  # type: ignore[attr-defined]
-
-                return response
-
-            except (ValidationError, json.JSONDecodeError, ValueError) as e:
-                if retry == max_retries - 1:
-                    raise Exception("LLM output parsing error. Max retries reached.") from e
-
-                error_message = self._format_error_message(e)
-                messages_copy.append({"role": "user", "content": error_message})
-
-        raise Exception("LLM output parsing error. Max retries reached.")
 
 
 def _collect_sync(raw: Any) -> "litellm.ModelResponse":
@@ -1867,9 +1715,9 @@ class CompletionClient(UnifiedLLM):
                          passes it to litellm per call. No global state and no
                          monkey-patching of httpx — two clients with different
                          http_configs are fully independent.
-            cache_control_injection_points: Optional list of message indices to enable prompt caching.
-                This will be applied to all calls made with this client.
-                Example: [0] to cache the first (system) message in every request.
+            cache_control_injection_points: Optional list of role/position rules to
+                enable prompt caching (for example: {"role": "system"} or
+                {"role": "tool", "position": "last"}). Applied to all calls.
                 Note: Do NOT manually add cache_control to message content when using this.
             **config: Additional configuration passed to litellm (api_key, api_base, etc.)
         """
@@ -1920,7 +1768,6 @@ class CompletionClient(UnifiedLLM):
         api_params = {
             "model": self.model,
             "messages": prepared_messages,
-            "_skip_mcp_handler": True,
             **self.config,
             **kwargs,
         }
@@ -2097,7 +1944,6 @@ class CompletionClient(UnifiedLLM):
         api_params = {
             "model": self.model,
             "messages": prepared_messages,
-            "_skip_mcp_handler": True,
             **self.config,
             **kwargs,
         }
