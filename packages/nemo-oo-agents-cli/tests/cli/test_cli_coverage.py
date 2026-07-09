@@ -74,6 +74,43 @@ class TestFindProjectRoot:
         assert result.exists()
 
 
+class TestCommonFindProjectRoot:
+    """Tests for the CLI's _common.find_project_root (issue #319).
+
+    It must resolve the *user's* project root from the current working
+    directory, not the installed CLI package directory (which is what walking
+    up from ``__file__`` would find in an editable/monorepo install).
+    """
+
+    def test_walks_up_from_cwd(self, tmp_path, monkeypatch):
+        from nemo_oo_agents_cli._common import find_project_root as common_root
+
+        (tmp_path / "pyproject.toml").write_text("[project]\nname = 'demo'\n")
+        subdir = tmp_path / "src" / "pkg"
+        subdir.mkdir(parents=True)
+        monkeypatch.chdir(subdir)
+        assert common_root() == tmp_path.resolve()
+
+    def test_returns_cwd_itself_when_pyproject_present(self, tmp_path, monkeypatch):
+        from nemo_oo_agents_cli._common import find_project_root as common_root
+
+        (tmp_path / "pyproject.toml").write_text("[project]\nname = 'demo'\n")
+        monkeypatch.chdir(tmp_path)
+        assert common_root() == tmp_path.resolve()
+
+    def test_does_not_resolve_cli_package_dir(self, tmp_path, monkeypatch):
+        # With no pyproject.toml anywhere above cwd, it must fall back to cwd,
+        # never the installed CLI package directory.
+        from nemo_oo_agents_cli._common import find_project_root as common_root
+
+        empty = tmp_path / "no_project_here"
+        empty.mkdir()
+        monkeypatch.chdir(empty)
+        result = common_root()
+        assert result == empty.resolve()
+        assert "nemo_oo_agents_cli" not in str(result)
+
+
 # ---------------------------------------------------------------------------
 # _otlp_helpers.py
 # ---------------------------------------------------------------------------
@@ -391,57 +428,58 @@ from nemo_oo_agents_cli.commands.traces import (  # noqa: E402
     _find_eval_files,
     _find_trace_files,
     _has_session_id,
-    _walk_for,
+    _project_trace_dir,
 )
 from nemo_oo_agents_cli.commands.traces import (  # noqa: E402
     command as traces_command,
 )
 
 
-class TestWalkFor:
-    def test_finds_named_dir(self, tmp_path):
-        (tmp_path / "traces").mkdir()
-        results = _walk_for(tmp_path, "traces")
-        assert tmp_path / "traces" in results
-
-    def test_skips_excluded_dirs(self, tmp_path):
-        (tmp_path / ".venv" / "traces").mkdir(parents=True)
-        results = _walk_for(tmp_path, "traces")
-        assert not results
-
-    def test_recurses_into_subdirs(self, tmp_path):
-        subdir = tmp_path / "agents" / "my_agent"
-        subdir.mkdir(parents=True)
-        (subdir / "traces").mkdir()
-        results = _walk_for(tmp_path, "traces")
-        assert subdir / "traces" in results
-
-    def test_returns_empty_for_no_match(self, tmp_path):
-        results = _walk_for(tmp_path, "traces")
-        assert results == []
-
-
 class TestDiscoverTraceDirs:
     def test_finds_root_traces(self, tmp_path):
-        (tmp_path / "traces").mkdir()
+        traces = tmp_path / "traces"
+        traces.mkdir()
         dirs = _discover_trace_dirs(tmp_path)
-        assert tmp_path / "traces" in dirs
+        assert traces.resolve() in dirs
 
-    def test_finds_agents_traces(self, tmp_path):
-        agent_traces = tmp_path / "agents" / "my_agent" / "traces"
-        agent_traces.mkdir(parents=True)
+    def test_finds_project_dir_traces(self, tmp_path):
+        project_traces = tmp_path / ".nemo_oo" / "traces"
+        project_traces.mkdir(parents=True)
         dirs = _discover_trace_dirs(tmp_path)
-        assert agent_traces in dirs
+        assert project_traces.resolve() in dirs
+
+    def test_default_root_uses_cli_project_root_for_project_trace_dir(self, tmp_path, monkeypatch):
+        from nemo_oo_agents_cli.commands import traces as traces_mod
+
+        project_traces = tmp_path / ".nemo_oo" / "traces"
+        legacy_traces = tmp_path / "traces"
+        project_traces.mkdir(parents=True)
+        legacy_traces.mkdir()
+        monkeypatch.setattr(traces_mod, "find_project_root", lambda: tmp_path)
+
+        dirs = _discover_trace_dirs()
+
+        assert _project_trace_dir() == project_traces.resolve()
+        assert dirs == sorted([project_traces.resolve(), legacy_traces.resolve()])
 
     def test_returns_empty_when_none(self, tmp_path):
         dirs = _discover_trace_dirs(tmp_path)
         assert dirs == []
 
-    def test_finds_util_traces(self, tmp_path):
-        util_traces = tmp_path / "util" / "e2e_optimization" / "traces"
-        util_traces.mkdir(parents=True)
+    def test_does_not_walk_arbitrary_nested_traces(self, tmp_path):
+        nested = tmp_path / "packages" / "pkg" / "data" / "traces"
+        nested.mkdir(parents=True)
         dirs = _discover_trace_dirs(tmp_path)
-        assert util_traces in dirs
+        assert nested.resolve() not in dirs
+
+    def test_does_not_leak_internal_layout_source(self):
+        import inspect
+
+        from nemo_oo_agents_cli.commands import traces as traces_mod
+
+        source = inspect.getsource(traces_mod._discover_trace_dirs)
+        for leaked in ("e2e_optimization", "prompt-optimization", "experiments"):
+            assert leaked not in source
 
 
 class TestCollectFiles:

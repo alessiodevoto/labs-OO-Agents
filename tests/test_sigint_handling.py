@@ -1,34 +1,55 @@
 """Test SIGINT handling in web terminal."""
 
 import signal
+import socket
 import subprocess
 import sys
 import time
 
 
+def _unused_local_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return int(sock.getsockname()[1])
+
+
+def _wait_for_port(port: int, *, timeout: float = 10.0) -> None:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.settimeout(0.2)
+            if sock.connect_ex(("127.0.0.1", port)) == 0:
+                return
+        time.sleep(0.1)
+    raise TimeoutError(f"web terminal did not listen on port {port} within {timeout}s")
+
+
 def test_sigint_cleanup():
     """Test that ^C exits cleanly without traceback spam."""
-    # Start the web terminal
+    port = _unused_local_port()
+
     proc = subprocess.Popen(
-        [sys.executable, "-m", "nemo_oo_agents_cli", "term", "--port", "8001"],
+        [sys.executable, "-m", "nemo_oo_agents_cli", "term", "--port", str(port)],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
     )
 
-    # Give it a moment to start up
-    time.sleep(2)
+    try:
+        _wait_for_port(port)
 
-    # Send SIGINT (simulate ^C)
-    proc.send_signal(signal.SIGINT)
+        # Send SIGINT (simulate ^C) only after uvicorn is serving. Sending it
+        # during slow CI startup can hit Python's default handler before the
+        # command installs its async shutdown hook, producing flaky exit -2.
+        proc.send_signal(signal.SIGINT)
 
-    # Wait for it to exit
-    stdout, stderr = proc.communicate(timeout=5)
+        stdout, stderr = proc.communicate(timeout=8)
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.communicate()
 
-    # Check that it exited cleanly
     assert proc.returncode == 0, f"Expected exit code 0, got {proc.returncode}"
-
-    # Check that there's no ugly traceback in stderr
     assert "Traceback" not in stderr, f"Found traceback in stderr: {stderr}"
     assert "CancelledError" not in stderr, f"Found CancelledError in stderr: {stderr}"
 

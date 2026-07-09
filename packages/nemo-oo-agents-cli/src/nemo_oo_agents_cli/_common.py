@@ -11,17 +11,26 @@ from pathlib import Path
 
 
 def find_project_root() -> Path:
-    """Walk up from this file to find the project root (where pyproject.toml lives).
+    """Find the user's project root by walking up from the current directory.
 
-    Falls back to the current working directory if no pyproject.toml is found.
+    Starts at :func:`Path.cwd` — the directory the CLI was invoked from — and
+    walks upward, returning the first ancestor (including the cwd itself) that
+    contains a ``pyproject.toml``. Falls back to the current working directory
+    if none is found.
+
+    Walking up from the cwd (rather than from this module's ``__file__``) ensures
+    the *user's* project is resolved. Resolving from ``__file__`` would instead
+    find the installed CLI package's own ``pyproject.toml`` in an editable or
+    monorepo install, which is never what a user of ``nemo oo`` wants.
+
     Uses a local implementation to keep CLI startup fast (avoids importing
     the heavy nemo_oo_agents core package at module level).
     """
-    current = Path(__file__).resolve()
-    for parent in current.parents:
-        if (parent / "pyproject.toml").exists():
-            return parent
-    return Path.cwd()
+    cwd = Path.cwd().resolve()
+    for candidate in (cwd, *cwd.parents):
+        if (candidate / "pyproject.toml").exists():
+            return candidate
+    return cwd
 
 
 def format_size(size_bytes: int) -> str:
