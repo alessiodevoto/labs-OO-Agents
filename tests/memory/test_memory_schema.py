@@ -14,7 +14,7 @@ def test_required_minimal_and_derived_structural_fields():
     assert m.size_chars == len(m.content)
     assert m.token_len >= 1
     assert m.sentence_count == 3  # . ! ?
-    assert m.access_log == [m.created_at]  # seeded on init
+    assert [(a.ts, a.channel) for a in m.access_log] == [(m.created_at, "created")]  # seeded
     assert m.archived is False
 
 
@@ -30,7 +30,7 @@ def test_touch_bumps_recency_frequency_and_strength():
     assert m.access_count == 1
     assert m.strength == before + 1
     assert m.last_accessed_at == m.created_at + 10.0
-    assert m.access_log[-1] == m.created_at + 10.0
+    assert m.access_log[-1].ts == m.created_at + 10.0
 
 
 def test_touch_without_reinforce_keeps_strength():

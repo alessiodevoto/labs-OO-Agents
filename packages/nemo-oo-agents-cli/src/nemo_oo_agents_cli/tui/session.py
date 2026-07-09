@@ -699,6 +699,9 @@ class Session:
                 except Exception:
                     logger.debug("detach activity tracking failed", exc_info=True)
                 self._unsub_activity = None
+            # Stop idle reflection before queue/agent-loop shutdown so no
+            # executor run outlives the session (design §3 stop rule).
+            await self._interrupt_reflection(teardown=True)
             # Shut down spawned jobs before cancelling background tasks
             # so generator finally blocks run cleanly.
             qm = getattr(self.agent, "queue_manager", None)
@@ -1349,11 +1352,42 @@ class Session:
             naming.clear()
 
     # ------------------------------------------------------------------
+    # Idle reflection
+    # ------------------------------------------------------------------
+
+    async def _interrupt_reflection(self, *, teardown: bool = False) -> None:
+        """Stop any idle-reflection run, on the agent loop (where it lives).
+
+        Bounded by ``tui.reflection_grace_s`` — the caller proceeds after the
+        grace period even if the reflection thread is finishing its item.
+        """
+        from .reflection_runner import ReflectionRunner
+
+        runner = getattr(self.agent, "_tui_reflection_runner", None)
+        if not isinstance(runner, ReflectionRunner):
+            return
+
+        async def _stop() -> None:
+            await runner.interrupt()
+            if teardown:
+                runner.teardown()
+
+        app = getattr(self, "_app", None)
+        if app is not None:
+            await app.agent_run_async(_stop)
+        else:
+            await _stop()
+
+    # ------------------------------------------------------------------
     # Session manager swap (triggered by /session new)
     # ------------------------------------------------------------------
 
     async def _swap_session_manager(self, new_sm: "SessionManager") -> None:
         """Close the current session and switch to *new_sm*."""
+        # Stop idle reflection first (covers /clear, /session new, /session
+        # resume): the run must not straddle the storage/memory swap. The
+        # runner itself is rebuilt by configure_tui_memory inside _do_swap.
+        await self._interrupt_reflection()
         # Shut down spawned jobs and flush all queue channels so stale
         # items from the old session don't leak into the new one.
         qm = getattr(self.agent, "queue_manager", None)

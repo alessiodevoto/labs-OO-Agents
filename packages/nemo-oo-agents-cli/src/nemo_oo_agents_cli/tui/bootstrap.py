@@ -72,10 +72,41 @@ def tui_agent_memory_key(agent: "Agent", config: "Config") -> str:
     return f"{type(agent).__module__}:{type(agent).__qualname__}"
 
 
+def resolve_tui_memory_owner(agent: "Agent", config: "Config") -> str:
+    """The ROLE part of the agent's memory identity: config, else class name.
+
+    The full hierarchical owner is ``role@<session8>`` (composed in
+    ``configure_tui_memory``); the class-name role matches the library
+    default so one agent-kind is one role on every install path. The config
+    key (module:qualname) keeps its separate job of keying configuration.
+    """
+    key = tui_agent_memory_key(agent, config)
+    per_agent = config.tui.memory_owner_agents.get(key)
+    if per_agent:
+        return per_agent
+    if config.tui.memory_owner:
+        return config.tui.memory_owner
+    return type(agent).__name__
+
+
 def resolve_tui_memory_scope(agent: "Agent", config: "Config") -> str:
     """Return the effective TUI memory scope for *agent*."""
     key = tui_agent_memory_key(agent, config)
     return config.tui.memory_agents.get(key, config.tui.memory)
+
+
+def resolve_tui_reflection_enabled(agent: "Agent", config: "Config") -> bool:
+    """Return whether idle reflection is enabled for *agent*."""
+    key = tui_agent_memory_key(agent, config)
+    return bool(config.tui.reflection_agents.get(key, config.tui.reflection))
+
+
+def _teardown_tui_reflection(agent: "Agent") -> None:
+    """Tear down the agent's ReflectionRunner (if any) before memory changes."""
+    runner = getattr(agent, "_tui_reflection_runner", None)
+    if runner is not None:
+        runner.teardown()
+        del agent._tui_reflection_runner
 
 
 def configure_tui_memory(
@@ -91,6 +122,9 @@ def configure_tui_memory(
     key = tui_agent_memory_key(agent, config)
     agent._tui_memory_key = key
     scope = resolve_tui_memory_scope(agent, config)
+
+    # The runner is bound to the installed manager — always rebuild with it.
+    _teardown_tui_reflection(agent)
 
     existing = getattr(agent, "memory", None)
     if existing is not None and hasattr(existing, "detach"):
@@ -116,8 +150,10 @@ def configure_tui_memory(
     from nemo_oo_agents.memory.memory_skill import MemorySkill
     from nemo_oo_agents.paths import get_project_dir
 
-    if scope != "session":
-        raise ValueError(f"Unsupported TUI memory scope {scope!r}; use 'off' or 'session'.")
+    if scope not in ("session", "project"):
+        raise ValueError(
+            f"Unsupported TUI memory scope {scope!r}; use 'off', 'session', or 'project'."
+        )
 
     project_dir = get_project_dir()
     if config.tui.memory_path is not None:
@@ -129,14 +165,76 @@ def configure_tui_memory(
             and memory_path != project_dir.resolve()
         ):
             raise ValueError("tui.memory_path must stay under the project directory")
+    elif scope == "project":
+        # One durable store per working dir, shared across sessions.
+        memory_path = (
+            Path(config.agent.working_dir) / ".nemo_oo" / "memory" / "memory.sqlite"
+        ).resolve()
     else:
         if session_id is None:
             raise RuntimeError("session-scoped memory requires a session id")
         memory_path = Path(agent_db).with_name(f"{session_id}-memory.db")
 
-    memory_config = MemoryConfig(enabled=True, path=str(memory_path))
-    agent.skills.register("nemo.memory", MemorySkill(memory_config))
+    reflection_enabled = resolve_tui_reflection_enabled(agent, config)
+    memory_kwargs: dict = {}
+    if reflection_enabled:
+        # Idle mode replaces the post_task middleware: consolidation happens
+        # in idle windows (ReflectionRunner), never inline after every call.
+        from nemo_oo_agents.memory.config import ReflectionPolicy
+
+        memory_kwargs["reflection"] = ReflectionPolicy(trigger="manual")
+    owner_role = resolve_tui_memory_owner(agent, config)
+    # Hierarchical owner (design §5b): role@instance — the instance is the
+    # 8-hex session prefix; role-scope enforcement keeps knowledge shared.
+    owner = f"{owner_role}@{session_id[:8]}" if session_id else owner_role
+    memory_config = MemoryConfig(enabled=True, path=str(memory_path), owner=owner, **memory_kwargs)
+    skill_kwargs: dict = {}
+    episode_writer = None
+    if reflection_enabled and config.tui.reflection_generative:
+        from nemo_oo_agents.memory.generative import (
+            llm_episode_writer,
+            llm_reasoner,
+            llm_reconciler,
+        )
+
+        # Lazy model binding: /model switches apply to the next reflection.
+        def _session_llm() -> object:
+            return agent._llm
+
+        skill_kwargs = {
+            "reasoner": llm_reasoner(_session_llm),
+            "reconciler": llm_reconciler(_session_llm),
+        }
+        episode_writer = llm_episode_writer(_session_llm)
+    agent.skills.register("nemo.memory", MemorySkill(memory_config, **skill_kwargs))
     agent.skills.activate(["nemo.memory"])
+
+    # One-time heal: fold rows written under this agent's legacy owner
+    # spelling (the config key) into the canonical BARE ROLE — never the
+    # current full tag, or historical rows would be misattributed to today's
+    # session. Idempotent; logged to maintenance history when anything changed.
+    if key != owner_role:
+        store = agent.memory._mgr.store
+        renamed = store.rename_owner(key, owner_role)
+        if renamed:
+            store.log_maintenance("rename_owner", {"from": key, "to": owner_role, "rows": renamed})
+    # Stamp AccessRecords with the fetch point. Works for both scopes — the
+    # project store spans sessions, so the access log records which session
+    # touched each memory.
+    agent.memory._mgr.session_ref = session_id
+
+    # Idle-reflection runner: always constructed alongside memory (so the
+    # dirty counter and /reflection status work even while disabled), enabled
+    # per the resolved config, torn down above whenever memory is rewired.
+    from .reflection_runner import ReflectionRunner
+
+    agent._tui_reflection_runner = ReflectionRunner(
+        agent,
+        agent.memory._mgr,
+        config.tui,
+        enabled=reflection_enabled,
+        episode_writer=episode_writer,
+    )
 
 
 async def bootstrap(

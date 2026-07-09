@@ -530,6 +530,38 @@ class TUIApplication:
         todo_mgr = getattr(self.agent, "todo", None) if self.agent else None
         await self.open_subview(TodoExplorerView(todo_mgr))
 
+    async def open_memory_explorer(self) -> None:
+        """Open the memory explorer as an in-app subview."""
+        from .memory_explorer import (
+            MemoryExplorerView,
+            build_memory_rows,
+            last_reflection_summary,
+        )
+
+        agent = self.agent
+        memory_skill = getattr(agent, "memory", None) if agent else None
+        manager = memory_skill._mgr if memory_skill is not None else None
+        if manager is None:
+            raise RuntimeError("Memory is not enabled for this agent (see /memory).")
+
+        # All store access happens on the agent thread: row building here,
+        # the f/d actions below.
+        rows, reflection_line = await self.agent_run_async(
+            lambda: (build_memory_rows(agent, manager), last_reflection_summary(manager))
+        )
+
+        def _forget(memory_id: str) -> None:
+            self.agent_run(lambda: manager.forget(memory_id))
+
+        def _mark_done(memory_id: str) -> None:
+            self.agent_run(lambda: manager.update(memory_id, status="done"))
+
+        await self.open_subview(
+            MemoryExplorerView(
+                rows, forget=_forget, mark_done=_mark_done, last_reflection=reflection_line
+            )
+        )
+
     async def open_subview(self, view: InAppSubview) -> None:
         """Open *view* inside the existing prompt_toolkit Application.
 
@@ -1145,6 +1177,11 @@ class TUIApplication:
 
         while True:
             self._in_respond = True
+            # New input is about to start a turn: stop idle reflection first.
+            # Bounded by the grace knob — the prompt is never held hostage.
+            runner = self._reflection_runner()
+            if runner is not None:
+                await runner.interrupt()
             try:
                 result = await agent.handle(notification)
             except DispatcherExit:
@@ -1243,6 +1280,19 @@ class TUIApplication:
                 self.emit_block(
                     f"\x1b[2m{now} waiting — {len(running)} job(s) running:\n{lines}\x1b[0m"
                 )
+
+            # Turn finished and the prompt is back with the user: give idle
+            # reflection its window (the runner gates on enabled/dirty/idle,
+            # asking the queue manager, so pending work counts as not-idle).
+            # A scheduled keep-going audit may re-prompt, so it defers the
+            # signal to the audited turn's own completion.
+            keep_going_audit_pending = (
+                keep_going_enabled and str(result.kind) == "DONE" and bool(keep_going_model)
+            )
+            if not keep_going_audit_pending:
+                runner = self._reflection_runner()
+                if runner is not None:
+                    runner.on_response_done()
 
             # Race all channels for the next item(s). Returns
             # [(name, item)] for queue-mode winners or [] for
@@ -2086,6 +2136,28 @@ class TUIApplication:
         if app is not None and app.is_running:
             app.invalidate()
 
+    def _reflection_runner(self) -> Any | None:
+        """The agent's idle-reflection runner (if memory is configured).
+
+        Wires the runner's repaint hook on first contact so its indicator
+        ticks reach the app — ``Application.invalidate`` is thread-safe, and
+        the runner is rebuilt whenever memory is reconfigured, so the lazy
+        re-wire keeps every incarnation connected.
+        """
+        from .reflection_runner import ReflectionRunner
+
+        agent = self.agent
+        runner = getattr(agent, "_tui_reflection_runner", None) if agent is not None else None
+        if not isinstance(runner, ReflectionRunner):
+            return None
+        if runner.invalidate is None:
+            runner.invalidate = self._invalidate_for_reflection
+        return runner
+
+    def _invalidate_for_reflection(self) -> None:
+        if self._app.is_running:
+            self._app.invalidate()
+
     def status_text(self) -> str:
         """One-line status area text.
 
@@ -2094,12 +2166,21 @@ class TUIApplication:
         acknowledgement, and a bracketed session label when one is set. Example::
 
             ⠋ thinking...    [session-abc]
+
+        While idle reflection runs (agent otherwise quiet), the segment from
+        ``ReflectionRunner.indicator_frame()`` shows instead — it is empty
+        (zero width) whenever inactive, and never rendered while thinking.
         """
         lines: list[str] = []
         if self._agent_cancel_requested:
             lines.append(f"{self._spinner_frame} cancelling agent turn...")
         elif self.is_thinking():
             lines.append(f"{self._spinner_frame} thinking...")
+        else:
+            runner = self._reflection_runner()
+            reflection_frame = runner.indicator_frame() if runner is not None else ""
+            if reflection_frame:
+                lines.append(reflection_frame)
         if self._command_status_text:
             lines.append(self._command_status_text)
         if self._session_label:

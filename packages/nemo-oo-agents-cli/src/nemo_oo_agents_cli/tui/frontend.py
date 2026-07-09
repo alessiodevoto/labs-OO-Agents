@@ -206,6 +206,11 @@ class TerminalFrontend:
             raise RuntimeError("TUI application is not ready.")
         await self._app.open_todo_explorer()
 
+    async def open_memory_explorer(self) -> None:
+        if self._app is None:
+            raise RuntimeError("TUI application is not ready.")
+        await self._app.open_memory_explorer()
+
     async def open_activity_overlay(self, outputs: list[Output]) -> None:
         if self._app is None:
             raise RuntimeError("TUI application is not ready.")

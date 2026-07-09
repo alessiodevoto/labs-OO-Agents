@@ -23,10 +23,11 @@ from starlette.staticfiles import StaticFiles
 
 load_dotenv()
 
-from . import FRONTEND_DIR, otlp_store  # noqa: E402
+from . import FRONTEND_DIR, memory_routes, otlp_store  # noqa: E402
 from .annotation_routes import router as annotation_router  # noqa: E402
 from .eval_routes import router as eval_router  # noqa: E402
 from .explorer_routes import router as explorer_router  # noqa: E402
+from .memory_routes import router as memory_router  # noqa: E402
 from .trace_routes import router as trace_router  # noqa: E402
 
 log = logging.getLogger(__name__)
@@ -138,6 +139,7 @@ async def lifespan(app: FastAPI):
             log.info("Flushing %d pending ingest(s)…", _ingest_queue.qsize())
             await _ingest_queue.join()
         worker.cancel()
+        memory_routes.close_stores()
         _write_executor.shutdown(wait=True)
         log.info("Shutdown complete")
 
@@ -156,6 +158,7 @@ app.include_router(trace_router)
 app.include_router(eval_router)
 app.include_router(annotation_router)
 app.include_router(explorer_router)
+app.include_router(memory_router)
 
 
 # ============================================================================

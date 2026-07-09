@@ -5,6 +5,8 @@ import { EvalExperimentList } from '@/pages/EvalExperimentList';
 import { EvalExperimentDetail } from '@/pages/EvalExperimentDetail';
 import { EvalTraceDetail } from '@/pages/EvalTraceDetail';
 import { PlaygroundPage } from '@/pages/PlaygroundPage';
+import { MemoryPage } from '@/pages/MemoryPage';
+import { MemoryRecordDetail } from '@/pages/MemoryRecordDetail';
 
 function NavBar() {
   return (
@@ -36,6 +38,18 @@ function NavBar() {
           >
             Traces
           </NavLink>
+          <NavLink
+            to="/memory"
+            className={({ isActive }) =>
+              `px-3 py-1.5 text-sm rounded transition-colors ${
+                isActive
+                  ? 'bg-gray-800 text-gray-100'
+                  : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50'
+              }`
+            }
+          >
+            Memory
+          </NavLink>
         </div>
       </div>
     </nav>
@@ -53,6 +67,8 @@ export function App() {
         <Route path="/eval" element={<EvalExperimentList />} />
         <Route path="/eval/experiment/:id" element={<EvalExperimentDetail />} />
         <Route path="/eval/experiment/:id/trace/:traceId" element={<EvalTraceDetail />} />
+        <Route path="/memory" element={<MemoryPage />} />
+        <Route path="/memory/record" element={<MemoryRecordDetail />} />
         <Route path="/playground" element={<PlaygroundPage />} />
         <Route
           path="*"

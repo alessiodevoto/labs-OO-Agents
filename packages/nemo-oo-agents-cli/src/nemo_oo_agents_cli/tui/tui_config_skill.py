@@ -38,11 +38,15 @@ class TuiConfigurationSkill(Skill):
       vi_mode: false                   # Vi keybindings
       libs_dirs: ["/path/to/skills"]   # External library skill directories
       trace_dir: .nemo_oo/traces       # Trace output directory
-      memory: "off"                    # global default: "off" | "session"
+      memory: "off"                    # global default: "off" | "session" | "project"
       # memory_path: memory.db         # explicit SQLite override (optional)
-      # Per-agent sticky opt-in written by `/config set memory session`:
+      # Per-agent sticky opt-in written by `/memory on|local|off`
+      # (or `/config set memory session|project`):
       memory_agents:
-        "nemo_oo_agents_cli.tui.agent:TUIAgent": "session"
+        "nemo_oo_agents_cli.tui.agent:TUIAgent": "project"
+      reflection: false                # idle-reflection default (/reflection on|off)
+      reflection_agents:
+        "nemo_oo_agents_cli.tui.agent:TUIAgent": true
 
       # MCP servers can be configured inline here. Use env vars for secrets
       # so tokens are not committed; ${VAR} is expanded when connecting.
@@ -376,8 +380,8 @@ class TuiConfigurationSkill(Skill):
     def _set_agent_memory(self, value: str) -> str:
         """Persist memory preference for the current agent, not globally."""
         value = value.strip().strip("\\\"'")
-        if value not in {"off", "session"}:
-            return "Usage: /config set memory <off|session>"
+        if value not in {"off", "session", "project"}:
+            return "Usage: /config set memory <off|session|project>"
 
         from .commands import _set_agent_memory_config
 

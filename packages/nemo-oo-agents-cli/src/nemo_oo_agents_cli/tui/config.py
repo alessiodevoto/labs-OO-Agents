@@ -110,11 +110,29 @@ class TUIConfig(BaseModel):
     # Native scrollback with clear+rewrite transcript replay on resize.
     full_screen: bool = True
     # Long-term memory skill. Off by default; users can opt in per agent via
-    # /config set memory session. memory_path is an explicit SQLite
-    # path override.
-    memory: Literal["off", "session"] = "off"
-    memory_agents: dict[str, Literal["off", "session"]] = {}
+    # /config set memory session|project ("session" = a per-session sidecar DB,
+    # "project" = one durable store per working dir shared across sessions).
+    # memory_path is an explicit SQLite path override.
+    memory: Literal["off", "session", "project"] = "off"
+    memory_agents: dict[str, Literal["off", "session", "project"]] = {}
     memory_path: Path | None = None
+    # Writer identity for memory stores. None -> the agent's class name
+    # (matches the library default so one agent has ONE name everywhere).
+    # Set a human name ("planner") globally or per agent (keyed like memory_agents).
+    memory_owner: str | None = None
+    memory_owner_agents: dict[str, str] = Field(default_factory=dict)
+    # Idle reflection: consolidate long-term memory between turns, while the
+    # user isn't looking. Off by default; toggled per agent via /reflection
+    # (global bool + per-agent override map, mirroring memory/memory_agents).
+    # debounce_s = idle pause after a response before a run starts;
+    # grace_s = max wait for a run to stop before a new prompt dispatches anyway.
+    reflection: bool = False
+    reflection_agents: dict[str, bool] = {}
+    # Wire the LLM-backed reflection steps (reconciler/reasoner) whenever
+    # reflection is enabled. The model is the session LLM, resolved per run.
+    reflection_generative: bool = True
+    reflection_debounce_s: float = 10.0
+    reflection_grace_s: float = 0.5
 
     # Goal mode: when on, unresolved todos auto-feed the agent after each turn
     goal_mode: bool = False

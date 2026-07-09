@@ -103,15 +103,13 @@ def test_pathless_memory_uses_legacy_memory_db_not_agent_storage(tmp_path, fake_
         storage.event_backend._conn.execute("SELECT count(*) FROM memories").fetchone()
 
 
-def test_associate_unknown_relation_falls_back_to_related(agent):
+def test_associate_unknown_relation_raises(agent):
     mgr = _install(agent)
     a = agent.remember("a", type="info")
     b = agent.remember("b", type="info")
-    agent.associate(a, b, relation="nearby-ish")
-    edges = mgr.store.neighbors(a)
-    assert len(edges) == 1
-    assert edges[0].target_id == b
-    assert edges[0].type.value == "related"
+    with pytest.raises(ValueError):
+        agent.associate(a, b, relation="nearby-ish")  # no silent RELATED fallback
+    assert mgr.store.neighbors(a) == []
 
 
 def test_tools_raise_when_not_installed(fake_llm):

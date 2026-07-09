@@ -44,6 +44,8 @@ class MemoryRecalled(EventBase):
     query: str = ""
     n_results: int = 0
     hops: int = 0
+    channel: str = "recalled"  # recalled | searched
+    memory_ids: list[str] = []  # which memories surfaced (traces show the ids)
 
 
 class MemoryInjected(EventBase):
@@ -52,10 +54,18 @@ class MemoryInjected(EventBase):
     _role: ClassVar[Role] = Role.RUNTIME_EVENT
     n_memories: int = 0
     chars: int = 0
+    memory_ids: list[str] = []
+
+
+class ReflectionStarted(EventBase):
+    """A consolidation pass began (idle / manual / post_task)."""
+
+    _role: ClassVar[Role] = Role.RUNTIME_EVENT
+    trigger: str = "manual"
 
 
 class ReflectionCompleted(EventBase):
-    """An offline consolidation pass finished."""
+    """An offline consolidation pass finished (possibly interrupted)."""
 
     _role: ClassVar[Role] = Role.RUNTIME_EVENT
     merged: int = 0
@@ -63,6 +73,10 @@ class ReflectionCompleted(EventBase):
     rescored: int = 0
     pruned: int = 0
     created: int = 0
+    trigger: str = "manual"
+    interrupted: bool = False
+    stopped_in: str = ""  # op name when interrupted ("" = ran to completion)
+    duration_ms: float = 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -83,6 +97,12 @@ class MemoryStats:
     edges_added: int = 0  # graph edges formed during reflection
     pruned: int = 0  # memories forgotten (archived/deleted)
     store_size: int = 0  # active memories in the store (set on snapshot)
+    todos_open: int = 0  # open todo memories (set on snapshot)
+    todos_done: int = 0  # closed todos, done + dropped (set on snapshot)
+    refs_resolved: int = 0  # reference resolutions that came back LIVE
+    refs_dangling: int = 0  # ...that fell back to the write-time snapshot
+    cross_owner_recalls: int = 0  # recalls that explicitly widened the owner scope
+    injection_ms_total: float = 0.0  # cumulative per-turn injection latency
 
     def as_dict(self) -> dict[str, int]:
         return asdict(self)
@@ -92,5 +112,9 @@ class MemoryStats:
             f"writes={self.writes} reinforced={self.reinforced} recalls={self.recalls} "
             f"recalled_items={self.recalled_items} injections={self.injections} "
             f"injected_chars={self.injected_chars} reflections={self.reflections} merged={self.merged} "
-            f"edges_added={self.edges_added} pruned={self.pruned} store_size={self.store_size}"
+            f"edges_added={self.edges_added} pruned={self.pruned} store_size={self.store_size} "
+            f"todos={self.todos_open}open/{self.todos_done}closed "
+            f"refs={self.refs_resolved}live/{self.refs_dangling}dangling "
+            f"cross_owner_recalls={self.cross_owner_recalls} "
+            f"injection_ms={self.injection_ms_total:.0f}"
         )

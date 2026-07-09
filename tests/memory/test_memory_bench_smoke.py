@@ -59,11 +59,45 @@ def test_recall_qa_oracle_shows_full_gain():
 
 
 def test_memory_effect_oracle_shows_both_effects():
-    """Memory is useful in one scenario and detrimental in the other."""
+    """Memory is useful in one scenario, detrimental in the other — and the
+    by-reference arm fixes the detrimental case (live resolution can't go stale)."""
     res = _run("--solver", "oracle", script=MEMORY_EFFECT)
     assert res.returncode == 0, res.stderr
     assert "memory HELPED" in res.stdout  # recall scenario
     assert "memory HURT" in res.stdout  # stale scenario
+    assert "references FIXED it" in res.stdout  # stale + refs arm
+
+
+def test_todo_prospective_oracle_fires_commitments():
+    """Prospective memory: OFF fires nothing; memory arms surface + fire all
+    commitments with no false fires and close them (lifecycle)."""
+    res = _run("--solver", "oracle", script=_BENCH_DIR / "todo_prospective.py")
+    assert res.returncode == 0, res.stderr
+    out = res.stdout
+    assert "PROSPECTIVE MEMORY" in out
+    assert "0/4" in out  # the OFF floor
+    assert out.count("4/4") >= 4  # surfaced+fired for relevant and always
+
+
+def test_shared_memory_oracle_isolates_and_transfers():
+    """Owner scoping: default reads are isolated (zero leakage), owner='*' transfers."""
+    res = _run("--solver", "oracle", script=_BENCH_DIR / "shared_memory.py")
+    assert res.returncode == 0, res.stderr
+    assert "ISOLATED" in res.stdout
+    assert "TRANSFERS" in res.stdout
+    assert "leaked scout memories in default scope: 0" in res.stdout
+
+
+def test_ranger_bench_protocol_calibration():
+    """EBR-style protocol: GUIDE is the ceiling, ON learns above OFF, and the
+    ON arm never repeats a known mistake (the script exits non-zero otherwise)."""
+    res = _run("--playthroughs", "6", script=_BENCH_DIR / "ranger_bench.py")
+    assert res.returncode == 0, res.stderr
+    out = res.stdout
+    assert "TRAIL RANGER" in out
+    assert "memory effect: ON" in out
+    # the built-in calibration assert (GUIDE >= ON > OFF) did not fire
+    assert "calibration broken" not in out + res.stderr
 
 
 def test_locomo_requires_llm_credentials():

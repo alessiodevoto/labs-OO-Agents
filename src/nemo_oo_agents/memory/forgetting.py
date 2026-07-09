@@ -15,6 +15,7 @@ See ``docs/design/memory-system/design.md`` §4.2.5.
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 
 from nemo_oo_agents.memory.config import ForgetPolicy
 from nemo_oo_agents.memory.schema import Memory, MemoryType, _now
@@ -39,12 +40,19 @@ def retention(memory: Memory, now: float, cfg: ForgetPolicy) -> float:
 class ForgettingEngine:
     """Computes online retention and performs offline pruning."""
 
-    def __init__(self, store: MemoryStore, config: ForgetPolicy) -> None:
+    def __init__(
+        self, store: MemoryStore, config: ForgetPolicy, *, owner: str | None = None
+    ) -> None:
         self.store = store
         self.config = config
+        # Pruning only ever touches this owner's + unowned memories.
+        self.owner = owner
 
     def is_protected(self, memory: Memory) -> bool:
         if memory.type.value in self.config.protected_types:
+            return True
+        # An unresolved commitment must never be silently forgotten.
+        if memory.type is MemoryType.TODO and memory.status == "open":
             return True
         # High-importance memories are never auto-forgotten.
         return memory.importance >= 8.0
@@ -60,16 +68,24 @@ class ForgettingEngine:
             return False
         return retention(memory, now, self.config) < self.config.prune_activation_threshold
 
-    def prune(self, *, now: float | None = None) -> list[str]:
+    def prune(
+        self,
+        *,
+        now: float | None = None,
+        should_stop: Callable[[], bool] | None = None,
+    ) -> list[str]:
         """Archive/delete all memories that have decayed below threshold.
 
-        Returns the ids that were pruned.
+        Returns the ids that were pruned. ``should_stop`` is checked between
+        items (idle reflection interrupts here too).
         """
         if not self.config.enabled:
             return []
         now = _now() if now is None else now
         pruned: list[str] = []
-        for m in self.store.all_memories():
+        for m in self.store.all_memories(owner=self.owner):
+            if should_stop is not None and should_stop():
+                break
             if self.should_prune(m, now):
                 if self.config.archive_vs_delete == "delete":
                     self.store.delete(m.id)
