@@ -44,6 +44,7 @@ nemo-oo-agents-benchmarks = { workspace = true }
 nemo-labs-oo-agents-cli = { workspace = true }
 nemo-oo-agents-nvidia = { workspace = true }
 nooa-tui = { workspace = true }
+nooa-memory = { workspace = true }
 # nvidia-nat-nemo-oo-agents: external plugin, not in workspace
 
 [tool.uv]
@@ -62,6 +63,7 @@ members = [
     "packages/nooa-cli",
     "packages/nemo-oo-agents-nvidia",
     "packages/nooa-tui",
+    "packages/nooa-memory",
 ]
 
 
@@ -162,6 +164,7 @@ dev = [
     "nemo-oo-agents-benchmarks",
     "nemo-labs-oo-agents-cli",
     "nooa-tui",
+    "nooa-memory",
     "pre-commit>=4.5.0",
     "pyright>=1.1.408",
     "pytest-cov>=7.1.0",

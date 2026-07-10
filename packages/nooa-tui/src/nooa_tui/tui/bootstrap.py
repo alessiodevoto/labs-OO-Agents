@@ -146,9 +146,10 @@ def configure_tui_memory(
                 pass
         return
 
+    from nooa_memory import MemoryConfig
+    from nooa_memory.memory_skill import MemorySkill
+
     from nooa.paths import get_project_dir
-    from nooa_tui.memory import MemoryConfig
-    from nooa_tui.memory.memory_skill import MemorySkill
 
     if scope not in ("session", "project"):
         raise ValueError(
@@ -180,7 +181,7 @@ def configure_tui_memory(
     if reflection_enabled:
         # Idle mode replaces the post_task middleware: consolidation happens
         # in idle windows (ReflectionRunner), never inline after every call.
-        from nooa_tui.memory.config import ReflectionPolicy
+        from nooa_memory.config import ReflectionPolicy
 
         memory_kwargs["reflection"] = ReflectionPolicy(trigger="manual")
     owner_role = resolve_tui_memory_owner(agent, config)
@@ -191,7 +192,7 @@ def configure_tui_memory(
     skill_kwargs: dict = {}
     episode_writer = None
     if reflection_enabled and config.tui.reflection_generative:
-        from nooa_tui.memory.generative import (
+        from nooa_memory.generative import (
             llm_episode_writer,
             llm_reasoner,
             llm_reconciler,

@@ -4,8 +4,8 @@
 
 from __future__ import annotations
 
-from nooa_tui.memory import MemoryConfig, MemoryManager, MemoryType
-from nooa_tui.memory.config import ReflectionPolicy, SpontaneousConfig, WritePolicy
+from nooa_memory import MemoryConfig, MemoryManager, MemoryType
+from nooa_memory.config import ReflectionPolicy, SpontaneousConfig, WritePolicy
 from nooa_tui.tui.memory_explorer import (
     MemoryExplorerView,
     build_memory_rows,

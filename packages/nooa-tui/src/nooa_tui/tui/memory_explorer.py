@@ -86,8 +86,8 @@ def build_memory_rows(agent: Any, manager: Any) -> list[MemoryExplorerRow]:
     Touches the store and resolves references against the live agent, so it
     MUST run on the agent thread.
     """
-    from nooa_tui.memory.observability import per_memory_usage
-    from nooa_tui.memory.references import render, resolve
+    from nooa_memory.observability import per_memory_usage
+    from nooa_memory.references import render, resolve
 
     rows: list[MemoryExplorerRow] = []
     for m in manager.store.all_memories():

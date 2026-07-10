@@ -17,14 +17,14 @@ Demonstrates the additive memory subsystem end to end WITHOUT needing an LLM
 
 import time
 
-from nooa_tui.memory import (
+from nooa_memory import (
     Memory,
     MemoryConfig,
     MemoryManager,
     MemoryToolsMixin,
     MemoryType,
 )
-from nooa_tui.memory.config import ForgetPolicy, ReflectionPolicy
+from nooa_memory.config import ForgetPolicy, ReflectionPolicy
 
 from nooa import Agent, hidden
 from nooa.events import Task

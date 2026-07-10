@@ -33,20 +33,9 @@ if TYPE_CHECKING:
 DEFAULT_MODEL = "claude-opus-4-8"
 
 
-class SummarizationConfig(BaseModel):
-    """Configuration for history summarization.
-
-    ``max_tokens`` defaults to ``None`` meaning "80% of the LLM's context
-    window, resolved at install time." The old 100K absolute was fine when
-    models had ~200K context but fired at ~10% usage on 1M-context models
-    like Opus 4.8, making summarization feel constant. Set an explicit
-    integer to pin a specific threshold.
-    """
-
-    policy: Literal["token_budget", "none"] = "token_budget"
-    max_tokens: int | None = None
-    preserve_recent: int = 10
-    target_chars: int = 4000
+# SummarizationConfig moved to core with the interactive-agent base;
+# re-exported here so existing ``nooa_tui.tui.config`` imports keep working.
+from nooa.interactive import SummarizationConfig as SummarizationConfig  # noqa: E402
 
 
 class AgentConfig(BaseModel):
