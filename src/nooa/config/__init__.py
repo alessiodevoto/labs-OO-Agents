@@ -5,7 +5,7 @@
 Two flavours live here, both as typed objects:
 
 - **In-code configs** you construct and pass to agents/strategies:
-  ``CodeActConfig``, ``PredictConfig``, ``TruncationConfig``, ``BashConfig``, …
+  ``CodeActConfig``, ``PredictConfig``, ``TruncationConfig``, …
 - **File-based configs** resolved from the layered YAML files
   (``settings.yaml`` / ``secrets.yaml`` / ``llm_config.yaml``): ``ModelConfig``,
   ``Secrets``, and :func:`resolved_config` (the programmatic ``config show``),
@@ -32,7 +32,6 @@ from nooa.config.strategy_config import (
     ReflexionConfig,
 )
 from nooa.config.summarizer_config import MethodSummarizerConfig, TokenBudgetConfig
-from nooa.config.tool_configs import BashConfig
 from nooa.config.truncation_config import (
     CaptureConfig,
     FormatConfig,
@@ -50,7 +49,6 @@ __all__ = [
     "ReflexionConfig",
     "MethodSummarizerConfig",
     "TokenBudgetConfig",
-    "BashConfig",
     "TruncationConfig",
     "CaptureConfig",
     "MediaCaptureConfig",

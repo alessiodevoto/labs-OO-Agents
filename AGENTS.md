@@ -12,13 +12,17 @@ class MyAgent(Agent, llm=llm):
 
     # Generation method — LLM executes this; docstring = prompt
     async def analyze(self, data: str) -> Result:
-        """Analyze {data}. Use self.get_stock() for inventory checks."""
+        """Analyze the data. Use self.get_stock() for inventory checks."""
         ...  # ← ellipsis triggers LLM generation
 ```
 
 **Ellipsis (`...`) = LLM generation.** No ellipsis = regular Python.
-**Docstring = prompt.** `{param}` placeholders expand to actual arguments.
+**Docstring = prompt.** Instructions only — arguments are rendered to the LLM by default.
 **Return type = contract.** Pydantic models force structured LLM output.
+
+### Arguments Are Rendered By Default — Never `{param}` in Docstrings
+
+The framework already shows the LLM every argument: the method signature accompanies the task, the default CodeAct prefill pprint()s each parameter value under the truncation config (and the values are live REPL variables), and Predict serializes parameters with size caps. Writing `{data}` in a docstring re-injects the raw value into the instruction text — redundant, **untruncated** (huge arguments blow up the context), and it moves untrusted data into the instruction channel. Reserve `{...}` templating for what the signature cannot show: `{self.attr}` instance state and computed expressions like `{len(items)}`.
 
 ## Quick Rules
 
@@ -72,7 +76,7 @@ class SearchAgent(Agent, llm=llm):
     api_key: Annotated[str, hidden] = ""       # hidden from LLM
 
     def search(self, query: str) -> list[str]:
-        """Search the index for {query}."""
+        """Search the index for the query."""
         ...
 
     @hidden
@@ -123,9 +127,7 @@ Common typing constructs and framework symbols (`asyncio`, `typing`, strategies,
 
 ### Reserved Parameters
 
-- **`message`** — Reserved parameter name. Used for multi-turn communication. The `message()` function is available in CodeAct for the LLM to send messages back to the caller.
-
-**Avoid using this name** for your own parameters. Use an alternative like `user_message`.
+- **`reasoning`** — Reserved. Declaring it as a generation-method parameter raises `ValueError` at class creation; chain-of-thought is provided via the `reasoning()` builtin available in CodeAct-generated code. Use an alternative like `rationale`.
 
 ### Context Blocks
 
@@ -142,13 +144,15 @@ self.context.set_dynamic("project_state", "self.format_project_state()")
 
 ### Tracing
 
-```python
-from openinference_instrumentation_nooa import enable_tracing
+Tracing is automatic when the dev viewer is running (`nooa start-dev`, port 5001). To write JSONL files instead:
 
-exporter = enable_tracing(trace_dir="traces/my_agent")
+```python
+from nooa.tracing import enable_tracing, exporters
+
+enable_tracing(exporters=[exporters.jsonl("traces/my_agent")])
 ```
 
-Trace viewer runs on `NEMO_OO_TRACE_VIEWER_PORT` (default 5001). See `examples/quickstart/06_tracing.py` for a full example.
+Trace viewer runs on port 5001 by default (`nemo oo start-dev --port` to change). See `examples/quickstart/06_tracing.py` for a full example.
 
 - **All public methods are traced by default.** Private (`_private`) and dunder (`__method__`) methods are also traced unless you opt out.
 - **Use `@no_trace` to exclude from traces.** Decorate any method (public, private, or dunder) with `@no_trace` to prevent it from appearing in traces while still allowing generation.

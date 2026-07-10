@@ -102,10 +102,21 @@ class BlockFormatter(ABC):
         string. ToolCallEvents are handled structurally by :meth:`format` —
         they are not routed through ``format_event``.
 
-        Uses :func:`pformat` with structural bounds (``max_string``,
-        ``max_length``, ``max_depth``) from ``event_format``. No OOM-safety
-        cap is applied here — that belongs to L2 (stdout/stderr capture).
+        ASSISTANT-role events (``Message``, ``Reasoning``, ``LLMOutput``) with
+        string content replay verbatim — no ``EventName(...)`` repr — so the
+        model's past turns look exactly like what it naturally emits.
+        Non-string content (e.g. structured Pydantic models from Predict)
+        falls through to ``pformat`` like other events.
+
+        Everything else uses :func:`pformat` with structural bounds
+        (``max_string``, ``max_length``, ``max_depth``) from ``event_format``.
+        No OOM-safety cap is applied here — that belongs to L2 (stdout/stderr
+        capture).
         """
+        if getattr(event, "_role", None) is Role.ASSISTANT:
+            content = getattr(event, "content", None)
+            if isinstance(content, str):
+                return content
         kwargs: dict[str, Any] = {}
         if event_format is not None:
             kwargs.update(event_format.model_dump())
@@ -141,27 +152,24 @@ def _xml_system_block(block: ResolvedBlock) -> str:
 def _xml_message_content(block: ResolvedBlock) -> str:
     """Wrap an event block's content with a minimal role tag carrying metadata.
 
-    Two wrappers, mirroring who produced the event:
-
     * ``<sys>`` — USER-role events are framework-generated feedback to
       the LLM (``Task`` prompts, ``PythonOutput`` cells, ``Error`` /
       ``Feedback``, etc.). They share one wrapper because the event's
       class name is already inside the rendered content
       (``PythonOutput(...)``, ``Task(...)``) — nothing is lost, and the
       tag stays uniform across event types.
-    * ``<agent>`` — ASSISTANT-role events are the LLM's own outputs
-      (``Message``, ``Reasoning``, ``LLMOutput``). Wrapping them in
-      ``<sys>`` would misattribute the agent's messages to the system.
+    * ASSISTANT-role events (``Message``, ``Reasoning``, ``LLMOutput``)
+      are the LLM's own outputs: they pass through **unwrapped** so the
+      model's past turns replay exactly as it produced them. Wrapping
+      them (the old ``<agent>`` tag) taught models to emit
+      ``<agent>...</agent>`` literally in new outputs.
 
     Other roles fall back to ``{role}_message`` (rare — events mostly
     carry USER or ASSISTANT).
     """
-    if block.role == Role.USER:
-        role_label = "sys"
-    elif block.role == Role.ASSISTANT:
-        role_label = "agent"
-    else:
-        role_label = f"{block.role.value}_message"
+    if block.role == Role.ASSISTANT:
+        return block.content
+    role_label = "sys" if block.role == Role.USER else f"{block.role.value}_message"
     attrs: list[str] = []
     if block.metadata.source_dynamic and block.metadata.expr:
         attrs.append(f'expr="{block.metadata.expr}"')
@@ -341,8 +349,9 @@ class XMLBlockFormatter(BlockFormatter):
             "Blocks produced by `self.context.set_dynamic()` carry an "
             '`expr="..."` attribute whose value is the Python expression '
             "re-evaluated each turn.\n"
-            'Event history: system entries in `<sys tag="N">`, your own in '
-            '`<agent tag="N">`; reference via `self.events["N"]`.'
+            'Event history: system entries in `<sys tag="N">`; '
+            'reference via `self.events["N"]`. Your own messages appear '
+            "as plain assistant turns."
         )
 
     def format(self, blocks: list[ResolvedBlock]) -> list[RenderedMessage]:

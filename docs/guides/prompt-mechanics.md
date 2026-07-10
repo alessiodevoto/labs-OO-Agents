@@ -7,13 +7,13 @@ A method becomes a **generation method** (LLM-powered) when its body is `...` (e
 ```python
 # This IS a generation method (ellipsis body, default CodeActStrategy)
 async def analyze(self, data: str) -> AnalysisResult:
-    """Analyze {data} for anomalies."""
+    """Analyze the data for anomalies."""
     ...
 
 # This IS a generation method (ellipsis body, explicit strategy override)
 @strategy(PredictStrategy())
 async def analyze(self, data: str) -> AnalysisResult:
-    """Analyze {data} for anomalies."""
+    """Analyze the data for anomalies."""
     ...
 
 # This is NOT a generation method (has a real body)
@@ -28,13 +28,13 @@ async def orchestrate(self, msg: str):
 When a generation method is called, the runtime:
 
 1. Extracts the method's `__doc__` (docstring)
-2. Expands `{parameter_name}` placeholders using actual call arguments
+2. Expands `{...}` template expressions (e.g. `{self.attr}`)
 3. Wraps it in a Task event sent to the LLM as a USER message
 
 ```python
-@strategy(CodeActStrategy(max_iterations=10))
+@strategy(CodeActStrategy(config=CodeActConfig(max_iterations=10)))
 async def analyze(self, data: str) -> AnalysisResult:
-    """Analyze {data} for anomalies.
+    """Analyze the data for anomalies.
     Focus on outliers and unexpected patterns.
     Return a structured summary."""
     ...
@@ -45,7 +45,7 @@ When called as `await agent.analyze("sales Q4")`, the LLM sees:
 ```
 <user>
 # Your task
-Analyze sales Q4 for anomalies.
+Analyze the data for anomalies.
 Focus on outliers and unexpected patterns.
 Return a structured summary.
 
@@ -56,11 +56,31 @@ Please perform the task now.
 </user>
 ```
 
+## Arguments Are Rendered By Default — Don't Write `{param}`
+
+The LLM **already sees every argument value** without any templating:
+
+- The method signature is included with the task (above).
+- The default CodeAct prefill (`InspectInputsPrefill`) pprint()s each parameter
+  under the truncation config, and the actual values are live variables in the
+  REPL — the model can slice, inspect, and pass them around.
+- Predict serializes parameters into the prompt with size caps.
+
+Writing `{data}` in a docstring is technically supported (the expansion in step 2
+accepts any expression, parameters included) but is almost always wrong:
+
+- **Redundant** — the value is already rendered; you pay for it twice.
+- **Unprotected** — docstring expansion injects the *raw* value: no smart
+  truncation, so a large argument blows up the context window.
+- **Injection surface** — untrusted argument content becomes part of the
+  instruction text instead of staying clearly-delimited data.
+
+Reserve `{...}` templating for what the signature cannot show: `{self.attr}`
+instance state and computed expressions like `{len(items)}`.
+
 ## Reserved Parameter Names
 
-One parameter name has special behavior:
-
-- **`message`** — Used for multi-turn communication. The `message()` function is available in CodeAct for the LLM to send messages back to the caller.
+- **`reasoning`** is reserved: declaring it as a generation-method parameter raises `ValueError` at class creation. Chain-of-thought is surfaced through the `reasoning()` builtin available to the LLM in CodeAct-generated code, not through a parameter.
 
 ## Full Prompt Structure
 
@@ -87,11 +107,11 @@ The runtime auto-generates API documentation of the agent class and includes it 
 
 This is why SW1 helper methods are discoverable without explicitly telling the LLM about them in every docstring (though being explicit is still recommended).
 
-**Private methods** (prefixed with `_`) are **not traced** and not included in `doc(self)`. Use them for internal logic that shouldn't be visible to the LLM.
+**Private methods** (prefixed with `_`) are not included in `doc(self)` — use them for internal logic that shouldn't be visible to the LLM. (They ARE still traced by default; opt out with `@no_trace`.)
 
 ## Context Blocks vs Docstrings
 
-- **Docstring**: Specific task instructions for THIS method call. Changes per invocation via `{param}` expansion. Appears as USER role.
+- **Docstring**: Specific task instructions for THIS method call (arguments are rendered separately by default — see above). Appears as USER role.
 - **Context blocks** (`self.context["key"] = value`): Persistent or dynamic supplementary information. Appears as SYSTEM role. Available across all method calls on the same agent instance.
 
 ## Implication for Agent Design

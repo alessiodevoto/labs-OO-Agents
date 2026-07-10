@@ -53,15 +53,21 @@ The docstring IS the prompt. It tells the LLM what to do:
 
 ```python
 async def summarize(self, text: str, max_words: int = 100) -> str:
-    """Summarize the following text in {max_words} words or less.
-
-    Text to summarize:
-    {text}
+    """Summarize the text in max_words words or less.
 
     Provide a concise summary that captures the main points.
     """
     ...
 ```
+
+**Don't interpolate parameters (`{text}`, `{max_words}`) into the docstring.**
+The framework renders arguments to the LLM by default: the signature accompanies
+the task, and the default CodeAct prefill pprint()s each parameter value under
+the truncation config (the values are also live variables in the REPL); Predict
+serializes parameters with size caps. `{param}` re-injects the raw value into
+the instructions — redundant, untruncated, and it turns untrusted data into
+prompt text. Reserve `{...}` templating for `{self.attr}` instance state and
+computed expressions like `{len(items)}` (see `docs/guides/prompt-mechanics.md`).
 
 ### 4. The Body
 
@@ -133,40 +139,38 @@ class MyAgent(Agent, llm=my_llm):
 
 ## Reserved Parameter Names
 
-Avoid the following parameter name — it shadows a strategy builtin:
-
-- `message` - Used for messages to the user
+`reasoning` is **reserved**: declaring it as a generation-method parameter raises
+`ValueError` at class creation. Chain-of-thought is provided through the
+`reasoning()` builtin available in CodeAct-generated code, not a parameter.
 
 ```python
-# ❌ BAD - shadows the message() builtin
-async def bad_method(self, message: str): ...
+# ❌ ERROR - reserved name (raises ValueError at class creation)
+async def bad_method(self, reasoning: str): ...
 
 # ✅ OK - use different name
-async def good_method(self, user_message: str): ...
+async def good_method(self, rationale: str): ...
 ```
 
 ---
 
 ## Private and Public Methods
 
-All ellipsis methods are auto-wrapped, but only **public methods** are traced:
+All ellipsis methods are auto-wrapped, and **all methods are traced by default** —
+public, private, and dunder. Private methods are still hidden from `doc(self)`,
+but their calls appear in traces:
 
 ```python
 class MyAgent(Agent, llm=my_llm):
     async def public_task(self):
-        """Public → Generated + Traced"""
+        """Public → Generated + Traced + visible in doc(self)"""
         ...
 
     async def _private_helper(self):
-        """Private → Generated, NOT traced"""
-        ...
-
-    async def __dunder_method__(self):
-        """Dunder → Generated, NOT traced"""
+        """Private → Generated + Traced, hidden from doc(self)"""
         ...
 ```
 
-To opt-out of tracing for a public method:
+To opt-out of tracing for any method:
 
 ```python
 from nooa import no_trace
@@ -205,7 +209,8 @@ class Analyzer(Agent, llm=my_llm):
 
 ### Using agentdoc for Context
 
-Use `agentdoc` functions in your docstrings:
+Use `agentdoc` functions in your docstrings (`doc` is auto-injected in generated
+code; import it from `nemo_oo_agents.agentdoc` in your own modules):
 
 ```python
 from nooa.agentdoc import doc, brief
@@ -213,9 +218,6 @@ from nooa.agentdoc import doc, brief
 class MyAgent(Agent, llm=my_llm):
     async def task(self, data: str):
         """Process the data.
-
-        Context about this agent:
-        {brief(self)}
 
         Full documentation:
         {doc(self)}

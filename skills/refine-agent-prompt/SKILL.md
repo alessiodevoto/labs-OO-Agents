@@ -78,7 +78,7 @@ base classes (`BaseTUIAgent`, `Agent`), LLM client classes (`FakeLLMClient`, `ge
 internal config (`CodeActConfig`, `SummarizationConfig`, `AgentConfig`),
 pydantic internals (`BaseModel`, `Field`), private helpers (anything starting with `_`).
 
-**Fine to expose:** tool/skill classes the LLM uses (`BashTool`, `FileTool`, `WebPublisher`),
+**Fine to expose:** tool/skill classes the LLM uses (`ShellTools`, `WebPublisher`),
 `pd`, `np`, `px`, `go`, `Path`, `json`, `math`, `re`.
 
 **Fix:** wrap the import in `with hidden:` at module level:
@@ -138,7 +138,7 @@ from nooa.storage.markers import nosnapshot
 class MyAgent(Agent, llm=...):
     _phase: Annotated[str, hidden]
     _workflow_state: Annotated[dict, hidden]
-    bash: Annotated[BashTool, nosnapshot]       # visible but not snapshotted
+    bash: Annotated[ShellTools, nosnapshot]       # visible but not snapshotted
 ```
 
 **Tradeoff:** none for internal lifecycle state. If the LLM is calling `_phase` directly,
@@ -278,7 +278,7 @@ from typing import Annotated
 
 class MyAgent(Agent, llm=...):
     _phase: Annotated[str, hidden]
-    bash: Annotated[BashTool, nosnapshot]   # shown but not persisted to snapshots
+    bash: Annotated[ShellTools, nosnapshot]   # shown but not persisted to snapshots
 ```
 
 ### `nosnapshot` — exclude a field from session snapshots
@@ -287,7 +287,7 @@ class MyAgent(Agent, llm=...):
 from nooa.storage.markers import nosnapshot
 from typing import Annotated
 
-bash: Annotated[BashTool, nosnapshot]   # live tools shouldn't be serialised
+bash: Annotated[ShellTools, nosnapshot]   # live tools shouldn't be serialised
 ```
 
 ### `nooa.print_prompt` — render without an LLM call

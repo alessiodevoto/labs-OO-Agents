@@ -8,14 +8,14 @@ import os  # for LLM exec_globals (visible by default)
 from typing import Annotated
 
 from nooa.config import CodeActConfig
-from nooa.tools.bash_tool import BashTool
+from nooa.tools import ShellTools
 from nooa.util.quickstart import *
 
 
 class AnalysisAgent(Agent, llm=llm):
     """Agent demonstrating different strategy options."""
 
-    bash = BashTool()  # External tool - LLM can call this too
+    shell = ShellTools()  # External tool - LLM can call this too
 
     @strategy(PredictStrategy())
     async def classify_sentiment(self, text: str) -> str:

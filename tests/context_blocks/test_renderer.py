@@ -321,7 +321,7 @@ class TestFormatMessageContent:
     def test_xml_with_expr(self):
         """``expr=`` is only rendered for source_dynamic blocks (set_dynamic).
 
-        USER-role events wrap in ``<sys>``; assistant events in ``<agent>``.
+        USER-role events wrap in ``<sys>``; assistant events pass through bare.
         """
         from nooa.context_blocks.renderer import format_message_content
 
@@ -345,8 +345,8 @@ class TestFormatMessageContent:
         )
         assert "expr=" not in format_message_content(static, "xml")
 
-    def test_xml_with_tag(self):
-        """Assistant events wrap in ``<agent>``."""
+    def test_assistant_events_render_bare(self):
+        """Assistant events pass through unwrapped — no ``<agent>`` tag."""
         from nooa.context_blocks.renderer import format_message_content
 
         block = ResolvedBlock(
@@ -356,9 +356,8 @@ class TestFormatMessageContent:
             metadata=BlockMetadata(tag="42"),
         )
         result = format_message_content(block, "xml")
-        assert '<agent tag="42">' in result
-        assert "Hi" in result
-        assert "</agent>" in result
+        assert result == "Hi"
+        assert "<agent" not in result
 
     def test_xml_with_expr_and_tag(self):
         from nooa.context_blocks.renderer import format_message_content
