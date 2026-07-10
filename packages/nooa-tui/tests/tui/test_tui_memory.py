@@ -60,7 +60,7 @@ async def test_bootstrap_default_memory_off_does_not_activate_memory(tmp_path, m
 
 @pytest.mark.asyncio
 async def test_bootstrap_per_agent_memory_is_session_scoped(tmp_path, monkeypatch):
-    from nooa_tui.memory.memory_skill import MemorySkill
+    from nooa_memory.memory_skill import MemorySkill
     from nooa_tui.tui.bootstrap import bootstrap
 
     project_dir = _configure_project(monkeypatch, tmp_path)
@@ -390,9 +390,9 @@ async def test_owner_resolution_override_chain(tmp_path, monkeypatch):
 @pytest.mark.asyncio
 async def test_legacy_owner_rows_are_healed_on_configure(tmp_path, monkeypatch):
     """Rows written under the module:qualname key fold into the class name."""
-    from nooa_tui.memory import Memory
-    from nooa_tui.memory.embeddings import HashingEmbedder
-    from nooa_tui.memory.store import MemoryStore
+    from nooa_memory import Memory
+    from nooa_memory.embeddings import HashingEmbedder
+    from nooa_memory.store import MemoryStore
     from nooa_tui.tui.bootstrap import bootstrap
 
     _configure_project(monkeypatch, tmp_path)

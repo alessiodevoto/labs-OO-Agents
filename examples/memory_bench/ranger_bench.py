@@ -43,8 +43,8 @@ import asyncio
 import logging
 from dataclasses import dataclass, field
 
-from nooa_tui.memory import MemoryConfig, MemoryManager, MemoryType
-from nooa_tui.memory.config import VectorConfig
+from nooa_memory import MemoryConfig, MemoryManager, MemoryType
+from nooa_memory.config import VectorConfig
 
 from nooa import Agent
 from nooa.unifiedllm import FakeLLMClient

@@ -155,14 +155,22 @@ async def run() -> None:
     if args.seed_knowledge:
         seed_knowledge(Path(args.seed_knowledge).resolve(), workspace, args.variant)
 
-    from nooa_tui.tui.bootstrap import (
-        bootstrap,
-        build_registry,
-        build_session,
-        build_startup_info,
-    )
-    from nooa_tui.tui.config import Config
-    from nooa_tui.tui.frontend import TerminalFrontend
+    try:
+        from nooa_tui.tui.bootstrap import (
+            bootstrap,
+            build_registry,
+            build_session,
+            build_startup_info,
+        )
+        from nooa_tui.tui.config import Config
+        from nooa_tui.tui.frontend import TerminalFrontend
+    except ImportError as e:
+        raise SystemExit(
+            "launcher.py drives the agent inside the nooa TUI, which is a "
+            "separate internal package (nooa-tui, in the nooa-dev repo). "
+            "Install it into this environment to use the TUI runner. "
+            f"(import failed: {e})"
+        ) from e
 
     config = Config.load(
         model=None,
@@ -215,14 +223,14 @@ async def run() -> None:
     ws_store = workspace / "memory.sqlite"
 
     if args.variant == "memory":
-        from nooa_tui.memory import MemoryConfig
-        from nooa_tui.memory.config import (
+        from nooa_memory import MemoryConfig
+        from nooa_memory.config import (
             ReflectionPolicy,
             RetrievalConfig,
             SpontaneousConfig,
         )
-        from nooa_tui.memory.generative import llm_reasoner, llm_reconciler
-        from nooa_tui.memory.memory_skill import MemorySkill
+        from nooa_memory.generative import llm_reasoner, llm_reconciler
+        from nooa_memory.memory_skill import MemorySkill
 
         store_path.parent.mkdir(parents=True, exist_ok=True)
         store_path.unlink(missing_ok=True)

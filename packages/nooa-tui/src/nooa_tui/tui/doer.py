@@ -117,7 +117,7 @@ class DoerAgent(Agent):
         self.skills.activate(builtin_skills)
 
         if memory_config is not None:
-            from nooa_tui.memory.memory_skill import MemorySkill
+            from nooa_memory.memory_skill import MemorySkill
 
             self.skills.register("nemo.memory", MemorySkill(memory_config))
             self.skills.activate(["nemo.memory"])

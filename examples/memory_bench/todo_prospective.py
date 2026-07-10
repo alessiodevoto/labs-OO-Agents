@@ -38,12 +38,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from bench import make_agent_cls  # noqa: E402
 from llm import build_embedding_config, build_llm, has_llm_creds  # noqa: E402
-from nooa_tui.memory import (  # noqa: E402
+from nooa_memory import (  # noqa: E402
     MemoryConfig,
     MemoryManager,
     MemoryType,
 )
-from nooa_tui.memory.config import SpontaneousConfig, VectorConfig  # noqa: E402
+from nooa_memory.config import SpontaneousConfig, VectorConfig  # noqa: E402
 
 from nooa.events import Task  # noqa: E402
 from nooa.unifiedllm import FakeLLMClient  # noqa: E402

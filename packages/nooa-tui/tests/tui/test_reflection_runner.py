@@ -7,7 +7,7 @@ import asyncio
 import time
 
 import pytest
-from nooa_tui.memory.reflection import ReflectionReport
+from nooa_memory.reflection import ReflectionReport
 from nooa_tui.tui.config import Config
 
 
@@ -460,7 +460,7 @@ async def test_idle_run_writes_episode_then_reasoner_consumes(tmp_path, monkeypa
     """The user-specified pipeline: phase 1 writes an episode about the recent
     session window; consolidation runs next, so the reasoner abstracts that
     fresh episode IN THE SAME PASS — and the runner's own write is not dirt."""
-    from nooa_tui.memory import Memory, MemoryType
+    from nooa_memory import Memory, MemoryType
 
     from nooa.events import Task
 
@@ -515,7 +515,7 @@ async def test_idle_run_writes_episode_then_reasoner_consumes(tmp_path, monkeypa
 
 @pytest.mark.asyncio
 async def test_unnoteworthy_episode_writes_nothing(tmp_path, monkeypatch):
-    from nooa_tui.memory import MemoryType
+    from nooa_memory import MemoryType
 
     from nooa.events import Task
 

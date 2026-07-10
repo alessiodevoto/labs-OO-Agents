@@ -21,7 +21,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from nooa_tui.memory.config import EmbeddingConfig
+from nooa_memory.config import EmbeddingConfig
 
 from nooa.unifiedllm import CompletionClient, FakeLLMClient, RetryConfig
 from nooa.unifiedllm.unifiedllm import ResponsesClient

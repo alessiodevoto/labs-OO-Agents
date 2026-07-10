@@ -28,13 +28,13 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 
 try:
-    from nooa_tui.memory.config import EmbeddingConfig, ForgetPolicy, RetrievalConfig
-    from nooa_tui.memory.embeddings import get_embedder
-    from nooa_tui.memory.forgetting import ForgettingEngine
-    from nooa_tui.memory.observability import per_memory_usage, store_kpis
-    from nooa_tui.memory.retrieval import RetrievalEngine
-    from nooa_tui.memory.schema import Memory
-    from nooa_tui.memory.store import MemorySchemaError, MemoryStore
+    from nooa_memory.config import EmbeddingConfig, ForgetPolicy, RetrievalConfig
+    from nooa_memory.embeddings import get_embedder
+    from nooa_memory.forgetting import ForgettingEngine
+    from nooa_memory.observability import per_memory_usage, store_kpis
+    from nooa_memory.retrieval import RetrievalEngine
+    from nooa_memory.schema import Memory
+    from nooa_memory.store import MemorySchemaError, MemoryStore
 
     _HAS_MEMORY = True
 except ImportError:

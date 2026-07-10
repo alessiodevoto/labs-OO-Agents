@@ -35,14 +35,14 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from llm import build_embedding_config, build_llm, has_llm_creds  # noqa: E402
-from nooa_tui.memory import MemoryConfig, MemoryManager  # noqa: E402
-from nooa_tui.memory.config import (  # noqa: E402
+from nooa_memory import MemoryConfig, MemoryManager  # noqa: E402
+from nooa_memory.config import (  # noqa: E402
     ReflectionPolicy,
     RetrievalConfig,
     SpontaneousConfig,
     VectorConfig,
 )
-from nooa_tui.memory.schema import Memory, MemoryType  # noqa: E402
+from nooa_memory.schema import Memory, MemoryType  # noqa: E402
 
 from nooa import Agent  # noqa: E402
 

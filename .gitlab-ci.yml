@@ -376,6 +376,31 @@ test-cli:
       when: always
     - when: never
 
+test-memory:
+  extends: .test-base
+  script:
+    - uv run pytest packages/nooa-memory/tests --junitxml=test-results-memory.xml
+    - uv cache prune --ci
+  artifacts:
+    reports:
+      junit: test-results-memory.xml
+    expire_in: 1 day
+    when: always
+  rules:
+    - *no-schedule
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: always
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - "packages/nooa-memory/**/*"
+        - "examples/memory_bench/**/*"
+        - "src/**/*"
+        - "pyproject.toml"
+        - "uv.lock"
+        - "conftest.py"
+      when: always
+    - when: never
+
 test-tui:
   extends: .test-base
   script:

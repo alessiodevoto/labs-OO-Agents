@@ -19,7 +19,7 @@ build/
 develop-eggs/
 dist/
 !packages/nemo-oo-agents-viewer/frontend-react/dist/
-!src/nemo_oo_agents/viewer/frontend-react/dist/
+!src/nooa/viewer/frontend-react/dist/
 downloads/
 eggs/
 .eggs/
@@ -321,6 +321,7 @@ debug_http_logs/
 debug_dump_*.txt
 # NeMo OO project directory (libraries, traces, config)
 .nemo_oo/
+.nooa/
 .nemo_oo_agents/
 # Shell config stubs (empty read-only files injected by sandbox)
 .zshrc

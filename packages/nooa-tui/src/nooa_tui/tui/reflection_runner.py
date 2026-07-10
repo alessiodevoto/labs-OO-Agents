@@ -28,14 +28,14 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-try:  # optional-import pattern mirrored from nooa_tui.memory.tracing_bridge
+try:  # optional-import pattern mirrored from nooa_memory.tracing_bridge
     from opentelemetry import trace as _ot_trace
 except ImportError:  # pragma: no cover - exercised only without the tracing extra
     _ot_trace = None
 
 if TYPE_CHECKING:
-    from nooa_tui.memory.manager import MemoryManager
-    from nooa_tui.memory.reflection import ReflectionReport
+    from nooa_memory.manager import MemoryManager
+    from nooa_memory.reflection import ReflectionReport
 
     from .config import TUIConfig
 
@@ -186,7 +186,7 @@ class ReflectionRunner:
         # Event access happens on the agent loop; the executor only gets text.
         events_text = ""
         if self._episode_writer is not None:
-            from nooa_tui.memory.generative import render_recent_events
+            from nooa_memory.generative import render_recent_events
 
             events_text = render_recent_events(self._agent)
         ticker = asyncio.ensure_future(self._tick())
@@ -237,7 +237,7 @@ class ReflectionRunner:
             return
         if episode is None or self._stop.is_set():
             return  # not noteworthy, or the stop arrived while the LLM ran
-        from nooa_tui.memory import MemoryType
+        from nooa_memory import MemoryType
 
         self._self_writing = True
         try:

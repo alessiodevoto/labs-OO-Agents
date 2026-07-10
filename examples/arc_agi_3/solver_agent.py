@@ -32,9 +32,9 @@ from pathlib import Path  # noqa: F401
 from types import SimpleNamespace
 
 import numpy as np  # noqa: F401
-from nooa_tui.tui.agent import BaseTUIAgent, RespondReason, RespondResult  # noqa: F401
 
 from nooa import hidden, strategy
+from nooa.interactive import InteractiveAgent, RespondReason, RespondResult  # noqa: F401
 from nooa.media import Image  # visual grid input (show()n to the LLM)
 from nooa.runtime import show  # CodeAct builtin — attach an image to the turn
 
@@ -44,12 +44,11 @@ with hidden:
     import time
     from typing import Annotated
 
-    from nooa_tui.tui.agent import install_summarizer
-    from nooa_tui.tui.config import SummarizationConfig
     from PIL import Image as _PILImage  # PNG rendering only
 
     from nooa.agentdoc import pformat, spec
     from nooa.config import CodeActConfig
+    from nooa.interactive import SummarizationConfig, install_summarizer
     from nooa.runtime.channels import Channel, _ChannelReader
     from nooa.runtime.restrictions import (
         DEFAULT_BLOCKED_MODULES,
@@ -352,7 +351,7 @@ def _grid_png_bytes(grid, scale: int) -> bytes:
     return buf.getvalue()
 
 
-class ArcSolverBase(BaseTUIAgent):
+class ArcSolverBase(InteractiveAgent):
     """You are an interactive grid-game-solving agent. You discover the unknown rules of an
     interactive 64x64 grid game by experimenting, then solve all its levels.
     Follow the <arc_skill> context block: observe with code (never squint), one
