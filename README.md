@@ -270,14 +270,14 @@ Use `@strategy` to control reasoning style (agentic strategy) per-method. You ca
 from typing import Annotated
 
 from nooa.config import CodeActConfig
-from nooa.tools.bash_tool import BashTool
+from nooa.tools import ShellTools
 from nooa.util.quickstart import *
 
 
 class AnalysisAgent(Agent, llm=llm):
     """Agent demonstrating different strategy options."""
 
-    bash = BashTool()  # External tool - LLM can call this too
+    shell = ShellTools()  # External tool - LLM can call this too
 
     @strategy(PredictStrategy())
     async def classify_sentiment(self, text: str) -> str:
@@ -659,7 +659,7 @@ Attach a skill as an instance attribute—every instance automatically gets that
 ```python
 from pathlib import Path
 
-from nooa import SkillManager, TextSkill
+from nooa import TextSkill
 from nooa.util.quickstart import *
 
 ASSETS = Path("path/to/skills")  # directory containing skill folders
@@ -684,7 +684,7 @@ async def main():
     print(result)
 ```
 
-You can also load all skills from a directory at once with `SkillManager.install(self, skills_dir=...)`. Skills are instance attributes — every instance of the agent automatically has the skill context available.
+You can also discover and activate all skills in a directory with `SkillRegistry` (`from nemo_oo_agents.skill_registry import SkillRegistry`): construct `self.skills = SkillRegistry(self)` in `__init__`, then `self.skills.discover_skills_dirs([skills_dir])` and `self.skills.load(["cmd.*"])` / `self.skills.activate(["cmd.*"])`. Skills are instance attributes — every instance of the agent automatically has the skill context available.
 
 <details>
 <summary><strong>Show cloned repo command</strong></summary>
@@ -882,13 +882,16 @@ Configure LLMs at any granularity—from class-wide defaults to per-method overr
 
 ```python
 class MyAgent(Agent, llm=default_llm):             # 1. Class-level default
-    sub_agent = MySubAgent()                       # 2. Inherits LLM from outer class
-    @strategy(CodeActStrategy(), llm=special_llm)  # 3. Method-level override
+    @strategy(CodeActStrategy(), llm=special_llm)  # 2. Method-level override
     async def complex_task(self) -> str:
-        ...
+        sub = MySubAgent()                         # 3. Subagent without llm= inherits the
+        ...                                        #    calling parent's LLM (any explicit
+                                                   #    llm= on the subagent overrides it)
 
 agent = MyAgent(llm=different_llm)                 # 4. Instance-level override
 ```
+
+Child agents inherit their parent's LLM by default; give a subagent its own `llm=` (class or instance level) to override. Inheritance is resolved at construction from the calling agent, so construct no-`llm` subagents inside a parent agent method — not in `__init__` or at module level.
 
 ### Event-Driven History
 

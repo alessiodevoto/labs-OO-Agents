@@ -8,7 +8,6 @@ Covers:
 - runtime/method_wrapper.py: resolved_strategy falsy check
 - strategies/generated_code.py: TypeError in _is_pydantic_model issubclass
 - strategies/prefill.py: ImportError for Media import
-- tools/bash_tool.py: str.find returns -1 (impossible path — see note)
 - skill.py: _find_skill_md on non-directory
 - storage/snapshot.py: is_nosnapshot_value continue path
 - storage/sqlite.py: SessionAlreadyActiveError, close-on-connect-failure
@@ -619,18 +618,6 @@ class TestPrefillMediaImportError:
 
         assert _is_media(42) is False
         assert _is_media("hello") is False
-
-
-# =============================================================================
-# tools/bash_tool.py — str.find returns -1 (impossible after str.count)
-#
-# NOTE: The guard on line 413 is mathematically impossible to reach.
-# After `count = content.count(search_block)` confirms count > 1,
-# `content.find(search_block, pos)` cannot return -1 within the
-# `for _ in range(count)` loop. This is dead code — the source
-# should have this guard removed (or replaced with a pragma).
-# Per instructions, we are not modifying source files.
-# =============================================================================
 
 
 # =============================================================================

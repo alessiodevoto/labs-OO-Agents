@@ -2645,76 +2645,8 @@ class TestPurePythonStripXmlWrapper:
 
 
 # =============================================================================
-# tools/bash_tool.py
-# =============================================================================
 
 
-class TestBashToolSrtPath:
-    """Lines 112-114: BashTool.__init__ srt_executable paths."""
-
-    def test_srt_executable_without_tilde_sets_path_directly(self):
-        """Line 112: srt_executable without '~' is used directly."""
-        from nooa.config.tool_configs import BashConfig
-        from nooa.tools.bash_tool import BashTool
-
-        config = BashConfig(srt_executable="/usr/local/bin/srt")
-        tool = BashTool(config=config)
-        assert tool._srt_path == "/usr/local/bin/srt"
-
-    def test_srt_executable_with_tilde_exception_falls_back(self):
-        """Lines 113-114: expanduser() exception falls back to srt_executable string."""
-        from pathlib import Path
-        from unittest.mock import patch
-
-        from nooa.config.tool_configs import BashConfig
-        from nooa.tools.bash_tool import BashTool
-
-        def bad_expanduser(self):
-            raise RuntimeError("Cannot expand home")
-
-        config = BashConfig(srt_executable="~/bin/srt")
-        with patch.object(Path, "expanduser", bad_expanduser):
-            tool = BashTool(config=config)
-        assert tool._srt_path == "~/bin/srt"
-
-
-class TestBashToolTimeoutKillException:
-    """Lines 211-212: run() timeout where proc.kill() raises is silently ignored."""
-
-    @pytest.mark.asyncio
-    async def test_kill_exception_during_timeout_is_suppressed(self):
-        """Lines 211-212: proc.kill() raising during timeout is caught and suppressed."""
-        from unittest.mock import AsyncMock, MagicMock, patch
-
-        from nooa.tools.bash_tool import BashTool
-
-        tool = BashTool()
-
-        # Create a mock process whose kill() raises
-        mock_proc = MagicMock()
-        mock_proc.kill.side_effect = OSError("cannot kill")
-        mock_proc.pid = 99999
-        mock_proc._transport = None
-        mock_proc.wait = AsyncMock()
-        mock_proc.communicate = AsyncMock()
-
-        async def fake_subprocess(*args, **kwargs):
-            return mock_proc
-
-        async def fake_wait_for(coro, timeout):
-            # Close the coroutine to avoid RuntimeWarning
-            coro.close()
-            raise TimeoutError()
-
-        with patch("asyncio.create_subprocess_shell", side_effect=fake_subprocess):
-            with patch("asyncio.wait_for", side_effect=fake_wait_for):
-                result = await tool.run("sleep 100", timeout=0.001)
-
-        assert result.return_code == -1
-        assert "timed out" in result.stderr
-
-
-# =============================================================================
 # runtime/media_capture.py — PIL and matplotlib paths
 # =============================================================================
 
@@ -2749,55 +2681,9 @@ class TestMediaCaptureContentBlocks:
 
 
 # =============================================================================
-# =============================================================================
 
 
 # =============================================================================
 
 
 # =============================================================================
-# tools/bash_tool.py — mv failure and temp cleanup (lines 438, 441)
-# =============================================================================
-
-
-class TestBashToolEditMvFailure:
-    """Lines 438, 441: mv failure raises OSError; temp file cleaned up."""
-
-    @pytest.mark.asyncio
-    async def test_mv_failure_raises_oserror(self):
-        """Line 438: mv returns non-zero → OSError raised."""
-        from unittest.mock import MagicMock, patch
-
-        from nooa.tools.bash_tool import BashResult, BashTool, FileTool
-
-        bash = BashTool()
-        tool = FileTool(bash)
-
-        original_content = "x = 1\nold_code\nz = 3"
-
-        async def mock_run(cmd, **kwargs):
-            if "py_compile" in cmd:
-                return BashResult(stdout="", stderr="", return_code=0, sandboxed=False)
-            if "mv " in cmd:
-                return BashResult(
-                    stdout="", stderr="mv: permission denied", return_code=1, sandboxed=False
-                )
-            if "rm -f" in cmd:
-                return BashResult(stdout="", stderr="", return_code=0, sandboxed=False)
-            return BashResult(stdout="", stderr="", return_code=0, sandboxed=False)
-
-        tool.bash = MagicMock()
-        tool.bash.run = mock_run
-
-        async def mock_read(path):
-            return BashResult(stdout=original_content, stderr="", return_code=0, sandboxed=False)
-
-        async def mock_write(path, content):
-            pass
-
-        tool.read = mock_read
-        tool.write = mock_write
-
-        with patch("pathlib.Path.exists", return_value=True):
-            with pytest.raises(OSError, match="Failed to move temp file"):
-                await tool.edit_file("test.py", "old_code", "new_code")
