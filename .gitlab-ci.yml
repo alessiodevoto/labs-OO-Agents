@@ -450,11 +450,6 @@ upload-test-report:
 # Blocks merge if STABLE tier tests fail (Frontier/Horizon are non-blocking)
 capability-test:
   stage: capability
-  variables:
-    # NVIDIA model aliases (claude-haiku, ...) used by the test matrix. The
-    # nemo-oo-agents-nvidia package moved to nooa-dev with the split; the
-    # gate keeps a copy of its registry YAML with the CI tooling instead.
-    NEMO_OO_LLM_CONFIG: util/ci/llm_config_nvidia.yaml
   tags:
     - os/linux
   # DAG: run as soon as test-core finishes (no full-stage wait).
@@ -474,6 +469,13 @@ capability-test:
   before_script:
     # --no-extra sandbox: nemoclaw requires manylinux_2_39, CI runners have manylinux_2_36
     - uv sync --all-extras --no-extra sandbox
+    # Model aliases (claude-haiku, ...): install the real nemo-oo-agents-nvidia
+    # package from nooa-dev (single source of truth — no registry YAML in this
+    # repo). CI-time fetch only; requires this project on nooa-dev's job-token
+    # allowlist. Its nooa.bundled_configs entry point registers the aliases.
+    - apt-get update -qq && apt-get install -y -qq git
+    - git config --global url."https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab-master.nvidia.com/".insteadOf "https://gitlab-master.nvidia.com/"
+    - uv pip install "nemo-oo-agents-nvidia @ git+https://gitlab-master.nvidia.com/interactive-agents/nooa-dev.git#subdirectory=packages/nemo-oo-agents-nvidia"
   script:
     - rm -rf results/ci/ capability-results.zip
     # The model passed here must be present in tests/capability/config.yaml.
@@ -594,10 +596,6 @@ capability-test:
 #   The tests self-skip if that key is absent, so a misconfigured schedule is a no-op.
 integration-return-types:
   stage: capability
-  variables:
-    # NVIDIA model aliases — same registry copy the capability gate uses
-    # (the nemo-oo-agents-nvidia package moved to nooa-dev with the split).
-    NEMO_OO_LLM_CONFIG: util/ci/llm_config_nvidia.yaml
   tags:
     - os/linux
   image:
@@ -615,8 +613,15 @@ integration-return-types:
     paths:
       - $UV_CACHE_DIR
   before_script:
-    # Model aliases come from util/ci/llm_config_nvidia.yaml via NEMO_OO_LLM_CONFIG.
+    # --no-extra sandbox: nemoclaw requires manylinux_2_39, CI runners have manylinux_2_36
     - uv sync --all-extras --no-extra sandbox
+    # Model aliases (claude-haiku, ...): install the real nemo-oo-agents-nvidia
+    # package from nooa-dev (single source of truth — no registry YAML in this
+    # repo). CI-time fetch only; requires this project on nooa-dev's job-token
+    # allowlist. Its nooa.bundled_configs entry point registers the aliases.
+    - apt-get update -qq && apt-get install -y -qq git
+    - git config --global url."https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab-master.nvidia.com/".insteadOf "https://gitlab-master.nvidia.com/"
+    - uv pip install "nemo-oo-agents-nvidia @ git+https://gitlab-master.nvidia.com/interactive-agents/nooa-dev.git#subdirectory=packages/nemo-oo-agents-nvidia"
   script:
     # -m integration selects the key-gated live matrix (skipped by the default
     #  `-m 'not integration'`). Per-test reruns absorb transient gateway
