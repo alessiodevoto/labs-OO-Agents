@@ -545,6 +545,18 @@ class TestNestedClassImport:
                 {fqn},
             )
 
+    def test_legacy_nemo_oo_agents_class_path_imports_renamed_nooa_class(self):
+        """Snapshots saved before the nooa rename restore through the new module path."""
+        fqn = "nemo_oo_agents.storage.snapshot_vars.SnapshotVars"
+        restored = deserialize(
+            {"__type__": "dict_class", "__class__": fqn, "data": {"_data": {"answer": 42}}},
+            {fqn},
+        )
+        from nooa.storage.snapshot_vars import SnapshotVars
+
+        assert isinstance(restored, SnapshotVars)
+        assert restored["answer"] == 42
+
 
 # ---------------------------------------------------------------------------
 # Bug 1: SKIP must not leak into nested collections
