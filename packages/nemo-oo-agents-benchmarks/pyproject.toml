@@ -156,3 +156,6 @@ fallback-version = "0.2.0"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/nemo_oo_agents_benchmarks"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"../../THIRD_PARTY_NOTICES.md" = "THIRD_PARTY_NOTICES.md"

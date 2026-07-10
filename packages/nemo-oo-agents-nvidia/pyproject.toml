@@ -2,7 +2,8 @@
 name = "nemo-oo-agents-nvidia"
 version = "0.1.0"
 description = "NVIDIA-gateway model aliases for NeMo OO Agents — bundled LLM-registry defaults discovered via entry-point"
-license = {text = "Apache-2.0"}
+license = "Apache-2.0"
+license-files = ["THIRD_PARTY_NOTICES.md"]
 readme = "README.md"
 authors = [
     {name = "NVIDIA NeMo Team"},
