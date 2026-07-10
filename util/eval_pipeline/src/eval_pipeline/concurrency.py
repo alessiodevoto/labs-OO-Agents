@@ -17,7 +17,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any, TypeVar
 
-from nemo_oo_agents_benchmarks.evaluation.protocol import TaskState
+from eval_pipeline.protocol import TaskState
 
 T = TypeVar("T")
 R = TypeVar("R")

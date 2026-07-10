@@ -299,7 +299,7 @@ class TestSubprocessEngine:
     @pytest.mark.asyncio
     async def test_run_tasks(self, tmp_path):
         """SubprocessEngine runs tasks via JSON subprocess workers."""
-        from nemo_oo_agents_benchmarks.evaluation.concurrency import (
+        from eval_pipeline.concurrency import (
             ConcurrencyConfig,
             SubprocessEngine,
         )

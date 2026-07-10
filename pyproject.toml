@@ -40,11 +40,8 @@ trace-explorer = "nooa.trace_explorer:main"
 
 [tool.uv.sources]
 eval_pipeline = { workspace = true }
-nemo-oo-agents-benchmarks = { workspace = true }
 nemo-labs-oo-agents-cli = { workspace = true }
-nemo-oo-agents-nvidia = { workspace = true }
-nooa-tui = { workspace = true }
-nooa-memory = { workspace = true }
+nemo-labs-oo-agents-memory = { workspace = true }
 # nvidia-nat-nemo-oo-agents: external plugin, not in workspace
 
 [tool.uv]
@@ -59,10 +56,7 @@ environments = [
 [tool.uv.workspace]
 members = [
     "util/eval_pipeline",
-    "packages/nemo-oo-agents-benchmarks",
     "packages/nooa-cli",
-    "packages/nemo-oo-agents-nvidia",
-    "packages/nooa-tui",
     "packages/nooa-memory",
 ]
 
@@ -103,13 +97,6 @@ mcp = [
 # `uv sync --extra nemo-flow`. See examples/quickstart/13_nemo_flow.py and
 # src/nooa/nemo_flow_middleware.py.
 nemo-flow = []  # yanked; re-add as nemo-relay when available
-# Bundled NVIDIA-gateway model aliases (claude-haiku, nemotron3-nano-30b,
-# gpt-5.2, …). Registers via the nooa.bundled_configs
-# entry-point group; install to get the aliases, omit for an
-# OSS-only registry.
-nvidia = [
-    "nemo-oo-agents-nvidia",
-]
 
 # CLI/TUI ship as a separate package: `uv add nemo-labs-oo-agents-cli`.
 # Data-science stack for the LLM REPL: `uv add nemo-labs-oo-agents-cli[datascience]`.
@@ -164,15 +151,18 @@ dev = [
     "opentelemetry-exporter-otlp-proto-http>=1.39.1",
     "eval_pipeline",
     # Workspace packages — keep benchmarks + cli installed/editable in dev sync
-    "nemo-oo-agents-benchmarks",
     "nemo-labs-oo-agents-cli",
-    "nooa-tui",
-    "nooa-memory",
+    "nemo-labs-oo-agents-memory",
     "pre-commit>=4.5.0",
     "pyright>=1.1.408",
     "pytest-cov>=7.1.0",
     "pyte>=0.8.2",
     "ptyprocess>=0.7.0",
+    # Data-science libs exercised by core tests (REPL scoping, return-type
+    # adapters, doc adapters). Previously installed transitively via the
+    # benchmarks package, which moved to nooa-dev.
+    "pandas>=2.0.0",
+    "matplotlib>=3.8.0",
 ]
 
 [tool.pytest.ini_options]
@@ -185,14 +175,12 @@ testpaths = [
     "tests/unifiedllm",
     "tests/tracing",
     "tests/test_mcp",
-    "packages/nemo-oo-agents-benchmarks/tests",
     "packages/nooa-cli/tests/cli",
     "packages/nooa-cli/tests/integration",
     "tests/trace_explorer",
 ]
 pythonpath = [
     "src",
-    "packages/nemo-oo-agents-benchmarks/src",
     "packages/nooa-cli/src",
 ]
 addopts = "-v --tb=short --import-mode=importlib -m 'not integration and not stress'"
@@ -288,7 +276,6 @@ include = [
 #   its own package; clean up alongside benchmarks.
 # - nat_oo_agents: external NAT plugin; imports nat.* which is not a dev dep.
 exclude = [
-    "packages/nemo-oo-agents-benchmarks",
     "packages/nooa-cli",
     "packages/nat_oo_agents",
 ]

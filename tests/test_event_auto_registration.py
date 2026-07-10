@@ -258,19 +258,6 @@ class TestExistingEventsStillWork:
             == "AfterTurn"
         )
 
-    def test_tui_events(self):
-        from nooa_tui.tui.tui_events import (
-            TUIAgentMessage,
-            TUISessionRename,
-            TUISessionStart,
-            TUIUserInput,
-        )
-
-        assert TUISessionStart().event_type == "TUISessionStart"
-        assert TUISessionRename().event_type == "TUISessionRename"
-        assert TUIUserInput().event_type == "TUIUserInput"
-        assert TUIAgentMessage().event_type == "TUIAgentMessage"
-
     def test_rich_output_event(self):
         from nooa.tools.web_publisher import RichOutput
 
