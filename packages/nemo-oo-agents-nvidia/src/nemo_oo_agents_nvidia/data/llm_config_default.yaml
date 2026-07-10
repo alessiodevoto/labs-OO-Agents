@@ -228,7 +228,13 @@ models:
     max_tokens: 64000
 
   # ===========================================================================
-  # AWS Anthropic (via NVIDIA gateway)
+  # Anthropic Claude (via NVIDIA gateway)
+  #
+  # Routed to Bedrock (aws/…) by default. The newest Claude models route to Azure
+  # (azure/…) instead: on Bedrock the gateway emits the native
+  # `output_config.format` structured-output field, which those routes reject, so
+  # structured outputs (Pydantic return types) fail. In each such entry the Bedrock
+  # `model_name` is kept commented out to show the endpoint was not forgotten.
   # ===========================================================================
   claude-opus:
     model_name: openai/aws/anthropic/claude-opus-4-5
@@ -263,14 +269,17 @@ models:
       - reasoning_effort
 
   claude-opus-4-7:
-    model_name: openai/aws/anthropic/bedrock-claude-opus-4-7
+    # Bedrock rejects structured output on this model; use Azure.
+    # model_name: openai/aws/anthropic/bedrock-claude-opus-4-7
+    model_name: openai/azure/anthropic/claude-opus-4-7
     api_base: https://inference-api.nvidia.com/v1
     api_key_env: NVIDIA_INTERNAL_API_KEY
     context_window: 1000000
     max_tokens: 64000
 
-  # Azure-routed Anthropic (distinct from AWS bedrock route above)
   claude-opus-4-8:
+    # Bedrock rejects structured output on this model; use Azure.
+    # model_name: openai/aws/anthropic/bedrock-claude-opus-4-8
     model_name: openai/azure/anthropic/claude-opus-4-8
     api_base: https://inference-api.nvidia.com/v1
     api_key_env: NVIDIA_INTERNAL_API_KEY
@@ -278,6 +287,7 @@ models:
     max_tokens: 64000
 
   claude-haiku:
+    # Bedrock haiku route is not accessible with this key; use Azure.
     model_name: openai/azure/anthropic/claude-haiku-4-5
     api_base: https://inference-api.nvidia.com/v1
     api_key_env: NVIDIA_INTERNAL_API_KEY
@@ -287,8 +297,8 @@ models:
     allowed_openai_params:
       - reasoning_effort
 
-  # Azure-routed Haiku alias for capability-test runs that need the Azure
-  # Anthropic path while preserving the existing AWS-backed claude-haiku alias.
+  # Duplicate Azure-routed Haiku alias kept for capability-test runs that
+  # reference it explicitly.
   claude-haiku-azure:
     model_name: openai/azure/anthropic/claude-haiku-4-5
     api_base: https://inference-api.nvidia.com/v1
@@ -321,6 +331,22 @@ models:
     context_window: 200000
     temperature: 1.0
     max_tokens: 16384
+
+  claude-sonnet-4-6:
+    model_name: openai/aws/anthropic/bedrock-claude-sonnet-4-6
+    api_base: https://inference-api.nvidia.com/v1
+    api_key_env: NVIDIA_INTERNAL_API_KEY
+    context_window: 200000
+    max_tokens: 64000
+
+  claude-sonnet-5:
+    # Bedrock rejects structured output on this model; use Azure.
+    # model_name: openai/aws/anthropic/bedrock-claude-sonnet-5
+    model_name: openai/azure/anthropic/claude-sonnet-5
+    api_base: https://inference-api.nvidia.com/v1
+    api_key_env: NVIDIA_INTERNAL_API_KEY
+    context_window: 200000
+    max_tokens: 64000
 
   # ===========================================================================
   # GCP Google Gemini (via NVIDIA gateway)
