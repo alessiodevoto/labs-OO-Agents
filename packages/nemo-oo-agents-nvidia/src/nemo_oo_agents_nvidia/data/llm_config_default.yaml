@@ -227,6 +227,23 @@ models:
     context_window: 272000
     max_tokens: 64000
 
+  gpt-5.6:
+    model_name: openai/azure/openai/gpt-5.6
+    api_base: https://inference-api.nvidia.com/v1
+    api_key_env: NVIDIA_INTERNAL_API_KEY
+    context_window: 272000
+    max_tokens: 64000
+
+  gpt-5.6-responses:
+    client_type: responses
+    model_name: openai/azure/openai/gpt-5.6
+    api_base: https://inference-api.nvidia.com/v1
+    api_key_env: NVIDIA_INTERNAL_API_KEY
+    context_window: 272000
+    max_tokens: 64000
+    reasoning:
+      effort: medium
+
   # ===========================================================================
   # Anthropic Claude (via NVIDIA gateway)
   #

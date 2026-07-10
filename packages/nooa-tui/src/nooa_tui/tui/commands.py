@@ -525,6 +525,99 @@ class SwitchCommand(Command):
         return CommandResult.ok(TextOutput(f"Switched to model: {selected}", "success"))
 
 
+class ReasoningCommand(Command):
+    """Toggle reasoning mode for the current model."""
+
+    @property
+    def name(self) -> str:
+        return "reasoning"
+
+    @classmethod
+    def help_text(cls) -> dict[str, str]:
+        return {"/reasoning [off|low|medium|high]": "Toggle reasoning mode for the current model"}
+
+    def validate_args(self, args: list[str]) -> tuple[bool, str | None]:
+        if len(args) > 1:
+            return False, "Usage: /reasoning [off|low|medium|high]"
+        if args and args[0].lower() not in ("off", "low", "medium", "high"):
+            return False, "Usage: /reasoning [off|low|medium|high]"
+        return True, None
+
+    def _get_reasoning_state(self) -> tuple[str, str]:
+        """Return (effort_level, client_type) for the current model.
+
+        effort_level is 'off', 'low', 'medium', or 'high'.
+        client_type is 'responses' or 'completion'.
+        """
+        from nooa.unifiedllm.unifiedllm import ResponsesClient
+
+        llm = self.agent.llm
+        is_responses = isinstance(llm, ResponsesClient)
+        client_type = "responses" if is_responses else "completion"
+
+        if is_responses:
+            reasoning = llm.config.get("reasoning")
+            if reasoning and isinstance(reasoning, dict):
+                return reasoning.get("effort", "off"), client_type
+            return "off", client_type
+        else:
+            effort = llm.config.get("reasoning_effort")
+            if effort:
+                return str(effort), client_type
+            return "off", client_type
+
+    def _set_reasoning(self, level: str) -> None:
+        """Set reasoning level on the live LLM client config."""
+        from nooa.unifiedllm.unifiedllm import ResponsesClient
+
+        llm = self.agent.llm
+        is_responses = isinstance(llm, ResponsesClient)
+
+        if level == "off":
+            if is_responses:
+                llm.config.pop("reasoning", None)
+            else:
+                llm.config.pop("reasoning_effort", None)
+        else:
+            if is_responses:
+                llm.config["reasoning"] = {"effort": level}
+            else:
+                llm.config["reasoning_effort"] = level
+                # Ensure the gateway knows this param is allowed
+                allowed = llm.config.get("allowed_openai_params")
+                if isinstance(allowed, list):
+                    if "reasoning_effort" not in allowed:
+                        allowed.append("reasoning_effort")
+                else:
+                    llm.config["allowed_openai_params"] = ["reasoning_effort"]
+
+    async def execute(self, args: list[str]) -> "CommandResult":
+        if not args:
+            effort, client_type = self._get_reasoning_state()
+            model = self.config.default_model
+            status = f"**{effort}**" if effort != "off" else "off"
+            return CommandResult.ok(
+                TextOutput(
+                    f"Reasoning for {model} ({client_type}): {status}",
+                    "info",
+                )
+            )
+
+        level = args[0].lower()
+
+        def _apply():
+            self._set_reasoning(level)
+
+        try:
+            await self.agent_run_async(_apply)
+        except Exception as e:
+            return CommandResult.err(f"Failed to set reasoning: {e}")
+        model = self.config.default_model
+        if level == "off":
+            return CommandResult.ok(TextOutput(f"Reasoning disabled for {model}", "success"))
+        return CommandResult.ok(TextOutput(f"Reasoning set to {level} for {model}", "success"))
+
+
 class ThemeCommand(Command):
     """Switch the color theme."""
 
@@ -2701,6 +2794,7 @@ class CommandRegistry:
         "toolbar": ToolbarCommand,
         "activity": ActivityCommand,
         "bug": BugCommand,
+        "reasoning": ReasoningCommand,
     }
 
     def __init__(
