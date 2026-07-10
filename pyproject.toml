@@ -140,6 +140,9 @@ fallback-version = "0.2.0"
 [tool.hatch.build.targets.wheel]
 packages = ["src/nooa"]
 
+[tool.hatch.build.targets.wheel.force-include]
+"THIRD_PARTY_NOTICES.md" = "THIRD_PARTY_NOTICES.md"
+
 [dependency-groups]
 trace-viewer = [
     "uvicorn>=0.38.0",
