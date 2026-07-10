@@ -1,5 +1,5 @@
 [project]
-name = "nooa-memory"
+name = "nemo-labs-oo-agents-memory"
 # Version is derived from git tags at build time by uv-dynamic-versioning.
 dynamic = ["version"]
 description = "Long-term memory system for nooa agents (ships with the ARC-AGI-3 example; not yet published)"

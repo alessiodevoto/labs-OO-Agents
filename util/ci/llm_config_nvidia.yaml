@@ -1,19 +1,11 @@
-# Bundled default model registry — ships inside the nemo-oo-agents-nvidia
-# wheel and is discovered by core via the `nemo_oo_agents.bundled_configs`
-# entry-point group.
+# NVIDIA model aliases for the capability-test CI gate.
 #
-# Loaded automatically as the lowest-priority layer of the config chain
-# when the package is installed. To customize, run `nemo-oo config eject`
-# (writes a copy to ~/.config/nemo_oo/llm_config.yaml), point
-# NEMO_OO_LLM_CONFIG at a different file, or drop an llm_config.yaml in
-# your project's .nemo_oo/ directory.
-#
-# External users who don't want these NVIDIA aliases simply don't install
-# nemo-oo-agents-nvidia.
-#
-# Most aliases below route through NVIDIA's internal inference gateway
-# (OpenAI-compatible endpoint). Set NVIDIA_INTERNAL_API_KEY (or
-# NVIDIA_API_KEY for the public NIM endpoint) to use them.
+# A copy of nemo-oo-agents-nvidia's bundled registry (that package lives in
+# the nooa-dev repo since the split). The capability-test job points
+# NEMO_OO_LLM_CONFIG at this file so the gate's model matrix (claude-haiku,
+# nemotron3-nano-30b, ...) resolves without installing the package.
+# Keep in sync with nooa-dev:packages/nemo-oo-agents-nvidia when aliases the
+# gate uses change.
 
 models:
   # ===========================================================================

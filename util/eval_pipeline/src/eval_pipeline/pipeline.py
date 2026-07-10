@@ -28,7 +28,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Protocol
 
-from nemo_oo_agents_benchmarks.evaluation.concurrency import (
+from eval_pipeline.concurrency import (
     ConcurrencyConfig,
     ConcurrencyEngine,
     SubprocessEngine,

@@ -220,16 +220,3 @@ class TestBundledDefaults:
         )
         chain = llm_config_chain()
         assert chain == [first.resolve(), second.resolve()]
-
-    def test_nvidia_package_registered_via_entry_point(self):
-        """End-to-end: the workspace-installed ``nemo-oo-agents-nvidia``
-        package registers under ``nooa.bundled_configs``.
-
-        Bypasses the autouse-fixture stub by inspecting
-        :mod:`importlib.metadata` directly.
-        """
-        from importlib import metadata
-
-        eps = metadata.entry_points(group="nooa.bundled_configs")
-        names = {ep.name for ep in eps}
-        assert "nvidia" in names, names

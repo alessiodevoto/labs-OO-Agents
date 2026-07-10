@@ -328,30 +328,6 @@ test-mcp:
       when: always
     - when: never
 
-test-benchmarks:
-  extends: .test-base
-  script:
-    - uv run pytest packages/nemo-oo-agents-benchmarks/tests --junitxml=test-results-benchmarks.xml
-    - uv cache prune --ci
-  artifacts:
-    reports:
-      junit: test-results-benchmarks.xml
-    expire_in: 1 day
-    when: always
-  rules:
-    - *no-schedule
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-      when: always
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-      changes:
-        - "packages/nemo-oo-agents-benchmarks/**/*"
-        - "src/**/*"
-        - "pyproject.toml"
-        - "uv.lock"
-        - "conftest.py"
-      when: always
-    - when: never
-
 test-cli:
   extends: .test-base
   script:
@@ -393,31 +369,6 @@ test-memory:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
         - "packages/nooa-memory/**/*"
-        - "examples/memory_bench/**/*"
-        - "src/**/*"
-        - "pyproject.toml"
-        - "uv.lock"
-        - "conftest.py"
-      when: always
-    - when: never
-
-test-tui:
-  extends: .test-base
-  script:
-    - uv run pytest packages/nooa-tui/tests --junitxml=test-results-tui.xml
-    - uv cache prune --ci
-  artifacts:
-    reports:
-      junit: test-results-tui.xml
-    expire_in: 1 day
-    when: always
-  rules:
-    - *no-schedule
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-      when: always
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-      changes:
-        - "packages/nooa-tui/**/*"
         - "examples/memory_bench/**/*"
         - "src/**/*"
         - "pyproject.toml"
@@ -499,6 +450,11 @@ upload-test-report:
 # Blocks merge if STABLE tier tests fail (Frontier/Horizon are non-blocking)
 capability-test:
   stage: capability
+  variables:
+    # NVIDIA model aliases (claude-haiku, ...) used by the test matrix. The
+    # nemo-oo-agents-nvidia package moved to nooa-dev with the split; the
+    # gate keeps a copy of its registry YAML with the CI tooling instead.
+    NEMO_OO_LLM_CONFIG: util/ci/llm_config_nvidia.yaml
   tags:
     - os/linux
   # DAG: run as soon as test-core finishes (no full-stage wait).
@@ -638,6 +594,10 @@ capability-test:
 #   The tests self-skip if that key is absent, so a misconfigured schedule is a no-op.
 integration-return-types:
   stage: capability
+  variables:
+    # NVIDIA model aliases — same registry copy the capability gate uses
+    # (the nemo-oo-agents-nvidia package moved to nooa-dev with the split).
+    NEMO_OO_LLM_CONFIG: util/ci/llm_config_nvidia.yaml
   tags:
     - os/linux
   image:
@@ -655,7 +615,7 @@ integration-return-types:
     paths:
       - $UV_CACHE_DIR
   before_script:
-    # [nvidia] extra (via --all-extras) registers the model aliases used by the matrix.
+    # Model aliases come from util/ci/llm_config_nvidia.yaml via NEMO_OO_LLM_CONFIG.
     - uv sync --all-extras --no-extra sandbox
   script:
     # -m integration selects the key-gated live matrix (skipped by the default
@@ -745,17 +705,6 @@ build-package-core:
       - dist-core/*.tar.gz
     expire_in: 1 hour
 
-build-package-benchmarks:
-  extends: .build-package-base
-  script:
-    - uv build --package nemo-oo-agents-benchmarks --out-dir dist-bench
-    - uv cache prune --ci
-  artifacts:
-    paths:
-      - dist-bench/*.whl
-      - dist-bench/*.tar.gz
-    expire_in: 1 hour
-
 build-package-cli:
   extends: .build-package-base
   script:
@@ -793,13 +742,6 @@ publish-package-core:
     - uv publish --publish-url ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/pypi dist-core/*
   dependencies:
     - build-package-core
-
-publish-package-benchmarks:
-  extends: .publish-package-base
-  script:
-    - uv publish --publish-url ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/pypi dist-bench/*
-  dependencies:
-    - build-package-benchmarks
 
 publish-package-cli:
   extends: .publish-package-base
