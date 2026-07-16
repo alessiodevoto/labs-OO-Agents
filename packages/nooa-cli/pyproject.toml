@@ -5,7 +5,7 @@ dynamic = ["version"]
 description = "CLI and TUI for nemo-oo-agents (`nemo` command, web terminal, agent REPL)"
 license = {text = "Apache-2.0"}
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.14"
 dependencies = [
     # Floor reflects the actual minimum-compatible core (bump when the cli
     # starts to require a newer core API). No auto-lockstep — published

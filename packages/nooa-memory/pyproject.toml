@@ -4,7 +4,7 @@ name = "nemo-labs-oo-agents-memory"
 dynamic = ["version"]
 description = "Long-term memory system for nooa agents (ships with the ARC-AGI-3 example; not yet published)"
 license = {text = "Apache-2.0"}
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.14"
 dependencies = [
     "nemo-labs-oo-agents>=0.2.0",
     "pydantic>=2.5.0",

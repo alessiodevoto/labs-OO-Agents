@@ -6,7 +6,7 @@
 #
 # What it does:
 #   1. Installs `uv` if not already present.
-#   2. Installs a managed Python interpreter (>=3.12).
+#   2. Installs a supported Python interpreter (3.12 or 3.13).
 #   3. Installs `nemo-labs-oo-agents-cli` as a `uv tool`, alongside
 #      `nemo-oo-agents` (core) and `nemo-oo-agents-nvidia` (NVIDIA-gateway
 #      model aliases registered via the
@@ -86,20 +86,20 @@ Open a new shell and re-run this installer, or add \`\$HOME/.local/bin\` to PATH
 # Step 2: managed Python
 # ---------------------------------------------------------------------------
 
-# Set when we detect a system Python >=3.12 we can reuse, so that
+# Set when we detect a supported system Python (3.12 or 3.13) we can reuse, so that
 # `uv tool install` is pinned to it and uv does not try to download one
 # (which requires GitHub access).
 SYSTEM_PYTHON=""
 
 find_system_python() {
-    # Probe common interpreter names for one that reports >=3.12.
+    # Probe common interpreter names for a supported Python version.
     for py in python3.13 python3.12 python3 python; do
         if ! command -v "$py" >/dev/null 2>&1; then
             continue
         fi
         ver=$("$py" -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null || true)
         case "$ver" in
-            3.12|3.13|3.1[4-9]|3.[2-9][0-9]|[4-9].*)
+            3.12|3.13)
                 SYSTEM_PYTHON="$(command -v "$py")"
                 return 0
                 ;;
