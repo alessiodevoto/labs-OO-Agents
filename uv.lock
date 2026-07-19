@@ -17,6 +17,7 @@ exclude-newer = "2026-07-03T00:00:00Z"
 members = [
     "eval-pipeline",
     "nemo-labs-oo-agents",
+    "nemo-labs-oo-agents-bench",
     "nemo-labs-oo-agents-cli",
     "nemo-labs-oo-agents-memory",
 ]
@@ -1884,6 +1885,7 @@ dev = [
     { name = "httpx", extra = ["socks"], marker = "python_full_version < '3.14'" },
     { name = "matplotlib", marker = "python_full_version < '3.14'" },
     { name = "mypy", marker = "python_full_version < '3.14'" },
+    { name = "nemo-labs-oo-agents-bench", marker = "python_full_version < '3.14'" },
     { name = "nemo-labs-oo-agents-cli", marker = "python_full_version < '3.14'" },
     { name = "nemo-labs-oo-agents-memory", marker = "python_full_version < '3.14'" },
     { name = "opentelemetry-exporter-otlp-proto-http", marker = "python_full_version < '3.14'" },
@@ -1944,6 +1946,7 @@ dev = [
     { name = "httpx", extras = ["socks"], specifier = ">=0.28.1" },
     { name = "matplotlib", specifier = ">=3.8.0" },
     { name = "mypy", specifier = ">=1.7.0" },
+    { name = "nemo-labs-oo-agents-bench", editable = "packages/nooa-bench" },
     { name = "nemo-labs-oo-agents-cli", editable = "packages/nooa-cli" },
     { name = "nemo-labs-oo-agents-memory", editable = "packages/nooa-memory" },
     { name = "opentelemetry-exporter-otlp-proto-http", specifier = ">=1.39.1" },
@@ -1971,6 +1974,22 @@ trace-viewer = [
     { name = "pyyaml", specifier = ">=6.0.0" },
     { name = "uvicorn", specifier = ">=0.38.0" },
     { name = "watchfiles", specifier = ">=1.0.0" },
+]
+
+[[package]]
+name = "nemo-labs-oo-agents-bench"
+source = { editable = "packages/nooa-bench" }
+dependencies = [
+    { name = "click", marker = "python_full_version < '3.14'" },
+    { name = "nemo-labs-oo-agents", marker = "python_full_version < '3.14'" },
+    { name = "nemo-labs-oo-agents-cli", marker = "python_full_version < '3.14'" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "click", specifier = ">=8.1" },
+    { name = "nemo-labs-oo-agents", editable = "." },
+    { name = "nemo-labs-oo-agents-cli", editable = "packages/nooa-cli" },
 ]
 
 [[package]]

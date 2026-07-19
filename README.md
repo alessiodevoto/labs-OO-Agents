@@ -36,16 +36,17 @@ Add to a Python project (typical workflow when *building* agents, not just runni
 uv init my-agent-project
 cd my-agent-project
 
-# Core framework + NVIDIA-gateway model aliases (claude-haiku, nemotron3-nano-30b,
-# gpt-5.2, …). External users who don't want the NVIDIA aliases drop the second `uv add`.
+# Core framework
 uv add "nemo-labs-oo-agents @ git+https://gitlab-master.nvidia.com/interactive-agents/nooa.git@main"
-uv add "nemo-oo-agents-nvidia @ git+https://gitlab-master.nvidia.com/interactive-agents/nooa.git@main#subdirectory=packages/nemo-oo-agents-nvidia"
 
 # Optional: CLI + TUI (`nooa` command, web terminal, agent REPL)
 uv add "nemo-labs-oo-agents-cli @ git+https://gitlab-master.nvidia.com/interactive-agents/nooa.git@main#subdirectory=packages/nooa-cli"
 
 # Optional: long-term memory subsystem (MemoryManager, see Long-Term Memory below)
 uv add "nemo-labs-oo-agents-memory @ git+https://gitlab-master.nvidia.com/interactive-agents/nooa.git@main#subdirectory=packages/nooa-memory"
+
+# Optional: benchmark agent + Harbor runner (BenchAgent, `nemo-harbor`)
+uv add "nemo-labs-oo-agents-bench @ git+https://gitlab-master.nvidia.com/interactive-agents/nooa.git@main#subdirectory=packages/nooa-bench"
 ```
 
 NOOA ships as four lockstep packages from this repo:
@@ -53,7 +54,9 @@ NOOA ships as four lockstep packages from this repo:
 - **`nemo-labs-oo-agents`** — the core framework. Includes the agent runtime, context blocks, the trace viewer, and the unified LLM client. Optional extras: `[tracing]` (OpenTelemetry exporters), `[viewer]` (FastAPI trace viewer), `[mcp]`, `[nemo-flow]`.
 - **`nemo-labs-oo-agents-cli`** (`packages/nooa-cli`) — the `nooa` command and agent TUI. Optional `[datascience]` extra pre-loads numpy/pandas/plotly/scipy/sklearn into the LLM REPL execution namespace; `[web]` adds the `nooa term` web frontend.
 - **`nemo-labs-oo-agents-memory`** (`packages/nooa-memory`) — opt-in long-term memory subsystem: `MemoryManager.install(agent, config=MemoryConfig(enabled=True))` attaches deliberate recall tools, spontaneous per-turn recall, and offline reflection, all backed by a single human-inspectable SQLite file.
-- **`nemo-oo-agents-nvidia`** — opt-in NVIDIA-gateway model aliases. Registers via the `nooa.bundled_configs` entry-point group; install to add the aliases, omit for an OSS-only registry.
+- **`nemo-labs-oo-agents-bench`** (`packages/nooa-bench`) — the tech report's benchmark-agnostic `BenchAgent` (SWE-bench Verified, Terminal-Bench 2.0), the `nemo-harbor` container runner, and the trace analyzer behind the report's per-task token statistics.
+
+NVIDIA-gateway model aliases (`nemo-oo-agents-nvidia`, registered via the `nooa.bundled_configs` entry-point group) are installed by the installer script; without them you get an OSS-only model registry.
 
 ### API Keys
 
@@ -109,7 +112,7 @@ from nooa.util.quickstart import *
 from nooa.unifiedllm import get_llm_client
 
 # Pick whichever you have credentials for. The NVIDIA aliases below require
-# `nemo-oo-agents-nvidia` (installed by default per the Installation section)
+# the `nemo-oo-agents-nvidia` package (installed by the installer script)
 # and NVIDIA_INTERNAL_API_KEY.
 llm = get_llm_client("claude-haiku")     # → NVIDIA-gateway Claude Haiku
 # llm = get_llm_client("gpt-4o-mini")    # → OpenAI direct; needs OPENAI_API_KEY
@@ -137,7 +140,7 @@ llm = get_llm_client("claude-sonnet-4-5-20250514") # Anthropic (needs ANTHROPIC_
 llm = get_llm_client("gemini/gemini-2.5-flash")    # Google (needs GEMINI_API_KEY)
 ```
 
-If you installed `nemo-oo-agents-nvidia` (the Installation section above includes it), an extra set of NVIDIA-gateway aliases (claude-*, nemotron-*, qwen-*, gemini-*, gpt-*, llama-*) is registered automatically via the `nooa.bundled_configs` entry-point group:
+If you installed `nemo-oo-agents-nvidia` (the installer script includes it), an extra set of NVIDIA-gateway aliases (claude-*, nemotron-*, qwen-*, gemini-*, gpt-*, llama-*) is registered automatically via the `nooa.bundled_configs` entry-point group:
 
 ```python
 llm = get_llm_client("claude-haiku")          # NVIDIA-gateway Claude Haiku

@@ -42,6 +42,7 @@ trace-explorer = "nooa.trace_explorer:main"
 eval_pipeline = { workspace = true }
 nemo-labs-oo-agents-cli = { workspace = true }
 nemo-labs-oo-agents-memory = { workspace = true }
+nemo-labs-oo-agents-bench = { workspace = true }
 # nvidia-nat-nemo-oo-agents: external plugin, not in workspace
 
 [tool.uv]
@@ -58,6 +59,7 @@ members = [
     "util/eval_pipeline",
     "packages/nooa-cli",
     "packages/nooa-memory",
+    "packages/nooa-bench",
 ]
 
 
@@ -150,9 +152,10 @@ dev = [
     "httpx[socks]>=0.28.1",
     "opentelemetry-exporter-otlp-proto-http>=1.39.1",
     "eval_pipeline",
-    # Workspace packages — keep benchmarks + cli installed/editable in dev sync
+    # Workspace packages — keep bench + cli + memory installed/editable in dev sync
     "nemo-labs-oo-agents-cli",
     "nemo-labs-oo-agents-memory",
+    "nemo-labs-oo-agents-bench",
     "pre-commit>=4.5.0",
     "pyright>=1.1.408",
     "pytest-cov>=7.1.0",
@@ -177,6 +180,7 @@ testpaths = [
     "tests/test_mcp",
     "packages/nooa-cli/tests/cli",
     "packages/nooa-cli/tests/integration",
+    "packages/nooa-bench/tests",
     "tests/trace_explorer",
 ]
 pythonpath = [
