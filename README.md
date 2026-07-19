@@ -25,7 +25,7 @@ exec $SHELL          # pick up the ~/.local/bin PATH change
 nooa tui          # launch the interactive agent REPL
 ```
 
-The script installs `uv`, a managed Python, and the three lockstep packages (CLI + core + the `nemo-oo-agents-nvidia` aliases), then prompts for your `NVIDIA_INTERNAL_API_KEY` and saves it to `~/.config/nooa/secrets.yaml`. Upgrade later with `uv tool upgrade nemo-labs-oo-agents-cli`.
+The script installs `uv`, a managed Python, and the three lockstep packages (CLI + core + the `nemo-oo-agents-nvidia` aliases), then prompts for your `NVIDIA_INFERENCE_API_KEY` and saves it to `~/.config/nooa/secrets.yaml`. Upgrade later with `uv tool upgrade nemo-labs-oo-agents-cli`.
 
 ### Use as a library
 
@@ -51,7 +51,7 @@ uv add "nemo-labs-oo-agents-bench @ git+https://gitlab-master.nvidia.com/interac
 
 NOOA ships as four lockstep packages from this repo:
 
-- **`nemo-labs-oo-agents`** — the core framework. Includes the agent runtime, context blocks, the trace viewer, and the unified LLM client. Optional extras: `[tracing]` (OpenTelemetry exporters), `[viewer]` (FastAPI trace viewer), `[mcp]`, `[nemo-flow]`.
+- **`nemo-labs-oo-agents`** — the core framework. Includes the agent runtime, context blocks, the trace viewer, and the unified LLM client. Optional extras: `[tracing]` (OpenTelemetry exporters), `[viewer]` (FastAPI trace viewer), `[mcp]`, `[nemo-relay]` (NeMo Flow guardrails/intercepts/ATIF export).
 - **`nemo-labs-oo-agents-cli`** (`packages/nooa-cli`) — the `nooa` command and agent TUI. Optional `[datascience]` extra pre-loads numpy/pandas/plotly/scipy/sklearn into the LLM REPL execution namespace; `[web]` adds the `nooa term` web frontend.
 - **`nemo-labs-oo-agents-memory`** (`packages/nooa-memory`) — opt-in long-term memory subsystem: `MemoryManager.install(agent, config=MemoryConfig(enabled=True))` attaches deliberate recall tools, spontaneous per-turn recall, and offline reflection, all backed by a single human-inspectable SQLite file.
 - **`nemo-labs-oo-agents-bench`** (`packages/nooa-bench`) — the tech report's benchmark-agnostic `BenchAgent` (SWE-bench Verified, Terminal-Bench 2.0), the `nemo-harbor` container runner, and the trace analyzer behind the report's per-task token statistics.
@@ -65,19 +65,19 @@ Keys are read from `~/.config/nooa/secrets.yaml` unless already exported in your
 ```yaml
 # ~/.config/nooa/secrets.yaml   (chmod 600; gitignore the project-local one)
 env:
-  NVIDIA_INTERNAL_API_KEY: your-api-key-here
+  NVIDIA_INFERENCE_API_KEY: your-api-key-here
   # ANTHROPIC_API_KEY: sk-ant-...
 ```
 
 For **library use** (not the CLI), drop a `.env` in your project directory instead — it's loaded by scripts and the viewer:
 
 ```bash
-echo 'NVIDIA_INTERNAL_API_KEY=your-api-key-here' > .env
+echo 'NVIDIA_INFERENCE_API_KEY=your-api-key-here' > .env
 ```
 
 Run `nooa config show` to see which `secrets.yaml` / `settings.yaml` / `llm_config.yaml` layers are loading (secret values are redacted — only key names are shown).
 
-- **NVIDIA Inference HUB**: All the quickstart examples and bundled aliases route through inference.nvidia.com. Get your key at [inference.nvidia.com](https://inference.nvidia.com) → `NVIDIA_INTERNAL_API_KEY`.
+- **NVIDIA Inference HUB**: The quickstart examples **default** to the NVIDIA inference gateway. Get your key at [inference.nvidia.com](https://inference.nvidia.com) → `NVIDIA_INFERENCE_API_KEY`. Other providers work too — pass any litellm-supported model name to `get_llm_client()` with that provider's key (see Quick Start Step 1).
 
 ### Development Setup (Advanced Use)
 
@@ -89,7 +89,7 @@ If you want to contribute to the NOOA framework or change code of the library, u
 ```bash
 git clone ssh://git@gitlab-master.nvidia.com:12051/interactive-agents/nooa.git
 cd nooa/
-./setup.sh  # Sets up venv, installs dependencies, copies .env template
+./setup.sh  # Sets up venv, installs dependencies, installs pre-commit hooks
 # Then create .env with your API key (see API Keys above)
 ```
 
@@ -108,14 +108,10 @@ The NOOA framework's key strength is that you can start with zero boilerplate an
 Methods with `...` bodies are called **generation methods** (the *agentic methods* of the NOOA tech report) - they're implemented by an agentic strategy using LLMs at runtime. The method signature defines the contract (inputs/outputs), and the **docstring provides instructions** to guide the LLM:
 
 ```python
+# The quickstart import provides `llm`, preconfigured for the NVIDIA
+# inference gateway — set NVIDIA_INFERENCE_API_KEY (see API Keys above).
+# To use another provider instead: llm = get_llm_client("gpt-4o-mini")
 from nooa.util.quickstart import *
-from nooa.unifiedllm import get_llm_client
-
-# Pick whichever you have credentials for. The NVIDIA aliases below require
-# the `nemo-oo-agents-nvidia` package (installed by the installer script)
-# and NVIDIA_INTERNAL_API_KEY.
-llm = get_llm_client("claude-haiku")     # → NVIDIA-gateway Claude Haiku
-# llm = get_llm_client("gpt-4o-mini")    # → OpenAI direct; needs OPENAI_API_KEY
 
 
 class FeedbackAgent(Agent, llm=llm):
@@ -132,7 +128,7 @@ async def main():
     result = await agent.analyze_feedback("Great product, but shipping was slow")
     print(result)
 ```
-`get_llm_client()` is a thin wrapper on top of [litellm](https://docs.litellm.ai/), so any litellm-supported model name works directly:
+`get_llm_client()` (from `nooa.unifiedllm`) is a thin wrapper on top of [litellm](https://docs.litellm.ai/), so any litellm-supported model name works directly — the NVIDIA gateway is the default, not a requirement:
 
 ```python
 llm = get_llm_client("gpt-4o-mini")                # OpenAI (needs OPENAI_API_KEY)
@@ -147,7 +143,7 @@ llm = get_llm_client("claude-haiku")          # NVIDIA-gateway Claude Haiku
 llm = get_llm_client("nemotron3-nano-30b")    # NVIDIA Nemotron Nano
 ```
 
-Set `NVIDIA_INTERNAL_API_KEY` (or `NVIDIA_API_KEY` for the public NIM endpoint) and they Just Work. External users who don't install `nemo-oo-agents-nvidia` see an OSS-only registry. To customize, run `nooa config eject` (writes to `~/.config/nooa/llm_config.yaml`), drop an `llm_config.yaml` in your project's `.nooa/` dir, or point `NEMO_OO_LLM_CONFIG` at one or more YAML files. Run `nooa config show` to inspect which files are loading.
+Set `NVIDIA_INFERENCE_API_KEY` (or `NVIDIA_API_KEY` for the public NIM endpoint) and they Just Work. External users who don't install `nemo-oo-agents-nvidia` see an OSS-only registry. To customize, run `nooa config eject` (writes to `~/.config/nooa/llm_config.yaml`), drop an `llm_config.yaml` in your project's `.nooa/` dir, or point `NEMO_OO_LLM_CONFIG` at one or more YAML files. Run `nooa config show` to inspect which files are loading.
 
 See [`src/nooa/unifiedllm/registry.py`](src/nooa/unifiedllm/registry.py) for the YAML schema, or `CompletionClient()` directly for full control.
 
@@ -647,6 +643,15 @@ uv run python examples/quickstart/09_summarization.py
 ```
 </details>
 
+## Documentation
+
+Finished the Quick Start? The deeper material lives in the repo:
+
+- **Guides** ([`docs/guides/`](docs/guides/)) — [prompt mechanics](docs/guides/prompt-mechanics.md), [writing generation methods](docs/guides/writing-generation-methods.md), [strategies](docs/guides/strategies.md), [structured output](docs/guides/structured-output.md), [context blocks](docs/guides/context-blocks.md), [truncation](docs/guides/truncation.md), [single vs. multi-agent](docs/guides/single-vs-multi-agent.md), and [config migration](docs/guides/config-migration.md).
+- **Runnable examples** ([`examples/quickstart/`](examples/quickstart/)) — fifteen numbered scripts: `01`–`11` mirror the steps above and the Skills/MCP sections, then [`12_memory.py`](examples/quickstart/12_memory.py), [`13_multimodal.py`](examples/quickstart/13_multimodal.py), [`14_atif_trajectory.py`](examples/quickstart/14_atif_trajectory.py), and [`15_nemo_relay.py`](examples/quickstart/15_nemo_relay.py) go beyond it.
+- **More examples** — [`examples/advanced/`](examples/advanced/) (memory internals, CodeAct event flow, prefill, OTLP/Langfuse/Phoenix tracing, swappable execution engines), [`examples/benchmarks/`](examples/benchmarks/) (minimal Harbor-compatible agent), and [`examples/arc_agi_3/`](examples/arc_agi_3/) (the ARC-AGI-3 world-model agent).
+- **Reference** — [REFERENCE.md](REFERENCE.md): paths, commands, environment variables, and a map of all of the above.
+
 ## More Features
 
 The features below follow the same Agent pattern — class attributes, method signatures, docstrings — so there's nothing new to learn.
@@ -674,6 +679,14 @@ agent.remember("Deploy with `make ship`.", type="skill", importance="HIGH")
 ```
 
 The store defaults to `.nooa/memory/memory.sqlite`. See [`packages/nooa-memory`](packages/nooa-memory/) for the full design.
+
+<details>
+<summary><strong>Show cloned repo command</strong></summary>
+
+```bash
+uv run python examples/quickstart/12_memory.py
+```
+</details>
 
 ### Skills
 
@@ -816,67 +829,7 @@ uv run python examples/quickstart/11_mcp.py
 
 ### Sandbox
 
-Run agents in isolated, ephemeral compute environments. Install the optional `sandbox` extra first:
-
-```bash
-uv add git+https://gitlab-master.nvidia.com/interactive-agents/nooa.git[sandbox] --branch main
-```
-
-This installs `openshell` and the `nooa sandbox` CLI wrapper. All sandbox infrastructure is handled automatically — credentials, policy, dependencies — so you can focus on your agent code.
-
-To set up openshell:
-
-```bash
-openshell gateway start
-```
-
-Refer to the [openshell documentation](https://github.com/NVIDIA/OpenShell) for more information.
-
-**Usage:**
-
-```bash
-nooa sandbox -- python agent.py    # run a script
-nooa sandbox -- nooa tui       # launch the TUI
-nooa sandbox -- bash               # open a shell
-```
-
-Requires a `pyproject.toml` in the current directory. Before running your command, the sandbox always:
-
-1. Uploads the current directory
-2. Installs dependencies via `uv sync` (picks up the nooa version pinned in your project)
-
-**Uploads:**
-
-Control what gets uploaded with `--upload` (repeatable). Append `:ro` for read-only or `:rw` for read-write (default):
-
-```bash
-# upload specific paths instead of the full cwd
-nooa sandbox --upload src --upload data -- python agent.py
-
-# make a directory read-only inside the sandbox
-nooa sandbox --upload src:ro --upload data -- python agent.py
-```
-
-`pyproject.toml` is always included so `uv sync` can run.
-
-**Credentials:**
-
-Inject extra environment variables with `--env` (repeatable). A short-lived credential provider is created automatically and cleaned up after the sandbox exits:
-
-```bash
-nooa sandbox --env HF_TOKEN=abc123 -- python agent.py
-nooa sandbox --env HF_TOKEN=abc123 --env WANDB_KEY=xyz -- python agent.py
-```
-
-**Network:**
-
-Allow additional outbound domains with `--allow-domain` (repeatable):
-
-```bash
-nooa sandbox --allow-domain api.myservice.com -- python agent.py
-```
-
-For advanced workflows (port forwarding, long-running tasks, connecting to existing sandboxes), use `openshell` directly.
+For isolated, ephemeral execution environments, pair NOOA with [NVIDIA OpenShell](https://github.com/NVIDIA/OpenShell) — run your agent script inside an OpenShell sandbox and it gets credential brokering, network policy, and filesystem isolation without code changes. See the OpenShell documentation for setup.
 
 ## Advanced Features
 

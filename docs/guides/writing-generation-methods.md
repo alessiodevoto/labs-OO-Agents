@@ -210,10 +210,10 @@ class Analyzer(Agent, llm=my_llm):
 ### Using agentdoc for Context
 
 Use `agentdoc` functions in your docstrings (`doc` is auto-injected in generated
-code; import it from `nemo_oo_agents.agentdoc` in your own modules):
+code; import it from `nooa.agentdoc` in your own modules):
 
 ```python
-from nooa.agentdoc import doc, brief
+from nooa.agentdoc import doc
 
 class MyAgent(Agent, llm=my_llm):
     async def task(self, data: str):

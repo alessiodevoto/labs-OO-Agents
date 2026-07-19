@@ -13,7 +13,9 @@ correctly support:
 
 import pytest
 
-nemo_flow = pytest.importorskip("nemo_flow", reason="nemo_flow not installed")
+# The package was renamed nemo_flow -> nemo_relay; alias it so the test body's
+# nemo_flow.* references keep working.
+nemo_flow = pytest.importorskip("nemo_relay", reason="nemo_relay not installed")
 
 from dataclasses import dataclass, field
 from typing import Any
@@ -651,6 +653,7 @@ class TestATIFExport:
 
                 await nemo_flow_llm_middleware(ctx, nxt)
 
+            nemo_flow.subscribers.flush()  # event dispatch is async in nemo_relay
             traj = exporter.export_json()
             assert isinstance(traj, str) or isinstance(traj, dict), (
                 f"Unexpected export_json type: {type(traj)}"
@@ -664,7 +667,7 @@ class TestATIFExport:
             if isinstance(traj, list):
                 assert len(traj) > 0, "Expected at least one trajectory"
                 traj = traj[0]
-            assert traj["schema_version"] == "ATIF-v1.6"
+            assert traj["schema_version"].startswith("ATIF-v1.")
             assert traj["session_id"] == "test-session"
             assert len(traj["steps"]) > 0
         finally:
@@ -738,6 +741,7 @@ class TestAgentCallMiddleware:
                 return c
 
             await nemo_flow_agent_call_middleware(ctx, nxt)
+            nemo_flow.subscribers.flush()  # event dispatch is async in nemo_relay
             assert len(captured_names) == 1
             assert captured_names[0] == f"{type(agent).__name__}.my_method"
         finally:
@@ -762,6 +766,7 @@ class TestAgentCallMiddleware:
                 return c
 
             await nemo_flow_agent_call_middleware(ctx, nxt)
+            nemo_flow.subscribers.flush()  # event dispatch is async in nemo_relay
 
             # Should see start then end
             assert len(events) == 2
@@ -790,6 +795,7 @@ class TestAgentCallMiddleware:
             with pytest.raises(ValueError, match="boom"):
                 await nemo_flow_agent_call_middleware(ctx, nxt)
 
+            nemo_flow.subscribers.flush()  # event dispatch is async in nemo_relay
             # Scope should still be popped (end event emitted)
             assert "start" in events
             assert "end" in events

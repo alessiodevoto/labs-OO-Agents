@@ -95,10 +95,12 @@ sandbox = [
 mcp = [
     "mcp>=1.0.0",
 ]
-# nemo-flow integration (guardrails, intercepts, ATIF export). Install with
-# `uv sync --extra nemo-flow`. See examples/quickstart/13_nemo_flow.py and
-# src/nooa/nemo_flow_middleware.py.
-nemo-flow = []  # yanked; re-add as nemo-relay when available
+# NeMo Flow integration (guardrails, intercepts, event subscribers, ATIF
+# export). The upstream package was renamed from nemo-flow to nemo-relay.
+# See src/nooa/nemo_flow_middleware.py and examples/quickstart/15_nemo_relay.py.
+nemo-relay = [
+    "nemo-relay>=0.4.0",
+]
 
 # CLI/TUI ship as a separate package: `uv add nemo-labs-oo-agents-cli`.
 # Data-science stack for the LLM REPL: `uv add nemo-labs-oo-agents-cli[datascience]`.

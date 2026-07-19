@@ -75,12 +75,12 @@ Key renames (YAML uses the real field names):
 
 | Before | After |
 |--------|-------|
-| `export NVIDIA_INTERNAL_API_KEY=…` in your shell rc | `secrets.yaml`, auto-loaded by the CLI on every run |
+| `export NVIDIA_INFERENCE_API_KEY=…` in your shell rc | `secrets.yaml`, auto-loaded by the CLI on every run |
 
 ```yaml
 # ~/.config/nooa/secrets.yaml   (chmod 600)
 env:
-  NVIDIA_INTERNAL_API_KEY: sk-...
+  NVIDIA_INFERENCE_API_KEY: sk-...
   # ANTHROPIC_API_KEY: sk-ant-...
 ```
 

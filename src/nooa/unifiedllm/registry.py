@@ -66,6 +66,15 @@ logger = logging.getLogger(__name__)
 # ensure_loaded() while the lock is held.
 _registry_lock = threading.RLock()
 
+# NVIDIA_INTERNAL_API_KEY was renamed to NVIDIA_INFERENCE_API_KEY (the
+# inference.nvidia.com endpoint is public, not internal). Config files may
+# declare either name; whichever is declared, the other is accepted as a
+# fallback so existing environments and older YAMLs keep working.
+_NVIDIA_KEY_SYNONYMS = {
+    "NVIDIA_INFERENCE_API_KEY": "NVIDIA_INTERNAL_API_KEY",
+    "NVIDIA_INTERNAL_API_KEY": "NVIDIA_INFERENCE_API_KEY",
+}
+
 
 def resolve_api_key_from_config(
     model_name: str,
@@ -99,6 +108,11 @@ def resolve_api_key_from_config(
     api_key = os.getenv(api_key_env)
     if api_key:
         return api_key
+    synonym = _NVIDIA_KEY_SYNONYMS.get(api_key_env)
+    if synonym:
+        api_key = os.getenv(synonym)
+        if api_key:
+            return api_key
     logger.warning(
         "Model %r is configured to read its API key from env var %r, but "
         "that variable is unset or empty. Falling back to litellm defaults "

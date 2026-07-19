@@ -11,10 +11,10 @@ Schema — a single ``env:`` mapping of env-var name → value::
 
     # ~/.config/nooa/secrets.yaml
     env:
-      NVIDIA_INTERNAL_API_KEY: sk-...
+      NVIDIA_INFERENCE_API_KEY: sk-...
       ANTHROPIC_API_KEY: sk-ant-...
 
-This matches the existing ``api_key_env: NVIDIA_INTERNAL_API_KEY`` pattern
+This matches the existing ``api_key_env: NVIDIA_INFERENCE_API_KEY`` pattern
 in unifiedllm — YAML names the env var, the env var holds the secret. One
 mental model.
 

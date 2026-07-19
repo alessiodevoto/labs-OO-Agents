@@ -5,6 +5,7 @@ Provides some quickstart settings to get you started with some reasonable defaul
 """
 
 import asyncio
+import os
 from collections.abc import Callable, Coroutine
 from typing import Any
 
@@ -18,12 +19,26 @@ from nooa.unifiedllm.registry import get_llm_client
 # Load environment variables
 load_dotenv(override=True)
 
-# Default model for all examples - change this to switch models
-# Uses litellm-native routing; set OPENAI_API_KEY in .env
-MODEL = "gpt-5-mini"
+# Default: the NVIDIA inference gateway (OpenAI-compatible, public endpoint).
+# Set NVIDIA_INFERENCE_API_KEY in your shell or .env — see the README's
+# "API Keys" section. Any litellm-supported model works instead: swap MODEL
+# for e.g. "gpt-5-mini" (OPENAI_API_KEY) or "claude-haiku-4-5" and the
+# fallback branch below routes it natively through litellm.
+MODEL = "openai/azure/openai/gpt-5-mini"
 
-# Pre-configured LLM client
-llm = get_llm_client(MODEL)
+_nvidia_key = os.getenv("NVIDIA_INFERENCE_API_KEY") or os.getenv("NVIDIA_INTERNAL_API_KEY")
+if _nvidia_key:
+    # Pre-configured LLM client via the NVIDIA inference gateway.
+    llm = get_llm_client(
+        MODEL,
+        api_base="https://inference-api.nvidia.com/v1",
+        api_key=_nvidia_key,
+    )
+else:
+    # No NVIDIA key set — fall back to litellm-native routing so the examples
+    # still run with other providers' credentials (e.g. OPENAI_API_KEY).
+    MODEL = "gpt-5-mini"
+    llm = get_llm_client(MODEL)
 
 
 # Decorator for running example entry points

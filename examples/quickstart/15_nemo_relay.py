@@ -1,9 +1,10 @@
 # ruff: noqa: F403,F405
-"""Quickstart 14: NeMo Flow integration — guardrails, intercepts, and trajectory export.
+"""Quickstart 15: NeMo Flow integration — guardrails, intercepts, and trajectory export.
 
-NeMo Flow is a multi-language agent runtime that adds
-execution scope management, lifecycle events, and a configurable middleware pipeline
-(guardrails/intercepts) to every LLM call and tool execution in NeMo OO Agents.
+NeMo Flow (the ``nemo_relay`` package — renamed from ``nemo_flow``) is a
+multi-language agent runtime that adds execution scope management, lifecycle
+events, and a configurable middleware pipeline (guardrails/intercepts) to every
+LLM call and tool execution in NeMo OO Agents.
 
 This example shows how to:
   1. Register an LLM request intercept (inject a system header into every request)
@@ -19,20 +20,20 @@ This version uses the event-middleware integration — NeMo Flow is wired throug
 Prerequisites:
   Install NeMo OO Agents with the nemo-flow extra (public PyPI wheels):
 
-    uv sync --extra nemo-flow
+    uv sync --extra nemo-relay
 
 Usage:
-  uv run python examples/quickstart/14_nemo_flow.py
+  uv run python examples/quickstart/15_nemo_relay.py
 """
 
 import json
 
 try:
-    import nemo_flow
+    import nemo_relay as nemo_flow  # renamed upstream from nemo_flow
 except ModuleNotFoundError:
     import sys
 
-    print("SKIP: nemo_flow is not installed.\nInstall with: uv sync --extra nemo-flow")
+    print("SKIP: nemo_relay is not installed.\nInstall with: uv sync --extra nemo-relay")
     sys.exit(0)
 from pydantic import BaseModel
 
@@ -259,9 +260,11 @@ async def main():
     print("\n--- Result ---")
     print(result)
 
-    # Note: ATIF v1.6 exports a flat steps[] array — the scope hierarchy
+    # Note: ATIF exports a flat steps[] array — the scope hierarchy
     # (Agent → Function:summarize → Function:fact_check) tracked by NeMo Flow
     # internally is not represented in the exported JSON.
+    # Event dispatch is async in nemo_relay; flush before reading the export.
+    nemo_flow.subscribers.flush()  # type: ignore[attr-defined]
     trajectory_json = exporter.export_json()
     trajectory = json.loads(trajectory_json)
     trajectory_path = "/tmp/nemo_flow_trajectory_research.json"
@@ -307,6 +310,7 @@ async def main():
         async with nemo_flow_scope(demo_agent, f"demo-{method_name}"):
             value = await method()
 
+        nemo_flow.subscribers.flush()  # type: ignore[attr-defined]
         traj = json.loads(exporter.export_json())
 
         # Tool outputs are captured by _capture_tool_output subscriber
