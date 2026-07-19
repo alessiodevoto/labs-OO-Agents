@@ -1,11 +1,11 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Launch the ARC-AGI-3 solver agent inside the nemo-oo TUI (run me in tmux).
+"""Launch the ARC-AGI-3 solver agent in headless mode (no TUI / tmux required).
 
-Replicates the essential body of ``nooa_tui.tui.main`` so we can hook
-between ``bootstrap()`` and ``session.run()``:  the TUI's own memory wiring is
-turned off and, for the ``memory`` variant, a fully-configured ``MemorySkill``
-(gateway embeddings, generative reflection) is registered instead.
+Runs the agent directly via the ``InteractiveAgent`` dispatcher loop — no
+``nooa_tui`` package needed. All agent behaviours (memory, reflection,
+summarization, effort ladder, IPC tail, context blocks) are preserved; the only
+thing removed is the terminal-drawing layer.
 
 Usage (normally started by run_solver.py):
 
@@ -18,7 +18,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import sys
-import tempfile
 from pathlib import Path
 
 EXAMPLE_DIR = Path(__file__).resolve().parent
@@ -27,7 +26,25 @@ sys.path.insert(0, str(EXAMPLE_DIR))
 from arc_llm import build_embedding_config, build_llm  # noqa: E402
 from solver_agent import MdArcSolverAgent, MemArcSolverAgent  # noqa: E402
 
-SKILL_PATH = EXAMPLE_DIR / "skills" / "grid-game-solver" / "SKILL.md"
+DEFAULT_SKILL = "grid-game-solver"
+
+
+def _skill_path(name: str) -> Path | None:
+    """Resolve a skill by directory name under ``skills/`` (e.g. ``grid-game-solver``).
+    Falls back to the default skill, then to None if neither SKILL.md exists."""
+    skills_dir = EXAMPLE_DIR / "skills"
+    requested = name or DEFAULT_SKILL
+    for candidate in (requested, DEFAULT_SKILL):
+        path = skills_dir / candidate / "SKILL.md"
+        if path.exists():
+            if candidate != requested:
+                print(
+                    f"[launcher] WARNING: skill '{requested}' not found at {skills_dir / requested};"
+                    f" falling back to '{candidate}'",
+                    file=sys.stderr,
+                )
+            return path
+    return None
 
 
 def parse_effort_ladder(
@@ -96,6 +113,12 @@ def parse_args() -> argparse.Namespace:
         help="Prior run's workspace to seed knowledge from "
         "(memory.sqlite / knowledge/*.md are copied in)",
     )
+    p.add_argument(
+        "--skill",
+        default=DEFAULT_SKILL,
+        help="skill directory under skills/ to load as the agent's "
+        "<arc_skill> block (e.g. grid-game-solver, interactive-game-solver)",
+    )
     return p.parse_args()
 
 
@@ -120,6 +143,50 @@ def seed_knowledge(src: Path, workspace: Path, variant: str) -> None:
             shutil.copy2(f, workspace / "helpers" / f.name)
 
 
+async def _headless_dispatch(agent) -> None:
+    """Drive the agent via its queue dispatcher — no TUI session required.
+
+    Races all registered queues (game_states, user_messages, system_messages)
+    each turn and calls ``agent.handle(notification)`` — the dispatcher contract
+    described on ``RespondResult``: every stop reason (including DONE) re-enters
+    the race. The loop runs until run_solver terminates this process when the
+    harness finishes; DONE must NOT exit here, or a premature DONE from the
+    agent would tear down a still-running game (run_solver kills the harness
+    when the launcher dies). Errors are logged and retried with backoff — the
+    harness's nudge/force-advance ladder and the fleet wall-clock cap already
+    bound a wedged agent, and a transient LLM outage must not kill the game.
+    """
+    from nooa.interactive import RespondReason
+
+    consecutive_errors = 0
+
+    while True:
+        try:
+            wins = await agent.queue_manager.race()
+        except (asyncio.CancelledError, ValueError):
+            break
+        notification: dict[str, list] = {}
+        for name, item in wins:
+            notification.setdefault(name, []).append(item)
+        try:
+            result = await agent.handle(notification)
+            consecutive_errors = 0
+        except asyncio.CancelledError:
+            break
+        except Exception as exc:
+            consecutive_errors += 1
+            backoff = min(2 ** min(consecutive_errors, 6), 60)
+            print(
+                f"[launcher] handle() raised {exc!r} "
+                f"(consecutive={consecutive_errors}) — retrying in {backoff}s",
+                file=sys.stderr,
+            )
+            await asyncio.sleep(backoff)
+            continue
+        if getattr(result, "kind", None) == RespondReason.DONE:
+            print(f"[launcher] agent returned DONE: {result.explanation}", file=sys.stderr)
+
+
 async def run() -> None:
     args = parse_args()
     import os
@@ -130,8 +197,6 @@ async def run() -> None:
     workspace = run_dir / "team_nemo" / "shared"
     workspace.mkdir(parents=True, exist_ok=True)
 
-    # Tracing: JSONL into the run dir, plus OTLP when OTLP_ENDPOINT is set
-    # (e.g. http://localhost:22006/v1/traces for a local trace server).
     from viewer_event_exporter import ViewerEventExporter
     from viewer_trace_exporter import ViewerMessageExporter
 
@@ -139,12 +204,7 @@ async def run() -> None:
 
     trace_exporters = [
         exporters.jsonl(trace_dir=str(run_dir / "traces")),
-        # writes the REAL prompts/responses into agent_logs/.../messages LIVE,
-        # so both viewers show the real conversation as it happens.
         ViewerMessageExporter(run_dir),
-        # translates live spans -> reference-schema events (llm_call / repl_execute
-        # / round_complete / step_complete) into events.jsonl, so the TUI's
-        # reasoning / REPL / rounds panels populate.
         ViewerEventExporter(run_dir),
     ]
     otlp_endpoint = os.environ.get("OTLP_ENDPOINT")
@@ -155,39 +215,7 @@ async def run() -> None:
     if args.seed_knowledge:
         seed_knowledge(Path(args.seed_knowledge).resolve(), workspace, args.variant)
 
-    try:
-        from nooa_tui.tui.bootstrap import (
-            bootstrap,
-            build_registry,
-            build_session,
-            build_startup_info,
-        )
-        from nooa_tui.tui.config import Config
-        from nooa_tui.tui.frontend import TerminalFrontend
-    except ImportError as e:
-        raise SystemExit(
-            "launcher.py drives the agent inside the nooa TUI, which is a "
-            "separate internal package (nooa-tui, in the nooa-dev repo). "
-            "Install it into this environment to use the TUI runner. "
-            f"(import failed: {e})"
-        ) from e
-
-    config = Config.load(
-        model=None,
-        agent=None,
-        no_splash=True,
-        working_dir=str(workspace),
-        mcp_file=None,
-        skills_dir=[str(EXAMPLE_DIR / "skills")],
-        trace=None,
-        no_trace=True,  # tracing is wired explicitly above
-        context_limit=None,
-        orchestrator=False,
-        vi=False,
-    )
-    # The TUI's own memory wiring can't take our embedding config — install
-    # MemorySkill ourselves (memory variant) after bootstrap instead.
-    config.tui.memory = "off"
+    import shutil
 
     llm = build_llm(reasoning_effort=args.reasoning_effort)
     effort_ladder = parse_effort_ladder(args.effort_ladder, args.reasoning_effort)
@@ -204,22 +232,16 @@ async def run() -> None:
         effort_ladder=effort_ladder,
         visual=args.visual,
         png_scale=args.png_scale,
-        skill_path=SKILL_PATH if SKILL_PATH.exists() else None,
+        skill_path=_skill_path(args.skill),
     )
 
-    frontend = TerminalFrontend(config)
-    result = await bootstrap(config, agent=agent)
-
-    # Memory store lives at a NEUTRAL path (opaque alias, no benchmark/game name),
-    # because the memory-skill guide shows the store path in the agent's context.
-    # A workspace path (results/arc_agi_3/<...>_<game>_<variant>/) would leak both
-    # `arc_agi_3` and the game id to the memory agent. Copied back into the
-    # workspace at run end for the viewer / seeding / analysis.
-    import re
-    import shutil
-
-    safe_alias = re.sub(r"[^a-z0-9_-]", "_", (args.alias or "the-game").lower())
-    store_path = Path(tempfile.gettempdir()) / "agent_stores" / f"{safe_alias}.sqlite"
+    # Memory store lives INSIDE the neutral run dir (run_solver puts the whole
+    # run dir on a game-name-free /tmp path), so the memory-skill guide can show
+    # its path without leaking the benchmark/game id. Keeping it under run_dir
+    # (not the shared /tmp/agent_stores) also means --sandbox drop's carve_own
+    # gives the agent uid sole ownership of its own store — no cross-uid perms.
+    # Copied back into the workspace at run end for the viewer / seeding / analysis.
+    store_path = run_dir / "store" / "memory.sqlite"
     ws_store = workspace / "memory.sqlite"
 
     if args.variant == "memory":
@@ -262,16 +284,31 @@ async def run() -> None:
         )
         agent.skills.activate(["nemo.memory"])
 
-    startup_info = build_startup_info(result)
-    registry = build_registry(result, frontend)
-    registry.startup_info = startup_info
-    frontend.init_input(registry)
-    session = build_session(
-        result, frontend, registry, initial_outputs=[*result.messages, startup_info]
-    )
+    # Kickoff parity with the TUI runner: run_solver used to type this message
+    # into the TUI once the first game state existed. Deliver the same message
+    # on the user_messages channel so turn 0 matches the TUI-driven agent.
+    states_path = run_dir / "ipc" / "states.jsonl"
+
+    async def _kickoff() -> None:
+        while True:
+            try:
+                if states_path.stat().st_size > 0:
+                    break
+            except OSError:
+                pass
+            await asyncio.sleep(2)
+        agent._user_messages_in.put(
+            f"Start solving {_alias}. The first game state is on your "
+            "game_states queue. Follow the arc_skill context block."
+        )
+        print("[launcher] kickoff message sent to the agent", file=sys.stderr)
+
+    kickoff_task = asyncio.create_task(_kickoff())
+
     try:
-        await session.run()
+        await _headless_dispatch(agent)
     finally:
+        kickoff_task.cancel()
         # Consolidate the neutral store and copy it into the workspace so the
         # viewer, analysis tools, and seeded runs find it where they expect.
         if args.variant == "memory" and store_path.exists():

@@ -42,6 +42,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import term_state
 from rich.console import Console, Group
 from rich.live import Live
 from rich.panel import Panel
@@ -60,6 +61,7 @@ _GEMINI_FLASH = {"input": 0.50, "output": 3.0, "cached": 0.05, "cache_write": 0.
 LLM_PRICING = {
     "opus": _ANTHROPIC_OPUS,
     "gpt5.5": _OPENAI_GPT55,
+    "gpt5.6": _OPENAI_GPT55,  # gpt-5.6(-sol): same published figures as gpt-5.5
     "flash": _GEMINI_FLASH,
 }
 _ZERO_PRICING = {"input": 0.0, "output": 0.0, "cached": 0.0}
@@ -98,6 +100,8 @@ def _pricing_key(model: str) -> str:
     m = (model or "").lower()
     if "gpt-5.5" in m or "gpt5.5" in m:
         return "gpt5.5"
+    if "gpt-5.6" in m or "gpt5.6" in m:
+        return "gpt5.6"
     if "opus" in m:
         return "opus"
     if "flash" in m:
@@ -595,6 +599,9 @@ def run(container: Path, watch: str, interval: float = 1.5) -> None:
 
 
 def main() -> None:
+    # Own our terminal state: rich Live hides the cursor / may scroll-region;
+    # restore on exit/SIGTERM/SIGHUP even if Live's context exit never runs.
+    term_state.install_exit_guard()
     ap = argparse.ArgumentParser(description="Self-contained live ARC-AGI-3 multi-run viewer")
     ap.add_argument(
         "results_dir_pos",

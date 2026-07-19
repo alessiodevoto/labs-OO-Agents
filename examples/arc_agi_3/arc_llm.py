@@ -71,12 +71,12 @@ def build_llm(
         extra["timeout"] = request_timeout
     model = "openai/" + os.environ["ARC_LLM_MODEL"]  # litellm needs the provider prefix
     reasoning_model = "nemotron" in model.lower()
-    # gpt-5.5 on this gateway must use the Responses API (like the reference profiles'
+    # gpt-5.x on this gateway must use the Responses API (like the reference profiles'
     # use_responses_api profiles): chat-completions with tools + reasoning_effort
     # gets rerouted gateway-side with a mangled model id → 403 key_model_access_denied.
-    use_responses = (
-        os.environ.get("ARC_LLM_USE_RESPONSES", "1" if "gpt-5.5" in model else "0") == "1"
-    )
+    # (Observed live when this matched only "gpt-5.5": a gpt-5.6-sol fleet 403'd on
+    # every call. gpt-5.4 / 5.5 / 5.6-sol are all verified working via Responses.)
+    use_responses = os.environ.get("ARC_LLM_USE_RESPONSES", "1" if "gpt-5" in model else "0") == "1"
     client_cls = ResponsesClient if use_responses else CompletionClient
     kwargs = dict(
         model=model,

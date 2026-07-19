@@ -91,11 +91,14 @@ def main() -> int:
     threading.Thread(target=_keepalive, daemon=True, name="scorecard-keepalive").start()
 
     # Block until the launcher signals close (a stdin line) or closes stdin (EOF).
+    # KeyboardInterrupt included: a Ctrl-C on the fleet's process group must still
+    # fall through to the bounded close below, or the scorecard is orphaned open
+    # (the competition API allows one open scorecard per key).
     try:
         for line in sys.stdin:
             if line.strip().lower() in ("close", "stop", "quit"):
                 break
-    except Exception:
+    except (Exception, KeyboardInterrupt):
         pass
     stop.set()
 

@@ -34,9 +34,16 @@ import threading
 import time
 from pathlib import Path
 
+from term_state import restore_terminal
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 EXAMPLE_DIR = Path(__file__).resolve().parent
 RESULTS_ROOT = REPO_ROOT / "results" / "arc_agi_3" / "nemo_solver"
+# Progressive-learning checkout (optional): provides the interactive multi-game
+# TUI (tui_multi_game_viewer.py reuses its reference panels). When absent, the
+# self-contained viewer.py status table is used instead.
+PL_DIR = REPO_ROOT / "progressive-learning"
+PL_PY = PL_DIR / ".venv" / "bin" / "python"
 
 
 def _load_dotenv() -> None:
@@ -58,11 +65,17 @@ DEFAULTS = {
     "operation_mode": "offline",
     "model": None,
     "reasoning_effort": None,
+    # Skill selection: which skills/<name>/SKILL.md the agent loads as its
+    # <arc_skill> block. e.g. "grid-game-solver" or "interactive-game-solver".
+    "skill": "grid-game-solver",
     "variants": ["memory", "mdfiles"],
     "seeded": False,
     "parallel": 4,
     "max_turns": None,
     "max_env_steps": 5000,
+    # Wall-clock cap for the WHOLE fleet, in seconds. None/0 = no cap. When reached,
+    # every still-running game is stopped and the summary is written.
+    "max_wall_seconds": None,
     "turn_timeout": 1200,
     # Timeout ladder (seconds of agent silence): effort downshift (agent-side, in
     # effort_ladder) < nudge_after (harness reminder) < turn_timeout (kill).
@@ -75,8 +88,7 @@ DEFAULTS = {
     "reflect_every": 8,
     "allowed_game_overs": -1,
     "games": [],
-    # Live TUI dashboard (viewer.py). On by default like the
-    # --no-tui for non-interactive/automated runs.
+    # Live TUI dashboard (viewer.py). On by default; pass --no-tui for automated runs.
     "no_tui": False,
     "watch": "team_leader",
 }
@@ -94,9 +106,11 @@ def load_config(path: str | None, args: argparse.Namespace) -> dict:
     for key in (
         "model",
         "reasoning_effort",
+        "skill",
         "parallel",
         "max_turns",
         "max_env_steps",
+        "max_wall_seconds",
         "turn_timeout",
         "nudge_after",
         "fallback_window",
@@ -135,8 +149,22 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--parallel", type=int, default=None)
     p.add_argument("--model", default=None)
     p.add_argument("--reasoning-effort", dest="reasoning_effort", default=None)
+    p.add_argument(
+        "--skill",
+        default=None,
+        help="skill dir under examples/arc_agi_3/skills/ to load "
+        "(e.g. grid-game-solver, interactive-game-solver)",
+    )
     p.add_argument("--max-turns", dest="max_turns", type=int, default=None)
     p.add_argument("--max-env-steps", dest="max_env_steps", type=int, default=None)
+    p.add_argument(
+        "--max-wall-seconds",
+        dest="max_wall_seconds",
+        type=float,
+        default=None,
+        help="stop the whole fleet after this many seconds (e.g. 7200 = 2h). "
+        "Default: no wall-clock cap.",
+    )
     p.add_argument("--turn-timeout", dest="turn_timeout", type=float, default=None)
     p.add_argument("--nudge-after", dest="nudge_after", type=float, default=None)
     p.add_argument("--fallback-window", dest="fallback_window", type=float, default=None)
@@ -170,11 +198,6 @@ class MultiRunner:
         self._ts = ts
         self.container = RESULTS_ROOT / f"{ts}_{cfg['name']}"
         self.container.mkdir(parents=True, exist_ok=True)
-        # Private, per-run tmux socket (tmux -L). All per-game sessions live here
-        # instead of the shared default socket, so they never show up in a plain
-        # `tmux ls` (and can't be killed by accident). View them with
-        # `tmux -L <socket> ls`. Unique per run -> no collision between fleets.
-        self._tmux_socket = f"arc3_{self.container.name}"
         # (game, variant, phase) work items
         self.items = [(g, v, "fresh") for g in cfg["games"] for v in cfg["variants"]]
         self.status: dict[str, dict] = {}
@@ -183,9 +206,8 @@ class MultiRunner:
         self.scorecard_id: str | None = None
         self._broker: subprocess.Popen | None = None
         self._broker_err = None
-        # Per-game run_solver process + tmux session, for teardown on ANY exit.
+        # Per-game run_solver process, for teardown on ANY exit.
         self._procs: dict[str, subprocess.Popen] = {}
-        self._sessions: dict[str, str] = {}
         self._stop = threading.Event()
         self._cleaned = False
         self._cleanup_lock = threading.Lock()
@@ -206,8 +228,6 @@ class MultiRunner:
                     "parallel": self.cfg["parallel"],
                     "launch_stagger_seconds": 3,
                     "scorecard_id": self.scorecard_id,
-                    # Private per-run tmux socket; attach a game with `tmux -L <socket> ls`.
-                    "tmux_socket": self._tmux_socket,
                     "config": {
                         k: self.cfg[k]
                         for k in (
@@ -215,11 +235,13 @@ class MultiRunner:
                             "operation_mode",
                             "model",
                             "reasoning_effort",
+                            "skill",
                             "variants",
                             "seeded",
                             "parallel",
                             "max_turns",
                             "max_env_steps",
+                            "max_wall_seconds",
                             "turn_timeout",
                             "nudge_after",
                             "effort_ladder",
@@ -298,13 +320,10 @@ class MultiRunner:
     def _run_one(self, game: str, variant: str, sem: threading.Semaphore) -> None:
         with sem:
             if self._stop.is_set():
-                return  # TUI quit before this game started
+                return  # fleet stopped before this game started
             run_group_root = self.container  # results-root for run_solver
             key = self._key(game, variant)  # "<game>_<variant>" — slash-free
-            # status/tab key (valid tab id)
             group = f"{game}/{variant}"  # nested on-disk hierarchy
-            # Deterministic tmux session so _shutdown_games() can tear it down.
-            session = f"arc3_{key}"
             with self._lock:
                 self.status[key] = {
                     "title": key,
@@ -312,7 +331,6 @@ class MultiRunner:
                     "game": game,
                     "variant": variant,
                 }
-                self._sessions[key] = session
             cmd = [
                 sys.executable,
                 str(EXAMPLE_DIR / "run_solver.py"),
@@ -324,10 +342,6 @@ class MultiRunner:
                 str(run_group_root),  # -> <container>/<game>/<variant>/<run>
                 "--group",
                 group,
-                "--tmux-session",
-                session,
-                "--tmux-socket",
-                self._tmux_socket,
                 "--max-turns",
                 str(self.cfg["max_turns"]),
                 "--max-env-steps",
@@ -350,9 +364,10 @@ class MultiRunner:
                 str(self.cfg["reflect_every"]),
                 "--allowed-game-overs",
                 str(self.cfg["allowed_game_overs"]),
+                "--skill",
+                str(self.cfg["skill"]),
                 "--operation-mode",
                 self.cfg["operation_mode"],
-                "--kill-tmux",
             ]
             if self.scorecard_id:
                 cmd += ["--scorecard-id", self.scorecard_id]
@@ -489,7 +504,7 @@ class MultiRunner:
                 break  # TUI quit before fan-out finished
             t.start()
             started.append(t)
-            time.sleep(3)  # stagger startup (env download locks, tmux)
+            time.sleep(3)  # stagger startup to avoid simultaneous env downloads
         for t in started:  # join only threads we actually started
             t.join()
         self._stop.set()  # stop the refresher
@@ -516,10 +531,9 @@ class MultiRunner:
 
     def _cleanup_all(self, *_a) -> None:
         """Idempotent teardown for ANY exit: stop launching, kill every
-        still-running game (its run_solver process group — run_solver + harness —
-        AND its tmux session, the agent), close the shared scorecard, and write the
-        summary. Registered via atexit + signal handlers + run()'s finally, so games
-        are never orphaned."""
+        still-running game (its run_solver process group — run_solver + harness),
+        close the shared scorecard, and write the summary. Registered via atexit +
+        signal handlers + run()'s finally, so games are never orphaned."""
         with self._cleanup_lock:
             if self._cleaned:
                 return
@@ -529,15 +543,9 @@ class MultiRunner:
         self._stop.set()  # stop the orchestrator from launching more games
         with self._lock:
             procs = list(self._procs.items())
-            sessions = dict(self._sessions)
         live = [(k, p) for k, p in procs if p.poll() is None]
         if live:
             print(f"[multi] cleanup: terminating {len(live)} running game(s)...")
-            for key, _ in live:
-                subprocess.run(
-                    ["tmux", "-L", self._tmux_socket, "kill-session", "-t", sessions.get(key, "")],
-                    capture_output=True,
-                )
             for _, p in live:
                 try:
                     os.killpg(os.getpgid(p.pid), signal.SIGTERM)
@@ -552,62 +560,121 @@ class MultiRunner:
                         os.killpg(os.getpgid(p.pid), signal.SIGKILL)
                     except (ProcessLookupError, PermissionError):
                         pass
-        # Reap the private per-run tmux server so its socket doesn't linger (only
-        # our own sessions live on it; never touches the shared default socket).
-        subprocess.run(["tmux", "-L", self._tmux_socket, "kill-server"], capture_output=True)
-        # On a clean finish the server auto-exits before kill-server runs, leaving
-        # an empty socket file — remove it so nothing accumulates in the tmux tmpdir.
-        try:
-            tmpdir = os.environ.get("TMUX_TMPDIR", f"/tmp/tmux-{os.getuid()}")
-            Path(tmpdir, self._tmux_socket).unlink(missing_ok=True)
-        except OSError:
-            pass
         self._stop_broker()  # close the shared scorecard (idempotent)
+        self._reap_tui()  # never orphan the viewer either
         try:
             self._sync_once()
             self._write_summary()
         except Exception:
             pass
 
-    # Back-compat name (TUI quit path).
+    def _reap_tui(self) -> None:
+        """End the viewer subprocess and leave the terminal usable.
+
+        Escalates SIGTERM -> SIGKILL: Textual can survive SIGTERM when its
+        event loop is busy (the graceful-exit callback never runs), which
+        would leave run() blocked on wait() and the process orphaned. After
+        the viewer is gone — however it went — reset the shared tty
+        (mouse reporting / alt screen / cursor), because a killed viewer
+        cannot; stale mouse modes make bash "execute" mouse events
+        (``-bash: 35: command not found``). Safe to call multiple times and
+        without a viewer.
+        """
+        tui = getattr(self, "_tui_proc", None)
+        if tui is not None and tui.poll() is None:
+            try:
+                tui.terminate()
+                try:
+                    tui.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    tui.kill()
+                    tui.wait(timeout=5)
+            except OSError:
+                pass
+        restore_terminal()
+
+    def _deadline_watch(self, seconds: float) -> None:
+        """Wall-clock guard: stop the whole fleet once ``seconds`` elapse.
+
+        Waits on ``self._stop`` so it exits immediately (doing nothing) if the run
+        finishes on its own first. When the deadline is reached it tears down all
+        games, closes the shared scorecard, and writes the summary."""
+        if self._stop.wait(timeout=seconds):
+            return  # run finished before the deadline
+        print(f"[multi] wall-clock deadline reached ({int(seconds)}s) — stopping fleet")
+        self._deadline_hit = True
+        self._stop.set()
+        self._cleanup_all()
+        self._reap_tui()  # unblock the foreground viewer, if up
+
+    # Back-compat name.
     def _shutdown_games(self) -> None:
         self._cleanup_all()
 
     def _run_tui(self) -> tuple[int | None, float]:
-        """Foreground live dashboard (viewer.py). Blocks until
-        the user quits. Returns (returncode, seconds_ran) so run() can distinguish a
-        real quit from a failed launch (missing venv/tty)."""
+        """Foreground live dashboard. Blocks until the user quits. Returns
+        (returncode, seconds_ran) so run() can distinguish a real quit from a
+        failed launch (missing venv/tty).
+
+        Prefers the interactive multi-game TUI (tui_multi_game_viewer.py — the
+        reference per-game panels: grid, reasoning, REPL, world-model; needs the
+        progressive-learning venv). Falls back to the self-contained viewer.py
+        status table (this venv) when that checkout is absent."""
         # Wait briefly for the container's status.json so the TUI opens populated.
         for _ in range(20):
             if (self.container / "status.json").exists():
                 break
             time.sleep(0.2)
-        # Self-contained live viewer (viewer.py): resolves per-game dirs from
-        # status.json _run_dir. Runs in this venv.
-        tui_cmd = [
-            sys.executable,
-            str(EXAMPLE_DIR / "viewer.py"),
-            str(self.container),
-            "--watch",
-            str(self.cfg["watch"]),
-        ]
+        if PL_PY.exists():
+            tui_cmd = [
+                str(PL_PY),
+                str(EXAMPLE_DIR / "tui_multi_game_viewer.py"),
+                str(self.container),
+                "--watch",
+                str(self.cfg["watch"]),
+            ]
+            tui_cwd = PL_DIR  # arc_agi_3 reference package imports relative to here
+        else:
+            tui_cmd = [
+                sys.executable,
+                str(EXAMPLE_DIR / "viewer.py"),
+                str(self.container),
+                "--watch",
+                str(self.cfg["watch"]),
+            ]
+            tui_cwd = REPO_ROOT
         t0 = time.monotonic()
         try:
-            rc = subprocess.run(tui_cmd, cwd=str(REPO_ROOT)).returncode
+            # Popen (not run) so the wall-clock deadline watcher can terminate the
+            # TUI and unblock run() when the fleet is force-stopped.
+            self._tui_proc = subprocess.Popen(tui_cmd, cwd=str(tui_cwd))
         except (FileNotFoundError, OSError) as e:
             print(f"[multi] TUI unavailable ({e}); continuing headless (--no-tui to hide)")
             return 1, 0.0
+        rc = self._tui_proc.wait()
+        # The viewer may have died un-gracefully (deadline SIGTERM/SIGKILL,
+        # crash), leaving the shared tty with mouse reporting / alt-screen /
+        # hidden-cursor modes on. We own the same tty — restore after ANY
+        # viewer exit (idempotent; harmless after a clean Textual shutdown).
+        restore_terminal()
         return rc, time.monotonic() - t0
 
     def run(self) -> None:
         print(f"[multi] container: {self.container}")
         print(f"[multi] {len(self.items)} runs, parallel={self.cfg['parallel']}")
-        print(
-            f"[multi] per-game tmux sessions on private socket {self._tmux_socket!r} "
-            f"(hidden from `tmux ls`; view: tmux -L {self._tmux_socket} ls)"
-        )
         self._install_shutdown_hooks()  # teardown guaranteed from here on
         self._start_broker()
+        # Optional wall-clock cap for the whole fleet.
+        self._deadline_hit = False
+        max_wall = self.cfg.get("max_wall_seconds")
+        if max_wall and max_wall > 0:
+            print(
+                f"[multi] wall-clock deadline: {int(max_wall)}s "
+                f"({max_wall / 3600:.1f}h) — fleet auto-stops when reached"
+            )
+            threading.Thread(
+                target=self._deadline_watch, args=(float(max_wall),), daemon=True, name="deadline"
+            ).start()
         try:
             if self.cfg["no_tui"]:
                 self._orchestrate()
@@ -663,12 +730,14 @@ class MultiRunner:
         scores = [r["rhae_game_pct"] for r in done if r.get("rhae_game_pct") is not None]
         if scores:
             aggregate["avg_rhae_pct"] = round(sum(scores) / len(scores), 2)
-        (self.container / "summary.json").write_text(
-            json.dumps(
-                {"container": self.container.name, "aggregate": aggregate, "results": results},
-                indent=2,
-            )
-        )
+        payload: dict = {
+            "container": self.container.name,
+            "aggregate": aggregate,
+            "results": results,
+        }
+        if getattr(self, "_deadline_hit", False):
+            payload["shutdown_reason"] = "wall_clock_deadline"
+        (self.container / "summary.json").write_text(json.dumps(payload, indent=2))
 
 
 def main() -> None:
