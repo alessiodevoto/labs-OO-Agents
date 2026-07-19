@@ -1,10 +1,8 @@
-# NeMo OO Agents
+# NeMo OO Agents (NOOA) Framework
 
-> **Renaming notice:** NeMo OO Agents is being renamed to **NeMo Object-Oriented Agents** (`nooa`). The new name will take effect in an upcoming release.
+**What if your Python methods could think?** With the NeMo Object-Oriented Agents (NOOA) framework, they can. Write AI agents using familiar Python OOP—no new paradigms to learn. Define method signatures with type hints and docstrings, and your methods automatically become intelligent agents that can reason, execute code, and even create new methods to decompose complex tasks.
 
-**What if your Python methods could think?** With NeMo OO Agents, they can. Write AI agents using familiar Python OOP—no new paradigms to learn. Define method signatures with type hints and docstrings, and your methods automatically become intelligent agents that can reason, execute code, and even create new methods to decompose complex tasks.
-
-## Why NeMo OO Agents?
+## Why the NOOA Framework?
 
 - **Familiar Python OOP**: Classes for scope, methods for capabilities, inheritance for composition
 - **Zero Boilerplate**: Define `async def analyze_data(self, text: str) -> str: ...` and it just works
@@ -14,7 +12,7 @@
 - **Async Native**: First-class async/await support throughout
 - **Observable Context**: Context blocks show transparently where information comes from—the LLM can even manage its own context
 - **Rich Introspection**: `doc()` gives LLMs a rich interface to explore objects, enabling progressive disclosure
-- **Software 1.0 / Software 3.0 (SW1/SW3) Symmetry**: Seamlessly interleave deterministic Python and LLM reasoning
+- **Deterministic + LLM in One Class**: Seamlessly interleave ordinary Python methods and LLM-powered methods — the boundary is a single `...`
 - **Context-Efficient**: Automatic handling of large parameters with smart truncation and `pprint()`
 
 ## Installation
@@ -40,21 +38,21 @@ cd my-agent-project
 
 # Core framework + NVIDIA-gateway model aliases (claude-haiku, nemotron3-nano-30b,
 # gpt-5.2, …). External users who don't want the NVIDIA aliases drop the second `uv add`.
-uv add "nemo-oo-agents @ git+https://gitlab-master.nvidia.com/interactive-agents/nooa.git@main"
+uv add "nemo-labs-oo-agents @ git+https://gitlab-master.nvidia.com/interactive-agents/nooa.git@main"
 uv add "nemo-oo-agents-nvidia @ git+https://gitlab-master.nvidia.com/interactive-agents/nooa.git@main#subdirectory=packages/nemo-oo-agents-nvidia"
 
 # Optional: CLI + TUI (`nooa` command, web terminal, agent REPL)
-uv add "nemo-labs-oo-agents-cli @ git+https://gitlab-master.nvidia.com/interactive-agents/nooa.git@main#subdirectory=packages/nemo-labs-oo-agents-cli"
+uv add "nemo-labs-oo-agents-cli @ git+https://gitlab-master.nvidia.com/interactive-agents/nooa.git@main#subdirectory=packages/nooa-cli"
 
-# Optional: benchmark harness (SWE-bench, Terminal Bench, LoCoMo, Tau Bench, DABStep)
-uv add "nemo-oo-agents-benchmarks @ git+https://gitlab-master.nvidia.com/interactive-agents/nooa.git@main#subdirectory=packages/nemo-oo-agents-benchmarks"
+# Optional: long-term memory subsystem (MemoryManager, see Long-Term Memory below)
+uv add "nemo-labs-oo-agents-memory @ git+https://gitlab-master.nvidia.com/interactive-agents/nooa.git@main#subdirectory=packages/nooa-memory"
 ```
 
-NeMo OO Agents ships as four lockstep packages from this repo:
+NOOA ships as four lockstep packages from this repo:
 
-- **`nemo-oo-agents`** — the core framework. Includes the agent runtime, context blocks, and the unified LLM client. Optional extras: `[tracing]` (OpenTelemetry exporters), `[viewer]` (FastAPI trace viewer), `[mcp]`, `[nemo-flow]`.
-- **`nemo-labs-oo-agents-cli`** — the `nooa` command and agent TUI. Optional `[datascience]` extra pre-loads numpy/pandas/plotly/scipy/sklearn into the LLM REPL execution namespace; `[web]` adds the `nooa term` web frontend.
-- **`nemo-oo-agents-benchmarks`** — eval harness (SWE-bench, Terminal Bench, LoCoMo, Tau Bench, DABStep) and the `nemo-harbor` runner.
+- **`nemo-labs-oo-agents`** — the core framework. Includes the agent runtime, context blocks, the trace viewer, and the unified LLM client. Optional extras: `[tracing]` (OpenTelemetry exporters), `[viewer]` (FastAPI trace viewer), `[mcp]`, `[nemo-flow]`.
+- **`nemo-labs-oo-agents-cli`** (`packages/nooa-cli`) — the `nooa` command and agent TUI. Optional `[datascience]` extra pre-loads numpy/pandas/plotly/scipy/sklearn into the LLM REPL execution namespace; `[web]` adds the `nooa term` web frontend.
+- **`nemo-labs-oo-agents-memory`** (`packages/nooa-memory`) — opt-in long-term memory subsystem: `MemoryManager.install(agent, config=MemoryConfig(enabled=True))` attaches deliberate recall tools, spontaneous per-turn recall, and offline reflection, all backed by a single human-inspectable SQLite file.
 - **`nemo-oo-agents-nvidia`** — opt-in NVIDIA-gateway model aliases. Registers via the `nooa.bundled_configs` entry-point group; install to add the aliases, omit for an OSS-only registry.
 
 ### API Keys
@@ -83,7 +81,7 @@ Run `nooa config show` to see which `secrets.yaml` / `settings.yaml` / `llm_conf
 <details>
 <summary><strong>Click here to see instructions for the development setup</strong></summary>
 
-If you want to contribute to NeMo OO Agents or change code of the library, use the following steps.
+If you want to contribute to the NOOA framework or change code of the library, use the following steps.
 
 ```bash
 git clone ssh://git@gitlab-master.nvidia.com:12051/interactive-agents/nooa.git
@@ -98,13 +96,13 @@ cd nooa/
 
 ## Quick Start
 
-NeMo OO Agents's key strength is that you can start with zero boilerplate and progressively add structure only when you need it.
+The NOOA framework's key strength is that you can start with zero boilerplate and progressively add structure only when you need it.
 
 > **Note**: The examples below use `from nooa.util.quickstart import *` which provides common imports (`Agent`, `llm`, `BaseModel`, `strategy`, `autorun`, etc.) for brevity. Each example is copy-paste runnable.
 
 ### Step 1: Your First Generation Method
 
-Methods with `...` bodies are called **generation methods** - they're implemented by agentic strategy using LLMs at runtime. The method signature defines the contract (inputs/outputs), and the **docstring provides instructions** to guide the LLM:
+Methods with `...` bodies are called **generation methods** (the *agentic methods* of the NOOA tech report) - they're implemented by an agentic strategy using LLMs at runtime. The method signature defines the contract (inputs/outputs), and the **docstring provides instructions** to guide the LLM:
 
 ```python
 from nooa.util.quickstart import *
@@ -150,7 +148,7 @@ Set `NVIDIA_INTERNAL_API_KEY` (or `NVIDIA_API_KEY` for the public NIM endpoint) 
 
 See [`src/nooa/unifiedllm/registry.py`](src/nooa/unifiedllm/registry.py) for the YAML schema, or `CompletionClient()` directly for full control.
 
-> **Key insight**: In NeMo OO Agents, your method name, parameters, and docstring ARE the prompt. Try renaming `analyze_feedback` to `analyze_feedback_briefly` or `give_detailed_feedback_analysis`—the output changes accordingly, without modifying any other code. This is the fundamental paradigm shift: code structure drives LLM behavior.
+> **Key insight**: In NOOA, your method name, parameters, and docstring ARE the prompt. Try renaming `analyze_feedback` to `analyze_feedback_briefly` or `give_detailed_feedback_analysis`—the output changes accordingly, without modifying any other code. This is the fundamental paradigm shift: code structure drives LLM behavior.
 
 <details>
 <summary><strong>Show cloned repo command</strong></summary>
@@ -162,7 +160,7 @@ uv run python examples/quickstart/01_first_generation_method.py
 
 ### Step 2: Use Structured Output to Enforce Method Contracts with Auto-Retry
 
-Use any Pydantic model as a return type. NeMo OO Agents automatically validates outputs and retries on errors. The LLM receives validation messages and corrects its response, ensuring you always get type-safe, valid data. This makes integrating LLM outputs with deterministic code robust and reliable:
+Use any Pydantic model as a return type. NOOA automatically validates outputs and retries on errors. The LLM receives validation messages and corrects its response, ensuring you always get type-safe, valid data. This makes integrating LLM outputs with deterministic code robust and reliable:
 
 ```python
 from typing import Literal
@@ -193,7 +191,7 @@ async def main():
     print(result)  # Guaranteed valid FeedbackAnalysis instance
 ```
 
-Any Pydantic features work: `Field` constraints, validators, nested models, optional fields, and more. In addition, NeMo OO Agents also supports `dataclasses`, `TypedDict`s, and validates basic types like `str`, `int`, `bool`, plus container types like `dict` and `list`.
+Any Pydantic features work: `Field` constraints, validators, nested models, optional fields, and more. In addition, NOOA also supports `dataclasses`, `TypedDict`s, and validates basic types like `str`, `int`, `bool`, plus container types like `dict` and `list`.
 
 <details>
 <summary><strong>Show cloned repo command</strong></summary>
@@ -203,9 +201,9 @@ uv run python examples/quickstart/02_structured_outputs.py
 ```
 </details>
 
-### Step 3: Your Methods Are Your Tools (SW1/SW3 Interleaving)
+### Step 3: Your Methods Are Your Tools
 
-In NeMo OO Agents, you don't need a separate "tool" abstraction—**your regular Python methods ARE the tools**. The LLM can call any method on `self`, enabling seamless interleaving of deterministic code (SW1) and LLM reasoning (SW3). No decorators, no registration, no schema definitions:
+In NOOA, you don't need a separate "tool" abstraction—**your regular Python methods ARE the tools**. The LLM can call any method on `self`, enabling seamless interleaving of deterministic code and LLM reasoning. No decorators, no registration, no schema definitions:
 
 ```python
 from typing import TypedDict
@@ -230,7 +228,7 @@ class InventoryAgent(Agent, llm=llm):
             "orange": {"stock": 0, "price": 0.80},  # Out of stock
         }
 
-    # SW1: Deterministic Python - automatically available as "tools" for the LLM
+    # Deterministic Python - automatically available as "tools" for the LLM
     def get_stock(self, item: str) -> int:
         """Get current stock for an item."""
         return self.inventory.get(item, {}).get("stock", 0)
@@ -239,7 +237,7 @@ class InventoryAgent(Agent, llm=llm):
         """Get price for an item."""
         return self.inventory.get(item, {}).get("price", 0.0)
 
-    # SW3: Generation method - LLM implements this, calling SW1 methods as needed
+    # Generation method - LLM implements this, calling the helpers above as needed
     async def can_fulfill_order(self, items: list[str], budget: float) -> Result:
         """Check if order can be fulfilled within budget."""
         ...
@@ -314,7 +312,7 @@ async def main():
 ```
 
 
-NeMo OO Agents supports two strategies (with more planned in the future). Advanced users can implement their own strategies.
+The NOOA framework supports two strategies (with more planned in the future). Advanced users can implement their own strategies.
 
 | Strategy | Best For | Description |
 |----------|----------|-------------|
@@ -417,7 +415,7 @@ class MathAgent(Agent, llm=llm):
         ...
 
     async def explain(self, expression: str, result: str) -> str:
-        """Explain in one sentence why {expression} equals {result}."""
+        """Explain in one sentence why the expression evaluates to the result."""
         ...
 
     @hidden
@@ -433,7 +431,7 @@ async def main():
     print(f"Result: {result}")
 ```
 
-Traces capture every LLM call, code execution, and tool invocation, with spans nested by call hierarchy. If the viewer is not running, tracing is silently disabled. Set `OTLP_ENDPOINT` to send traces to a viewer on a different host or port. See the [viewer README](packages/nemo-oo-agents-viewer/README.md) for more on the viewer API, trace import/export, and the trace format convention.
+Traces capture every LLM call, code execution, and tool invocation, with spans nested by call hierarchy. If the viewer is not running, tracing is silently disabled. Set `OTLP_ENDPOINT` to send traces to a viewer on a different host or port. The viewer ships in the core package ([`src/nooa/viewer/`](src/nooa/viewer/), enabled via the `[viewer]` extra) — `nooa start-dev` runs it locally.
 
 <details>
 <summary><strong>Show cloned repo command</strong></summary>
@@ -495,7 +493,7 @@ async def main():
 ```
 
 
-Template variables work with any Python expression: `{self.attr}`, `{len(items)}`, `{param.upper()}`.
+Template variables work with instance state and computed expressions: `{self.attr}`, `{len(self._notes)}`. **Don't re-inject method parameters** (e.g. `{text}`): arguments are already rendered to the LLM automatically, with size-aware truncation — repeating them in the docstring duplicates them untruncated and mixes data into the instruction text. Reserve templating for what the signature cannot show.
 
 <details>
 <summary><strong>Show cloned repo command</strong></summary>
@@ -650,6 +648,30 @@ uv run python examples/quickstart/09_summarization.py
 
 The features below follow the same Agent pattern — class attributes, method signatures, docstrings — so there's nothing new to learn.
 
+### Long-Term Memory
+
+Everything above is method- or session-scoped. The opt-in memory subsystem (`nemo-labs-oo-agents-memory`, see Installation) gives an agent state that persists across sessions — and the **agent curates its own store**: model-callable tools (`remember`, `recall`, `search`, `update_memory`, `forget`, …) let it write and consult memories deliberately, while a per-turn hook injects associated memories spontaneously. Offline reflection consolidates the store (merge → abstract → prune), and everything lives in a single human-inspectable SQLite file.
+
+`MemoryManager.install(agent, config=MemoryConfig(enabled=True))` attaches it to an unmodified agent (`enabled` defaults to `False`, so pass the config — install is inert without it); uninstalling leaves no trace:
+
+```python
+from nooa import Agent
+from nooa_memory import MemoryConfig, MemoryManager, MemoryToolsMixin
+
+
+class MyAgent(MemoryToolsMixin, Agent, llm=llm):
+    async def work(self, task: str) -> str:
+        """Do the task. Use self.recall(...) to consult memory."""
+        ...
+
+
+agent = MyAgent()
+MemoryManager.install(agent, config=MemoryConfig(enabled=True))
+agent.remember("Deploy with `make ship`.", type="skill", importance="HIGH")
+```
+
+The store defaults to `.nooa/memory/memory.sqlite`. See [`packages/nooa-memory`](packages/nooa-memory/) for the full design.
+
 ### Skills
 
 Skills inject curated context (guidelines, examples, domain knowledge) directly into your agent. Skills are included in the core package — no extra install needed.
@@ -684,7 +706,7 @@ async def main():
     print(result)
 ```
 
-You can also discover and activate all skills in a directory with `SkillRegistry` (`from nemo_oo_agents.skill_registry import SkillRegistry`): construct `self.skills = SkillRegistry(self)` in `__init__`, then `self.skills.discover_skills_dirs([skills_dir])` and `self.skills.load(["cmd.*"])` / `self.skills.activate(["cmd.*"])`. Skills are instance attributes — every instance of the agent automatically has the skill context available.
+You can also discover and activate all skills in a directory with `SkillRegistry` (`from nooa.skill_registry import SkillRegistry`): construct `self.skills = SkillRegistry(self)` in `__init__`, then `self.skills.discover_skills_dirs([skills_dir])` and `self.skills.load(["cmd.*"])` / `self.skills.activate(["cmd.*"])`. Skills are instance attributes — every instance of the agent automatically has the skill context available.
 
 <details>
 <summary><strong>Show cloned repo command</strong></summary>
@@ -696,7 +718,7 @@ uv run python examples/quickstart/10_skills.py
 
 ### MCP Tools
 
-MCP (Model Context Protocol) tools let your agent call external services through a standard interface. The TUI (`nemo-labs-oo-agents-cli`) ships MCP support out of the box — it's a hard dependency, so `self.mcp` and the `/mcp` command are always available. In the **core** `nemo-oo-agents` library MCP stays an optional extra (for glibc<2.28 hosts): install with `uv sync --extra mcp` (or `uv add 'nemo-oo-agents[mcp]'`).
+MCP (Model Context Protocol) tools let your agent call external services through a standard interface. The TUI (`nemo-labs-oo-agents-cli`) ships MCP support out of the box — it's a hard dependency, so `self.mcp` and the `/mcp` command are always available. In the **core** `nemo-labs-oo-agents` library MCP stays an optional extra (for glibc<2.28 hosts): install with `uv sync --extra mcp` (or `uv add 'nemo-labs-oo-agents[mcp]'`).
 
 For the TUI, declare MCP servers in the same project config file used for
 models, skills, and other TUI settings: `.nooa/config.toml`. Use
@@ -855,7 +877,7 @@ For advanced workflows (port forwarding, long-running tasks, connecting to exist
 
 ## Advanced Features
 
-Beyond the quickstart, NeMo OO Agents offers these advanced capabilities:
+Beyond the quickstart, the NOOA framework offers these advanced capabilities:
 
 ### Self-Extending Agents
 
