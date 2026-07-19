@@ -824,7 +824,7 @@ class TestNemoFlowMiddlewareModelExtraction:
 
         with patch.dict(
             sys.modules,
-            {"nemo_flow": fake_nemo_flow},
+            {"nemo_relay": fake_nemo_flow},
         ):
             nm = sys.modules["nooa.nemo_flow_middleware"]
             importlib.reload(nm)
@@ -874,7 +874,7 @@ class TestNemoFlowWrapperFallbackReturn:
 
         fake_nemo_flow.llm.execute = AsyncMock(side_effect=llm_execute_capturing)
 
-        with patch.dict(sys.modules, {"nemo_flow": fake_nemo_flow}):
+        with patch.dict(sys.modules, {"nemo_relay": fake_nemo_flow}):
             nm = sys.modules["nooa.nemo_flow_middleware"]
             importlib.reload(nm)
             try:

@@ -222,8 +222,8 @@ def _nemo_flow_patched():
     with patch.dict(
         sys.modules,
         {
-            "nemo_flow": fake_nemo_flow,
-            "nemo_flow.LLMRequest": fake_llm_request,
+            "nemo_relay": fake_nemo_flow,
+            "nemo_relay.LLMRequest": fake_llm_request,
         },
     ):
         nm = sys.modules["nooa.nemo_flow_middleware"]

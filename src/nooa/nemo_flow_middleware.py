@@ -2,7 +2,13 @@
 # SPDX-License-Identifier: Apache-2.0
 """NeMo Flow integration via the ``intercept()`` middleware API.
 
-When ``nemo_flow`` is installed, this module provides three middleware functions
+The upstream ``nemo_flow`` package was renamed to ``nemo_relay`` (every
+``nemo_flow`` release on PyPI is yanked with that reason). This module imports
+``nemo_relay`` under the local alias ``nemo_flow`` — the runtime API is
+unchanged, so the nooa-facing names (``nemo_flow_scope`` etc.) are kept for
+backward compatibility.
+
+When ``nemo_relay`` is installed, this module provides three middleware functions
 that route LLM calls, code execution, and agent method calls through the NeMo Flow
 pipeline (guardrails, intercepts, event subscribers, ATIF export).
 
@@ -25,7 +31,7 @@ Or use ``nemo_flow_scope()`` which handles install/uninstall automatically::
         result = await agent.my_method()
 
 Requirements:
-    ``nemo_flow`` must be installed (``uv sync --extra nemo-flow``).
+    ``nemo_relay`` must be installed (``uv sync --extra nemo-relay``).
     If not installed, ``install_nemo_flow()`` and ``nemo_flow_scope()`` raise
     ``ImportError`` with install instructions.
 """
@@ -57,8 +63,10 @@ if TYPE_CHECKING:
     )
 
 try:
-    import nemo_flow  # type: ignore[import]
-    from nemo_flow import LLMRequest  # type: ignore[import]
+    # nemo_flow was renamed to nemo_relay upstream; alias it so the rest of
+    # this module's nemo_flow.* references keep working unchanged.
+    import nemo_relay as nemo_flow  # type: ignore[import]
+    from nemo_relay import LLMRequest  # type: ignore[import]
 
     _HAS_NEMO_FLOW = True
 except ImportError:
@@ -67,8 +75,9 @@ except ImportError:
     LLMRequest = None  # type: ignore[assignment,misc]
 
 _INSTALL_MSG = (
-    "nemo_flow is required for NeMo Flow integration. "
-    "Install with `uv sync --extra nemo-flow` (public PyPI wheels)."
+    "nemo_flow is required for NeMo Flow integration. The package was renamed "
+    "to nemo_relay; install it with `uv sync --extra nemo-relay` "
+    "(or `uv add nemo-relay`)."
 )
 
 # Keys stripped from params before exposing to NeMo Flow guardrails/events.

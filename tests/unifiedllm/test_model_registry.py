@@ -335,6 +335,59 @@ class TestApiKeyHandling:
         llm = get_llm_client("totally-made-up-model")
         assert llm.config.get("api_key") is None
 
+    def test_nvidia_key_synonym_old_config_new_env(self, tmp_path, monkeypatch):
+        """A config declaring the legacy NVIDIA_INTERNAL_API_KEY resolves from
+        the renamed NVIDIA_INFERENCE_API_KEY."""
+        path = _write_project_config(
+            _project_dir(tmp_path),
+            """\
+            models:
+              test-nvidia-model:
+                model_name: test-model
+                api_key_env: NVIDIA_INTERNAL_API_KEY
+            """,
+        )
+        monkeypatch.delenv("NVIDIA_INTERNAL_API_KEY", raising=False)
+        monkeypatch.setenv("NVIDIA_INFERENCE_API_KEY", "new-name-key")
+        reload_registry(path)
+        llm = get_llm_client("test-nvidia-model")
+        assert llm.config.get("api_key") == "new-name-key"
+
+    def test_nvidia_key_synonym_new_config_old_env(self, tmp_path, monkeypatch):
+        """A config declaring NVIDIA_INFERENCE_API_KEY resolves from the legacy
+        NVIDIA_INTERNAL_API_KEY still set in older environments."""
+        path = _write_project_config(
+            _project_dir(tmp_path),
+            """\
+            models:
+              test-nvidia-model:
+                model_name: test-model
+                api_key_env: NVIDIA_INFERENCE_API_KEY
+            """,
+        )
+        monkeypatch.delenv("NVIDIA_INFERENCE_API_KEY", raising=False)
+        monkeypatch.setenv("NVIDIA_INTERNAL_API_KEY", "old-name-key")
+        reload_registry(path)
+        llm = get_llm_client("test-nvidia-model")
+        assert llm.config.get("api_key") == "old-name-key"
+
+    def test_declared_env_var_wins_over_synonym(self, tmp_path, monkeypatch):
+        """When both names are set, the one the config declares wins."""
+        path = _write_project_config(
+            _project_dir(tmp_path),
+            """\
+            models:
+              test-nvidia-model:
+                model_name: test-model
+                api_key_env: NVIDIA_INFERENCE_API_KEY
+            """,
+        )
+        monkeypatch.setenv("NVIDIA_INFERENCE_API_KEY", "declared-key")
+        monkeypatch.setenv("NVIDIA_INTERNAL_API_KEY", "synonym-key")
+        reload_registry(path)
+        llm = get_llm_client("test-nvidia-model")
+        assert llm.config.get("api_key") == "declared-key"
+
     def test_non_string_api_key_env_logged_and_dropped(self, tmp_path, caplog):
         """A malformed ``api_key_env`` (e.g. a number) must not crash ``os.getenv``.
 

@@ -7,7 +7,7 @@ can hand to downstream tooling (SFT pipelines, evals, dashboards).
 
 Run it::
 
-    uv run python examples/quickstart/15_atif_trajectory.py
+    uv run python examples/quickstart/14_atif_trajectory.py
 """
 
 from pathlib import Path

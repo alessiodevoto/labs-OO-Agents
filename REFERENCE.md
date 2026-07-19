@@ -6,14 +6,13 @@ Quick reference for paths, examples, commands, and configuration.
 
 | Path | What |
 |------|------|
-| `src/nooa/` | Core framework source (the `nemo-oo-agents` published package) |
+| `src/nooa/` | Core framework source (the `nemo-labs-oo-agents` published package) |
 | `src/nooa/context_blocks/` | Context block rendering subpackage |
 | `src/nooa/unifiedllm/` | LLM client subpackage |
-| `packages/nemo-labs-oo-agents-cli/` | CLI + TUI (separately-published `nemo-labs-oo-agents-cli`) |
-| `packages/nemo-oo-agents-benchmarks/` | Eval harness (separately-published `nemo-oo-agents-benchmarks`) |
-| `packages/nat_oo_agents/` | NeMo Agent Toolkit plugin (external; not published from this repo) |
+| `packages/nooa-cli/` | CLI + TUI (separately-published `nemo-labs-oo-agents-cli`) |
+| `packages/nooa-memory/` | Long-term memory subsystem (separately-published `nemo-labs-oo-agents-memory`) |
+| `packages/nooa-bench/` | BenchAgent + `nemo-harbor` runner (separately-published `nemo-labs-oo-agents-bench`) |
 | `examples/` | Example agents (see below for details) |
-| `evaluation/` | Benchmark-agnostic evaluation framework (adapters, metrics) — see its `README.md` and `AGENTS.md` |
 | `docs/guides/` | Detailed framework guides |
 
 ## Examples
@@ -33,8 +32,10 @@ Quick reference for paths, examples, commands, and configuration.
 | Summarization | `examples/quickstart/09_summarization.py` |
 | Skills | `examples/quickstart/10_skills.py` |
 | MCP tools | `examples/quickstart/11_mcp.py` |
-| Multimodal (images) | `examples/quickstart/12_multimodal.py` |
-| NeMo Flow integration | `examples/quickstart/13_nemo_flow.py` |
+| Long-term memory | `examples/quickstart/12_memory.py` |
+| Multimodal (images) | `examples/quickstart/13_multimodal.py` |
+| ATIF trajectory export | `examples/quickstart/14_atif_trajectory.py` |
+| NeMo Flow (nemo_relay) integration | `examples/quickstart/15_nemo_relay.py` |
 
 **Advanced** (`examples/advanced/`) — deeper dives into specific features and integrations. Each example is self-contained; read the file docstring for prerequisites.
 
@@ -43,7 +44,9 @@ Quick reference for paths, examples, commands, and configuration.
 | Agent memory | `examples/advanced/memory.py` |
 | CodeAct event flow | `examples/advanced/codeact_event_sequence.py` |
 | Pre-ellipsis prefill | `examples/advanced/prefill.py` |
-| OTLP tracing (Langfuse/Phoenix) | `examples/advanced/tracing_otlp.py` |
+| OTLP tracing | `examples/advanced/tracing_otlp.py` |
+| Langfuse tracing | `examples/advanced/tracing_langfuse.py` |
+| Phoenix tracing | `examples/advanced/tracing_phoenix.py` |
 | Swappable execution engines | `examples/advanced/swappable_execution_engines.py` |
 
 ## Detailed Guides
@@ -58,6 +61,7 @@ For deeper understanding, see these topic-specific docs:
 | Single vs multi-agent | `docs/guides/single-vs-multi-agent.md` | Architectural decisions |
 | Structured output | `docs/guides/structured-output.md` | Return types, Pydantic validation, PythonSource pattern |
 | Method design | `docs/guides/writing-generation-methods.md` | Writing effective generation methods |
+| Truncation | `docs/guides/truncation.md` | How large values are previewed to the model |
 | Config migration (0.4.x → 0.5.0) | `docs/guides/config-migration.md` | Moving existing config to the unified `nemo_oo` layout (settings/secrets/llm_config YAML) — breaking changes in 0.5.0 |
 
 ## Working Documentation
@@ -114,43 +118,6 @@ enable_logging(name="nooa.runtime.actor")        # just the executor
 `logging.Logger` instances.  The library adds only a `NullHandler` to the
 root logger, so no output appears unless you configure handlers.
 
-## NeMo Flow Integration
-
-Optional integration with [NeMo Flow](https://github.com/NVIDIA/NeMo-Flow) (`nemo_flow`) — a multi-language agent runtime providing guardrails, intercepts, event subscribers, and ATIF trajectory export.
-
-### Quick start
-
-```bash
-# Install with NeMo Flow support (public PyPI wheels)
-uv sync --extra nemo-flow
-```
-
-```python
-from nooa.nemo_flow_middleware import nemo_flow_scope
-
-async with nemo_flow_scope(agent, "my-agent") as handle:
-    result = await agent.my_method(...)
-    # handle.uuid available for ATIF export
-```
-
-### Key files
-
-| File | Purpose |
-|------|---------|
-| `src/nooa/nemo_flow_middleware.py` | Middleware functions + `install_nemo_flow()` / `nemo_flow_scope()` |
-| `tests/test_nemo_flow_middleware.py` | Integration tests (requires `nemo_flow`) |
-| `examples/quickstart/13_nemo_flow.py` | Full quickstart: guardrails, intercepts, ATIF export |
-
-### Middleware hooks
-
-The integration installs three middleware via `event_manager.intercept()`:
-
-| Middleware | Hook | What it does |
-|------------|------|-------------|
-| `nemo_flow_llm_middleware` | `llm_call` | Routes LLM calls through NeMo Flow LLM pipeline |
-| `nemo_flow_tool_middleware` | `execute_python` | Routes code execution through NeMo Flow tool pipeline |
-| `nemo_flow_agent_call_middleware` | `agent_call` | Wraps each agent method in a NeMo Flow Function scope |
-
 ## Config files
 
 Three config files share one layout, one precedence chain, and one loader
@@ -185,7 +152,7 @@ values redacted).
 
 ```yaml
 env:
-  NVIDIA_INTERNAL_API_KEY: sk-...
+  NVIDIA_INFERENCE_API_KEY: sk-...
   ANTHROPIC_API_KEY: sk-ant-...
 ```
 
@@ -194,13 +161,13 @@ env:
 See `.env` for API keys (library use); the CLI/TUI reads `secrets.yaml`:
 - `OPENAI_API_KEY` — OpenAI
 - `NVIDIA_API_KEY` — NVIDIA NIM (integrate.api.nvidia.com)
-- `NVIDIA_INTERNAL_API_KEY` — NVIDIA internal (inference-api.nvidia.com)
+- `NVIDIA_INFERENCE_API_KEY` — NVIDIA inference gateway (inference-api.nvidia.com); the legacy name `NVIDIA_INTERNAL_API_KEY` is still accepted
 
 | Provider | Endpoint | Key |
 |----------|----------|-----|
 | `openai` | OpenAI API | `OPENAI_API_KEY` |
 | `nvidia` | integrate.api.nvidia.com | `NVIDIA_API_KEY` |
-| `nvidia_internal` | inference-api.nvidia.com | `NVIDIA_INTERNAL_API_KEY` |
+| `nvidia_internal` | inference-api.nvidia.com | `NVIDIA_INFERENCE_API_KEY` |
 
 ### `NEMO_OO_*` variables
 
@@ -217,5 +184,5 @@ All framework-owned env vars use the `NEMO_OO_` prefix:
 | `NEMO_OO_TRACE_DB` | SQLite trace-store path for the viewer (default `~/.config/nooa/traces.db`) |
 | `NEMO_OO_RICH_URL` | Rich-content POST endpoint, set by `nooa term` for the web frontend (internal) |
 
-Any var named under a `secrets.yaml` `env:` map (e.g. `NVIDIA_INTERNAL_API_KEY`)
+Any var named under a `secrets.yaml` `env:` map (e.g. `NVIDIA_INFERENCE_API_KEY`)
 is pushed into the process env non-clobbering — an already-exported value always wins.

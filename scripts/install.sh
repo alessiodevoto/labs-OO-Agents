@@ -11,7 +11,7 @@
 #      `nemo-oo-agents` (core) and `nemo-oo-agents-nvidia` (NVIDIA-gateway
 #      model aliases registered via the
 #      `nooa.bundled_configs` entry-point group).
-#   4. Optionally prompts for `NVIDIA_INTERNAL_API_KEY` (via /dev/tty) and
+#   4. Optionally prompts for `NVIDIA_INFERENCE_API_KEY` (via /dev/tty) and
 #      writes it to `~/.config/nooa/secrets.yaml` (chmod 600). The CLI
 #      loads this file into the process env automatically on every run —
 #      no shell-rc edit needed.
@@ -168,17 +168,17 @@ prompt_api_key() {
     printf '\n'
     info "$(bold 'NVIDIA Inference HUB API key')"
     printf '    Most bundled aliases (claude-*, nemotron-*, gpt-5.x, …) route\n'
-    printf '    through inference.nvidia.com and need NVIDIA_INTERNAL_API_KEY.\n'
+    printf '    through inference.nvidia.com and need NVIDIA_INFERENCE_API_KEY.\n'
     printf '    Get a key at https://inference.nvidia.com — or press Enter to skip.\n'
     printf '\n'
-    printf '    NVIDIA_INTERNAL_API_KEY: '
+    printf '    NVIDIA_INFERENCE_API_KEY: '
     # `< /dev/tty` is the cross-shell way to read from the user even when
     # stdin is the install script.
     api_key=""
     read -r api_key < /dev/tty || true
 
     if [ -z "$api_key" ]; then
-        info "No API key entered — you can set NVIDIA_INTERNAL_API_KEY later."
+        info "No API key entered — you can set NVIDIA_INFERENCE_API_KEY later."
         return 0
     fi
 
@@ -196,11 +196,11 @@ prompt_api_key() {
         printf '# Loaded automatically by the nooa CLI (non-clobbering — a\n'
         printf '# value already exported in your shell wins). Add more keys under env:.\n'
         printf 'env:\n'
-        printf '  NVIDIA_INTERNAL_API_KEY: "%s"\n' "$escaped_key"
+        printf '  NVIDIA_INFERENCE_API_KEY: "%s"\n' "$escaped_key"
     } > "$tmp_file"
     chmod 600 "$tmp_file"
     mv "$tmp_file" "$SECRETS_FILE"
-    info "Wrote NVIDIA_INTERNAL_API_KEY to $SECRETS_FILE (mode 600)."
+    info "Wrote NVIDIA_INFERENCE_API_KEY to $SECRETS_FILE (mode 600)."
 }
 
 # ---------------------------------------------------------------------------
@@ -227,9 +227,9 @@ print_next_steps() {
         printf '     Create %s with:\n' "$SECRETS_FILE"
         printf '\n'
         printf '       env:\n'
-        printf '         NVIDIA_INTERNAL_API_KEY: sk-…\n'
+        printf '         NVIDIA_INFERENCE_API_KEY: sk-…\n'
         printf '\n'
-        printf '     (or just `export NVIDIA_INTERNAL_API_KEY=sk-…` in your shell)\n'
+        printf '     (or just `export NVIDIA_INFERENCE_API_KEY=sk-…` in your shell)\n'
         printf '\n'
         printf '  3. Run the TUI:\n'
         printf '\n'
