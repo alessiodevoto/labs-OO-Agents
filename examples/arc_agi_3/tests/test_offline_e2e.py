@@ -48,6 +48,27 @@ def _have_sdk() -> bool:
     not os.environ.get("ARC_LLM_API_KEY") or not os.environ.get("ARC_API_KEY"),
     reason="needs ARC_LLM_API_KEY (gateway) + ARC_API_KEY (offline game download)",
 )
+def _traces_contain(run: Path, needle: str) -> int:
+    """Count occurrences of ``needle`` inside llm.input_messages spans (the exact
+    bytes sent to the model) across a run's OTLP traces."""
+    hits = 0
+    for f in (run / "traces").glob("*.jsonl"):
+        for line in f.read_text(errors="ignore").splitlines():
+            try:
+                doc = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            for rs in doc.get("resourceSpans", []):
+                for ss in rs.get("scopeSpans", []):
+                    for sp in ss.get("spans", []):
+                        for kv in sp.get("attributes", []):
+                            k = kv.get("key", "")
+                            v = kv.get("value", {}).get("stringValue", "") or ""
+                            if "input_messages" in k and needle in v:
+                                hits += 1
+    return hits
+
+
 def test_offline_run_makes_progress(tmp_path: Path) -> None:
     results_root = tmp_path / "results" / "arc_agi_3"
     proc = subprocess.run(
@@ -60,6 +81,8 @@ def test_offline_run_makes_progress(tmp_path: Path) -> None:
             "memory",
             "--operation-mode",
             "offline",
+            "--sandbox",
+            "inproc",  # keep the test runnable off-root; drop is covered separately
             "--max-env-steps",
             "6",
             "--agent-turn-timeout",
@@ -70,7 +93,6 @@ def test_offline_run_makes_progress(tmp_path: Path) -> None:
             str(results_root),
             "--group",
             "e2e",
-            "--kill-tmux",
         ],
         cwd=str(REPO_ROOT),
         capture_output=True,
@@ -89,3 +111,23 @@ def test_offline_run_makes_progress(tmp_path: Path) -> None:
 
     actions = (run / "ipc" / "actions.jsonl").read_text().strip().splitlines()
     assert actions, "agent submitted no action batches"
+
+    # --- regression: the real game name must NEVER reach the model (finding F-A).
+    # The neutral-/tmp run dir means no traceback / path can carry 'ls20'.
+    assert _traces_contain(run, "ls20") == 0, "real game name leaked into llm.input_messages"
+
+    # --- regression: memory is copied back from the neutral dir to results.
+    assert (run / "team_nemo" / "shared" / "memory.sqlite").exists(), (
+        "memory.sqlite was not copied back to the results dir"
+    )
+
+    # --- regression: no neutral /tmp dir lingers for this run (copy-back cleaned it).
+    import hashlib
+    import re
+    import tempfile
+
+    ts, variant = run.name.split("_")[0] + "_" + run.name.split("_")[1], "memory"
+    alias = "game-" + hashlib.sha1(f"{ts}{variant}".encode()).hexdigest()[:6]
+    safe_alias = re.sub(r"[^a-z0-9_-]", "_", alias.lower())
+    neutral = Path(tempfile.gettempdir()) / "arc_runs" / f"arc_run_{safe_alias}"
+    assert not neutral.exists(), f"neutral dir left behind in /tmp: {neutral}"

@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Orchestrate one ARC-AGI-3 solving run: tmux'd TUI agent + environment harness.
+"""Orchestrate one ARC-AGI-3 solving run: headless agent + environment harness.
 
 Stdlib-only — run with any python:
 
@@ -8,11 +8,9 @@ Stdlib-only — run with any python:
 
 What it does:
 1. creates ``results/arc_agi_3/nemo_solver/<ts>_<game>_<variant>/`` (+ ipc/),
-2. starts a tmux session running launcher.py (the nemo-oo TUI agent) — attach
-   with ``tmux attach -t <session>`` to watch or type guidance to the agent,
+2. starts launcher.py as a headless subprocess (no TUI / tmux required),
 3. starts harness.py in this venv (the `arc` extra provides the arcade SDK),
-4. once the harness publishes state 0, sends the kickoff message into the TUI,
-5. waits for the harness to finish and prints the result summary.
+4. waits for the harness to finish and prints the result summary.
 """
 
 from __future__ import annotations
@@ -20,19 +18,31 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 EXAMPLE_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(EXAMPLE_DIR))  # for `from sandbox import ...`
-# The agent (launcher.py) and the environment harness (harness.py) both run in
-# THIS interpreter. Install the arcade SDK with `pip install "nemo-oo-agents[arc]"`.
 MAIN_PY = sys.executable
-DATA_DIR = REPO_ROOT  # offline games are downloaded here under environment_files/
+# The harness runs from this directory; the ARC-AGI SDK looks for (and downloads)
+# offline game files AND the per-level RHAE baselines under
+# <cwd>/environment_files/ — in EVERY operation mode (competition included: the
+# vendored SDK wrapper scans local files for env info/baselines). Resolution:
+# ARC_DATA_DIR env override > a progressive-learning checkout inside the repo
+# (ships environment_files/) > the repo root. Without environment_files the run
+# still plays, but baselines are empty → RHAE shows 0/100 live and 0 in
+# result.json.
+_PL_DIR = REPO_ROOT / "progressive-learning"
+DATA_DIR = Path(
+    os.environ.get("ARC_DATA_DIR")
+    or (_PL_DIR if (_PL_DIR / "environment_files").is_dir() else REPO_ROOT)
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -121,49 +131,37 @@ def parse_args() -> argparse.Namespace:
         default="count",
         help="animation-event summary in the agent's state (off|count)",
     )
-    p.add_argument(
-        "--kill-tmux", action="store_true", help="kill the tmux session when the run ends"
-    )
     p.add_argument("--tag", default="", help="extra tag appended to the run dir name")
     p.add_argument(
-        "--tmux-session",
-        default="",
-        help="explicit tmux session name (default: auto). The multi-runner "
-        "sets this so it can tear the session down on TUI quit.",
+        "--skill",
+        default="grid-game-solver",
+        help="skill dir under examples/arc_agi_3/skills/ to load "
+        "(e.g. grid-game-solver, interactive-game-solver)",
     )
     p.add_argument(
-        "--tmux-socket",
-        default="",
-        help="tmux socket name (tmux -L). Puts this run's sessions on a "
-        "private, per-run tmux server so they never show up in a plain "
-        "`tmux ls` (view with `tmux -L <socket> ls`). Default: shared "
-        "default socket.",
+        "--agent-uid",
+        type=int,
+        default=0,
+        help="uid to drop the agent to under --sandbox drop; 0 = derive a distinct "
+        "uid per run so concurrent games can't read each other",
     )
     p.add_argument(
         "--sandbox",
-        choices=["off", "inproc", "full"],
-        default="inproc",
-        help="off: no guards; inproc: L1+L2 in-process (default, always on "
-        "via the agent); full: also wrap the launcher in the L3 OS "
-        "sandbox (requires user namespaces — fails closed if absent)",
+        choices=["off", "inproc", "full", "drop"],
+        default="drop",
+        help="drop (DEFAULT): in-process L1+L2 guards PLUS run the agent as a "
+        "distinct per-run unprivileged uid so the game source + other runs are "
+        "unreadable (Docker-friendly, no namespaces; fails closed if setpriv/root "
+        "absent); inproc: only the in-process guards; full: L3 OS namespace "
+        "sandbox (needs user namespaces — fails closed if absent); off: no guards",
     )
     return p.parse_args()
-
-
-# Set once in main() from --tmux-socket; every tmux() call targets this private
-# per-run server (tmux -L) so the game sessions stay out of the default `tmux ls`.
-_TMUX_SOCKET = ""
-
-
-def tmux(*cmd: str) -> subprocess.CompletedProcess:
-    sock = ["-L", _TMUX_SOCKET] if _TMUX_SOCKET else []
-    return subprocess.run(["tmux", *sock, *cmd], capture_output=True, text=True)
 
 
 def _set_parent_death_signal() -> None:
     """Linux best-effort: get SIGTERM if our parent (run_multi) dies — even on an
     unhandleable SIGKILL of the orchestrator — so a game never outlives its runner.
-    Our SIGTERM handler then reaps the harness + tmux agent."""
+    Our SIGTERM handler then reaps the harness + launcher agent."""
     try:
         import ctypes
 
@@ -191,8 +189,6 @@ def main() -> int:
     _set_parent_death_signal()  # die with run_multi (covers its SIGKILL)
     _load_dotenv()
     args = parse_args()
-    global _TMUX_SOCKET
-    _TMUX_SOCKET = args.tmux_socket
     ts = time.strftime("%Y%m%d_%H%M%S")
     tag = f"_{args.tag}" if args.tag else ""
     run_name = f"{ts}_{args.game}_{args.variant}{tag}"
@@ -203,67 +199,149 @@ def main() -> int:
     import hashlib
 
     alias = "game-" + hashlib.sha1(f"{ts}{args.variant}{tag}".encode()).hexdigest()[:6]
-    ipc = run_dir / "ipc"
-    ipc.mkdir(parents=True, exist_ok=True)
-    (run_dir / "team_nemo" / "shared").mkdir(parents=True, exist_ok=True)
-    (ipc / "states.jsonl").touch()
-    (ipc / "actions.jsonl").touch()
 
-    session = args.tmux_session or f"arc3_{args.game}_{args.variant}{tag}_{ts}"
-    otlp = os.environ.get("OTLP_ENDPOINT", "")
-    inner = (
-        f"{MAIN_PY} examples/arc_agi_3/launcher.py"
-        f" --run-dir {run_dir} --game {args.game} --variant {args.variant}"
-        f" --alias {alias}"
-        f" --reflect-every {args.reflect_every}"
-        + (f" --model {args.model}" if args.model else "")
-        + (f" --reasoning-effort {args.reasoning_effort}" if args.reasoning_effort else "")
-        + (f" --effort-ladder {args.effort_ladder}" if args.effort_ladder else "")
-        + f" --visual {args.visual} --png-scale {args.png_scale}"
-        + (f" --seed-knowledge {args.seed_knowledge}" if args.seed_knowledge else "")
-    )
+    # Neutral work dir: the agent AND the harness run here, so NO path the agent
+    # can reach (helper tracebacks, ipc/log paths, trajectory() event files) ever
+    # embeds the real game name. The results dir keeps only the run_multi/viewer
+    # structure and receives the durable artifacts at run end. The subdirs the
+    # live viewer tails (agent_logs/traces/steps) and the agent+harness share
+    # (ipc, team_nemo, agent_logs) are symlinked from results -> neutral so the
+    # dashboard reads them live; the symlinks are replaced by real copies at the
+    # end (see _copy_back). The agent itself only ever sees the neutral path.
+    import re as _re
+
+    safe_alias = _re.sub(r"[^a-z0-9_-]", "_", alias.lower())
+    # Neutral dirs live under a dedicated /tmp/arc_runs parent (not /tmp itself),
+    # so --sandbox drop can chmod that parent 0711 (non-enumerable) without
+    # touching shared /tmp.
+    neutral_parent = Path(tempfile.gettempdir()) / "arc_runs"
+    neutral_parent.mkdir(parents=True, exist_ok=True)
+    neutral = neutral_parent / f"arc_run_{safe_alias}"
+    if neutral.exists():
+        shutil.rmtree(neutral, ignore_errors=True)
+    for sub in ("ipc", "team_nemo/shared", "agent_logs/nemo/team_leader", "traces", "steps"):
+        (neutral / sub).mkdir(parents=True, exist_ok=True)
+    (neutral / "ipc" / "states.jsonl").touch()
+    (neutral / "ipc" / "actions.jsonl").touch()
+    # Pre-create the events.jsonl the harness recorder (root) AND the launcher
+    # exporters (dropped uid, under --sandbox drop) BOTH append to. Creating it
+    # now means carve_own hands it to the agent uid, so the agent can write it and
+    # root always can — otherwise whichever writes first owns it and the other
+    # EACCESes. (No-op cost outside drop mode.)
+    (neutral / "agent_logs" / "nemo" / "team_leader" / "events.jsonl").touch()
+
+    run_dir.mkdir(parents=True, exist_ok=True)
+    _LINKS = ("ipc", "team_nemo", "agent_logs", "traces", "steps")
+    for name in _LINKS:
+        link = run_dir / name
+        if link.is_symlink() or link.exists():
+            if link.is_symlink() or link.is_file():
+                link.unlink()
+            else:
+                shutil.rmtree(link, ignore_errors=True)
+        link.symlink_to(neutral / name)
+
+    launcher_cmd = [
+        MAIN_PY,
+        str(REPO_ROOT / "examples" / "arc_agi_3" / "launcher.py"),
+        "--run-dir",
+        str(neutral),
+        "--game",
+        args.game,
+        "--variant",
+        args.variant,
+        "--alias",
+        alias,
+        "--reflect-every",
+        str(args.reflect_every),
+        "--skill",
+        args.skill,
+        "--visual",
+        args.visual,
+        "--png-scale",
+        str(args.png_scale),
+    ]
+    if args.model:
+        launcher_cmd += ["--model", args.model]
+    if args.reasoning_effort:
+        launcher_cmd += ["--reasoning-effort", args.reasoning_effort]
+    if args.effort_ladder:
+        launcher_cmd += ["--effort-ladder", args.effort_ladder]
+    if args.seed_knowledge:
+        launcher_cmd += ["--seed-knowledge", args.seed_knowledge]
+
     # L3: wrap the launcher in the OS sandbox when requested. Fails closed — if
     # namespaces are unavailable, run_solver aborts rather than run unsandboxed.
     if args.sandbox == "full":
-        import shlex
-
         from sandbox import SandboxSpec, SandboxUnavailable, wrap
 
         spec = SandboxSpec(
-            run_dir=run_dir,
+            run_dir=neutral,
             repo_root=REPO_ROOT,
-            llm_socket=run_dir / "ipc" / "llm.sock",
-            tmp_dir=run_dir / "agent-tmp",
+            llm_socket=neutral / "ipc" / "llm.sock",
+            tmp_dir=neutral / "agent-tmp",
         )
-        (run_dir / "agent-tmp").mkdir(exist_ok=True)
-        # Pre-create the launcher's own writable dirs: the sandbox binds them rw,
-        # and bwrap's --bind fails on a missing source (the launcher writes its
-        # events/messages under agent_logs and JSONL traces under traces).
-        (run_dir / "agent_logs").mkdir(exist_ok=True)
-        (run_dir / "traces").mkdir(exist_ok=True)
+        (neutral / "agent-tmp").mkdir(exist_ok=True)
         try:
-            inner = " ".join(shlex.quote(a) for a in wrap(shlex.split(inner), spec))
+            launcher_cmd = wrap(launcher_cmd, spec)
         except SandboxUnavailable as e:
             print(f"[run] {e}", file=sys.stderr)
             return 3
         print("[run] launcher wrapped in L3 OS sandbox")
-    launcher_cmd = (
-        f"cd {REPO_ROOT} && "
-        + (f"OTLP_ENDPOINT={otlp} " if otlp else "")
-        + inner
-        + f" 2>{run_dir}/launcher.err"
+
+    elif args.sandbox == "drop":
+        # Docker-friendly external isolation (no user namespaces; fails closed).
+        # HARD filesystem boundary: the agent runs as a distinct per-run
+        # unprivileged uid, so the game source and every OTHER run are unreadable
+        # by POSIX perms no matter what a generated cell imports. The harness stays
+        # root (it needs the SDK + writes the shared ipc/events). The model gateway
+        # is reached DIRECTLY (Responses API + gateway embeddings unchanged);
+        # network *misuse from cells* is handled in-process by the B-lite cell
+        # guard in solver_agent. Everything the agent touches is the neutral dir.
+        import uid_sandbox
+
+        ok, why = uid_sandbox.available()
+        if not ok:
+            print(f"[run] --sandbox drop unavailable: {why}", file=sys.stderr)
+            return 3
+        # uid 0 => derive a distinct per-run uid (40000..59999) so concurrent games
+        # run as different users and cannot read each other's neutral dir.
+        uid = gid = args.agent_uid or (
+            40000 + int(hashlib.sha1(run_name.encode()).hexdigest(), 16) % 20000
+        )
+        # Block the game source from the dropped uid (root-owned 0700).
+        uid_sandbox.block(
+            [DATA_DIR / "environment_files", DATA_DIR / "environment_files_generated"]
+        )
+        # Give the uid exclusive ownership of its neutral dir (0700) and make the
+        # /tmp/arc_runs parent traverse-only (0711, non-enumerable) so it can reach
+        # its own dir by exact path but cannot list sibling runs.
+        uid_sandbox.carve_own(neutral, uid, gid, up_to=neutral_parent)
+        # The memory store lives inside the neutral dir (owned by this uid via
+        # carve_own), so no shared cross-uid store dir is needed.
+        launcher_cmd = uid_sandbox.drop_prefix(uid, gid) + launcher_cmd
+        print(
+            f"[run] launcher dropped to uid {uid} "
+            "(game source + other runs unreadable; LLM direct; cell guard active)"
+        )
+
+    launcher_env = {**os.environ, "PYTHONUNBUFFERED": "1"}
+    otlp = os.environ.get("OTLP_ENDPOINT", "")
+    if otlp:
+        launcher_env["OTLP_ENDPOINT"] = otlp
+
+    launcher_err = None  # opened here so the finally below can always close it safely
+    launcher_err = open(run_dir / "launcher.err", "w")
+    launcher = subprocess.Popen(
+        launcher_cmd,
+        cwd=str(REPO_ROOT),
+        stdout=launcher_err,
+        stderr=subprocess.STDOUT,
+        env=launcher_env,
+        start_new_session=True,
     )
-    r = tmux("new-session", "-d", "-s", session, "-x", "220", "-y", "50", launcher_cmd)
-    if r.returncode != 0:
-        print(f"failed to start tmux session: {r.stderr}", file=sys.stderr)
-        return 2
-    _sockarg = f"-L {_TMUX_SOCKET} " if _TMUX_SOCKET else ""
-    print(
-        f"[run] TUI agent starting in tmux session {session!r}"
-        + (f" (socket {_TMUX_SOCKET})" if _TMUX_SOCKET else "")
-    )
-    print(f"[run]   watch live:  tmux {_sockarg}attach -t {session}")
-    print(f"[run]   run dir:     {run_dir}")
+    print(f"[run] headless agent started (pid {launcher.pid})")
+    print(f"[run]   run dir: {run_dir}")
 
     llm_uri = args.model or os.environ.get("ARC_LLM_MODEL", "")
     if args.reasoning_effort:
@@ -277,7 +355,7 @@ def main() -> int:
         sys.executable,
         str(EXAMPLE_DIR / "harness.py"),
         "--run-dir",
-        str(run_dir),
+        str(neutral),
         "--game",
         args.game,
         "--variant",
@@ -322,29 +400,78 @@ def main() -> int:
         env={**os.environ, "PYTHONUNBUFFERED": "1"},
     )
 
+    # End-of-run copy-back: the agent+harness worked entirely in the neutral /tmp
+    # dir (no game name in any path). Move the durable artifacts into the results
+    # dir — replacing the results->neutral symlinks with real copies — so the
+    # viewer, analysis, and seeding find memory.sqlite / helpers / knowledge /
+    # agent_logs / traces / steps / ipc / result.json where they expect. Then the
+    # neutral dir is deleted so nothing lingers under /tmp. Idempotent.
+    def _copy_back() -> None:
+        # 1) Memory fallback: the launcher normally checkpoints its store (under
+        #    neutral/store, owned by the agent) into neutral/team_nemo/shared at
+        #    its own teardown. If that didn't run (killed mid-write), copy the raw
+        #    store files here so the memory is never lost. root reads the agent-uid
+        #    files (bypasses DAC); a raw db+wal+shm copy is a valid database.
+        if args.variant == "memory":
+            ws_store = neutral / "team_nemo" / "shared" / "memory.sqlite"
+            live = neutral / "store" / "memory.sqlite"
+            if not ws_store.exists() and live.exists():
+                ws_store.parent.mkdir(parents=True, exist_ok=True)
+                for suffix in ("", "-wal", "-shm"):
+                    src = Path(f"{live}{suffix}")
+                    if src.exists():
+                        try:
+                            shutil.copy2(src, f"{ws_store}{suffix}")
+                        except Exception as e:
+                            print(f"[run] warning: memory fallback copy failed: {e}")
+        # 2) move neutral -> results, swapping each symlink for a real copy.
+        if neutral.exists():
+            for name in ("team_nemo", "agent_logs", "traces", "steps", "ipc"):
+                src, dst = neutral / name, run_dir / name
+                if dst.is_symlink() or dst.is_file():
+                    dst.unlink()
+                elif dst.is_dir():
+                    shutil.rmtree(dst, ignore_errors=True)
+                if src.is_dir():
+                    try:
+                        shutil.copytree(src, dst)
+                    except Exception as e:
+                        print(f"[run] warning: copy-back {name} failed: {e}")
+            for fname in ("result.json", "gameplay.json"):
+                src = neutral / fname
+                if src.is_file():
+                    try:
+                        shutil.copy2(src, run_dir / fname)
+                    except Exception as e:
+                        print(f"[run] warning: copy-back {fname} failed: {e}")
+            print("[run] artifacts copied back to results dir")
+        # 3) delete the neutral dir (nothing left in /tmp).
+        shutil.rmtree(neutral, ignore_errors=True)
+
     # Reliable teardown on ANY abnormal exit (SIGTERM/SIGHUP/SIGINT, incl. the
-    # pdeathsig SIGTERM when run_multi dies): reap the harness AND kill the agent's
-    # tmux session so nothing is orphaned. Normal completion below still honors
-    # --kill-tmux for the leave-session-for-inspection case.
+    # pdeathsig SIGTERM when run_multi dies): reap the harness AND launcher so
+    # nothing is orphaned, then preserve the memory store (killed games used to
+    # lose it — the copy-back only ran on the normal path).
     _torn = {"done": False}
 
     def _teardown() -> None:
         if _torn["done"]:
             return
         _torn["done"] = True
-        try:
-            if harness.poll() is None:
-                harness.terminate()
-                try:
-                    harness.wait(timeout=5)
-                except Exception:
-                    harness.kill()
-        except Exception:
-            pass
-        tmux("kill-session", "-t", session)  # kill the agent (no-op if already gone)
+        for proc in (harness, launcher):
+            try:
+                if proc.poll() is None:
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=5)
+                    except Exception:
+                        proc.kill()
+            except Exception:
+                pass
+        _copy_back()
 
     def _sig_teardown(signum, _frame):
-        print(f"[run] signal {signum} — tearing down game {session}")
+        print(f"[run] signal {signum} — tearing down game {run_name}")
         _teardown()
         raise SystemExit(128 + signum)
 
@@ -354,56 +481,26 @@ def main() -> int:
         except (ValueError, OSError):
             pass
 
-    # Kick off the agent once the harness has published state 0 (which it only
-    # does after the agent's tail producer wrote ipc/agent_ready).
-    kicked = False
-    states = ipc / "states.jsonl"
+    # Wait for the harness to finish. The launcher's game_states tail producer picks
+    # up new states automatically — no explicit kickoff message needed.
     try:
         while harness.poll() is None:
-            if not kicked and states.stat().st_size > 0:
-                time.sleep(3)  # let the TUI finish drawing before typing into it
-                tmux(
-                    "send-keys",
-                    "-t",
-                    session,
-                    "-l",
-                    f"Start solving {alias}. The first game "
-                    "state is on your game_states queue. Follow the arc_skill "
-                    "context block.",
-                )
-                tmux("send-keys", "-t", session, "Enter")
-                kicked = True
-                print("[run] kickoff message sent to the agent")
+            if launcher.poll() is not None:
+                print("[run] launcher exited early — terminating harness")
+                _teardown()
+                break
             time.sleep(2)
     except KeyboardInterrupt:
-        print("[run] interrupted — tearing down game (harness + tmux)")
+        print("[run] interrupted — tearing down game (harness + launcher)")
         _teardown()
     finally:
+        # Normal completion included: the headless launcher never exits on its
+        # own (it races the agent queues until killed), and it runs in its own
+        # session — without this it outlives every finished game as an orphan.
+        _teardown()
         harness_log.close()
-
-    # Memory variant: the live store is at a neutral /tmp path (so the agent's
-    # memory guide can't leak the benchmark/game name). Copy it back into the
-    # workspace now that the game is done, for the viewer / seeding / analysis.
-    # Done here (not in the launcher) because the TUI process is about to be
-    # killed and won't run its own teardown copy.
-    if args.variant == "memory":
-        import re
-        import shutil
-        import tempfile
-
-        safe_alias = re.sub(r"[^a-z0-9_-]", "_", alias.lower())
-        neutral_store = Path(tempfile.gettempdir()) / "agent_stores" / f"{safe_alias}.sqlite"
-        if neutral_store.exists():
-            try:
-                import sqlite3
-
-                con = sqlite3.connect(str(neutral_store))
-                con.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-                con.close()
-                shutil.copy2(neutral_store, run_dir / "team_nemo" / "shared" / "memory.sqlite")
-                print("[run] memory store copied back to workspace")
-            except Exception as e:
-                print(f"[run] warning: memory store copy-back failed: {e}")
+        if launcher_err is not None:
+            launcher_err.close()
 
     result_path = run_dir / "result.json"
     if result_path.exists():
@@ -420,15 +517,6 @@ def main() -> int:
             f"{run_dir}/harness.log and {run_dir}/launcher.err"
         )
 
-    if args.kill_tmux:
-        tmux("kill-session", "-t", session)
-        print(f"[run] tmux session {session} killed")
-    else:
-        _sk = f"-L {_TMUX_SOCKET} " if _TMUX_SOCKET else ""
-        print(
-            f"[run] tmux session {session} left running — attach to inspect, "
-            f"or: tmux {_sk}kill-session -t {session}"
-        )
     return 0
 
 

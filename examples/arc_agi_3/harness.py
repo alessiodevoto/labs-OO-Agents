@@ -283,6 +283,16 @@ def main() -> int:
         from arc_agi_3.rhae import get_baseline_actions_for_game, rhae_level_score
 
         baseline_actions = get_baseline_actions_for_game(args.game, args.operation_mode)
+        if not baseline_actions:
+            # get_baseline_actions_for_game swallows lookup errors and returns [] —
+            # typically the SDK found no environment_files/ under the harness cwd.
+            # Without baselines every RHAE figure (live viewer AND result.json) is
+            # 0; surface the cause instead of failing silently.
+            print(
+                f"[harness] WARNING: no RHAE baselines for {args.game} "
+                f"({args.operation_mode}) — check environment_files/ under the "
+                "harness cwd (run_solver: ARC_DATA_DIR). RHAE will report 0."
+            )
     except Exception as e:
         print(f"[harness] baseline_actions unavailable ({e}); RHAE will be limited")
         baseline_actions = []

@@ -16,6 +16,11 @@ operation_mode: competition
 model: openai/openai/gpt-5.5
 reasoning_effort: xhigh        # primary effort (effort-ladder rung 0)
 
+# Skill: which skills/<name>/SKILL.md the agent loads as its <arc_skill> block.
+# interactive-game-solver = lean world-model solver (encode → latent z, predict, search).
+# grid-game-solver = full structured playbook.
+skill: interactive-game-solver
+
 variants: [memory]
 seeded: false
 
@@ -32,6 +37,11 @@ png_scale: 8
 parallel: 25
 max_turns: null               # unlimited turns; env-steps is the main bound
 max_env_steps: 5000
+
+# Wall-clock cap for the whole fleet (seconds). 7200 = 2h.
+# When reached, run_multi stops every running game, closes the scorecard, and
+# writes the summary (shutdown_reason: wall_clock_deadline).
+max_wall_seconds: 7200
 
 # Silence ladder (seconds of agent silence) — the harness NEVER deliberately ends a
 # game. effort downshift (600, agent-side) < nudge (900) < urgent respond-now nudge

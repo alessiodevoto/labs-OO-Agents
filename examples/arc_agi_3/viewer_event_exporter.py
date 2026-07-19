@@ -335,11 +335,17 @@ class ViewerEventExporter(SpanExporter):
             input_tokens=inp,
             output_tokens=out,
             cache_read_tokens=cache_read,
+            # This gateway has no cache-write concept; the field must still be
+            # an int — the reference viewer's update_state hard-indexes it.
+            cache_creation_tokens=0,
             reasoning_tokens=int(at.get("llm.token_count.completion_details.reasoning", 0) or 0),
             num_python_blocks=n_py,
             num_tool_calls=n_tool,
             has_text_block=has_text,
             model=model,
+            # model_uri keys/prices model_tokens in the reference multi-game TUI
+            # (a required llm_call field there); pricing-resolvable key.
+            model_uri=_pricing_key(model),
         )
 
     def _handle_code_span(self, pending, at: dict, start_ns: int, end_ns: int) -> None:

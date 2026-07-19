@@ -58,6 +58,10 @@ with hidden:
     from nooa.storage.markers import nosnapshot
     from nooa.strategies import CodeActStrategy
 
+    # _ReturnResultSignal is the internal signal raised by return_result(); no public
+    # re-export exists yet. If nooa ever exposes a public path, update this import.
+    from nooa.strategies.codeact import _ReturnResultSignal
+
 # L2 guard (isolation plan §L2): deny file/network/process modules in generated
 # CodeAct cells. The agent's own tools (which use pathlib internally) are
 # unaffected — restrictions apply only to LLM-generated code. `open()` on a
@@ -77,6 +81,10 @@ _ARC_RESTRICTIONS = RestrictionsConfig(
             "io",
             "codecs",
             "linecache",
+            # C-level file access that bypasses the open() jail
+            "sqlite3",
+            "dbm",
+            "shelve",
             # network
             "urllib",
             "http",
@@ -84,16 +92,93 @@ _ARC_RESTRICTIONS = RestrictionsConfig(
             "httpx",
             "aiohttp",
             "socketserver",
-            # process / low-level escape
+            # process / low-level escape (multiprocessing 'spawn' starts a fresh
+            # interpreter WITHOUT this denylist — a hard escape, so block it)
             "ctypes",
             "mmap",
             "pty",
             "fcntl",
+            "multiprocessing",
+            "concurrent",
+            # dynamic import / exec-by-path (partial bypass of the name denylist)
+            "importlib",
+            "runpy",
+            "pickle",
+            "marshal",
+            "webbrowser",
+            # `sys` closes the sys.modules['os'] cached-module bypass (see _scan_cell)
+            "sys",
         }
     ),
     # `asyncio` stays allowed (cells use `await self...` / gather); its network
-    # entrypoint (open_connection) is neutralised by L3's absent net stack.
+    # ENTRYPOINTS are blocked at the AST layer by _scan_cell below (open_connection
+    # / create_connection / …). NB: a module denylist is best-effort — the hard
+    # boundary for the filesystem is the external uid-drop (uid_sandbox / run_solver
+    # --sandbox drop), which holds regardless of any in-process import trick.
 )
+
+# ── Cell guard (B-lite): AST-level block of the escape / network / denylist-bypass
+# primitives a generated cell could otherwise use, which a module denylist alone
+# cannot stop (__import__('os'), sys.modules['os'], subclass gadgets all reach
+# blocked modules). Best-effort defense-in-depth ON TOP of the external uid-drop —
+# a determined model can still build names dynamically, so this is a speed bump,
+# not a boundary. Applied to every cell via an execute_python guard (see __init__).
+_CELL_BANNED_ATTRS = frozenset(
+    {
+        # host escape tools (network + host FS; no legitimate use for a grid solver)
+        "shell",
+        "repo",
+        "pyp",
+        "web",
+        "mcp",
+        "libwriting",
+        "tui_config",
+        # denylist-bypass gadgets
+        "__subclasses__",
+        "__bases__",
+        "__base__",
+        "__mro__",
+        "__globals__",
+        "__builtins__",
+        "__loader__",
+        "__spec__",
+        "__code__",
+        # asyncio network entrypoints (the path the import denylist misses)
+        "open_connection",
+        "create_connection",
+        "create_server",
+        "getaddrinfo",
+        "sock_connect",
+        "sock_accept",
+        "start_server",
+        "open_unix_connection",
+    }
+)
+_CELL_BANNED_NAMES = frozenset({"__import__", "eval", "exec", "compile", "breakpoint"})
+
+
+@hidden
+def _scan_cell(code: str) -> str | None:
+    """Return the first banned primitive a cell references, or None. AST-based, so
+    it ignores matches inside strings/comments (e.g. helper source passed to
+    write_helper). Syntax errors fall through to the real executor to report."""
+    import ast
+
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return None
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute) and node.attr in _CELL_BANNED_ATTRS:
+            return (
+                f"self.{node.attr}"
+                if node.attr in ("shell", "repo", "pyp", "web", "mcp")
+                else node.attr
+            )
+        if isinstance(node, ast.Name) and node.id in _CELL_BANNED_NAMES:
+            return node.id
+    return None
+
 
 _NOTE_NAME = re.compile(r"^[a-z0-9_\-]+\.md$")
 _HELPER_NAME = re.compile(r"^[a-z0-9_]+\.py$")
@@ -456,6 +541,25 @@ class ArcSolverBase(InteractiveAgent):
 
         self.event_manager.intercept("execute_python", _redact_cell_output)
 
+        # Cell guard (B-lite): if a cell reaches for an escape tool, a network
+        # entrypoint, or a denylist-bypass gadget, replace the cell with a refusal
+        # so the model gets feedback and nothing runs. No runtime network patching
+        # (that would also block concurrent background reflection LLM calls) — the
+        # block is purely at the cell-code layer. Defense-in-depth over the uid-drop.
+        async def _guard_cell(ctx, nxt):
+            code = getattr(ctx, "code", None)
+            if isinstance(code, str):
+                bad = _scan_cell(code)
+                if bad:
+                    ctx.code = (
+                        f"print('BLOCKED: {bad} is not permitted in agent cells "
+                        "(host tool / network / bypass primitive). Use self.memory, "
+                        "the grid methods and numpy only.')"
+                    )
+            return await nxt(ctx)
+
+        self.event_manager.intercept("execute_python", _guard_cell)
+
         self.h = SimpleNamespace()
 
         # Defense in depth: the framework renders the <state> block as
@@ -719,6 +823,11 @@ class ArcSolverBase(InteractiveAgent):
         WIN or GAME_OVER) and then publishes the next state on ``game_states``.
         ``rationale``: one or two lines — your prediction of what this sequence
         will do; you will check it against the next state's action_results.
+
+        A successful submit ENDS your turn (it yields until the next state arrives),
+        so do any knowledge/helper writes BEFORE calling this — code after it in the
+        same cell will not run. On invalid input it instead returns a ``"REJECTED: …"``
+        string (no yield) so you can fix and resubmit in the same turn.
         """
         state = self._latest_state()
         if state is None:
@@ -751,7 +860,13 @@ class ArcSolverBase(InteractiveAgent):
         # the primary effort.
         self._turn_started_at = time.monotonic()
         self._ladder_active_effort = self._effort_ladder[0][1] if self._effort_ladder else None
-        return f"submitted for turn {turn}: {actions} — now return_result(RespondReason.WAIT, ...)."
+        raise _ReturnResultSignal(
+            result={
+                "kind": RespondReason.WAIT,
+                "explanation": f"submitted {len(actions)} action(s) for turn {turn}; "
+                "waiting for the next state",
+            }
+        )
 
     # ---------------------------------------------------------------- helpers
 
@@ -832,7 +947,7 @@ class ArcSolverBase(InteractiveAgent):
           queued states mean your view was stale — act on the LAST one. If the
           notification content is missing or truncated, call
           self.latest_state() — it always returns the full current state.
-        - "user_messages": guidance from a human supervisor watching the run.
+        - "user_messages": operational guidance injected into the run.
           It OVERRIDES your current plan — acknowledge it with message() and
           follow it.
 
@@ -846,10 +961,10 @@ class ArcSolverBase(InteractiveAgent):
            executed actions and their grids — diff any two points in time).
         4. Record new observations / hypotheses / action semantics per
            <knowledge_api>; reflect at the cadence the skill prescribes.
-        5. Decide the next experiment or plan step and call
-           self.submit_actions([...], rationale="prediction...").
-        6. End the turn: return_result(RespondReason.WAIT,
-           explanation="waiting for the harness to execute ...").
+        5. Decide the next experiment or plan step, then END the turn by calling
+           self.submit_actions([...], rationale="prediction...") with at least one
+           action — a successful submit yields until the next state arrives (no
+           separate return_result call is needed; do steps 1-4 before submitting).
 
         If state == "WIN": write your final level reflection to the knowledge
         store, message() a short victory summary, then
