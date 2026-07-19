@@ -11,7 +11,7 @@ readme = "README.md"
 authors = [
     {name = "NVIDIA NeMo Team"}
 ]
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.14"
 dependencies = [
     "pydantic>=2.5.0",
     # context_blocks + unifiedllm now ship as nooa.context_blocks /
@@ -48,7 +48,7 @@ nemo-labs-oo-agents-memory = { workspace = true }
 # Extra index URLs to search for packages (in addition to PyPI)
 # Ignore packages uploaded less than 7 days ago to mitigate supply-chain attacks
 exclude-newer = "2026-07-03T00:00:00Z"
-# litellm requires python <3.14; skip impossible 3.14+ resolution splits
+# Match the package's supported Python range and LiteLLM's stable releases.
 environments = [
     "python_full_version >= '3.12' and python_full_version < '3.14'",
 ]
