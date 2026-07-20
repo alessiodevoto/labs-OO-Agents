@@ -1,6 +1,6 @@
-# Build State-of-the-Art AI Agents as Ordinary Python Software with the NVIDIA NeMo Object-Oriented Agents (NOOA) Framework
+# Build State-of-the-Art AI Agents as Ordinary Python Software with the NVIDIA NVIDIA Object-Oriented Agents (NOOA) Framework
 
-*Draft v2 — replaces the security-first "Vanessa blog" draft. ~1,400 words. Figures suggested inline. All numbers sourced from the NeMo OO Agents tech report.*
+*Draft v2 — replaces the security-first "Vanessa blog" draft. ~1,400 words. Figures suggested inline. All numbers sourced from the NVIDIA OO Agents tech report.*
 
 ---
 
@@ -8,7 +8,7 @@ The past two years of progress in AI agents have been told mostly as a story abo
 
 Run the same frontier model through different harnesses and the results diverge sharply. In our evaluations, one identical backend model spanned a gap of up to 11 points on SWE-bench Verified and consumed twice the tokens depending only on the software around it. The model is not the whole system. The harness is not an afterthought. **The two need to be co-developed** — and the harness is the part every organization can inspect, improve, and own today.
 
-The NVIDIA NeMo Object-Oriented Agents (NOOA) framework is our open-source **research preview** for that co-development: the framework itself, a tech report, capability tests, and benchmark agents — with code, data, and evaluations released so the entire community can reproduce and build on the results.
+The NVIDIA NVIDIA Object-Oriented Agents (NOOA) framework is our open-source **research preview** for that co-development: the framework itself, a tech report, capability tests, and benchmark agents — with code, data, and evaluations released so the entire community can reproduce and build on the results.
 
 ## An agent is a Python object
 

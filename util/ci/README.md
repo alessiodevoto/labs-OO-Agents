@@ -80,7 +80,7 @@ python util/ci/post_mr_comment.py experiments/capability_eval/results/ --dry-run
 
 ## parse_capability_results.py
 
-Parses NeMo OO Agents capability test results (`.noo-eval.jsonl`) and generates GitLab metrics reports.
+Parses NVIDIA OO Agents capability test results (`.noo-eval.jsonl`) and generates GitLab metrics reports.
 
 ### Usage
 
