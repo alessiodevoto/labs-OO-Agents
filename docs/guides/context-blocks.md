@@ -44,8 +44,3 @@ class MyAgent(Agent, llm=llm):
 ## Key Property
 
 Context blocks are **per-agent-instance**. They are NOT shared across agents. Each agent has its own `ContextManager`. See `docs/guides/single-vs-multi-agent.md` for implications.
-
-## Further Reading
-
-- `.development/docs/design/nooa-context-blocks-explainer.md` — Core philosophy and Block model
-- `.development/docs/design/context-blocks-architecture.md` — Three concerns: content, format, assembly
