@@ -34,7 +34,7 @@ trace = ".nooa/traces"
 mcp_auto_connect = ["maas"]
 
 [tui.mcp_servers.maas]
-url = "https://maas.stg.astra.nvidia.com/maas/confluence/mcp"
+url = "https://your-mcp-server.example.com/mcp"
 transport = "streamable-http"
 
 [tui.mcp_servers.maas.headers]
@@ -51,7 +51,7 @@ tui:
   mcp_auto_connect: [maas]
   mcp_servers:
     maas:
-      url: https://maas.stg.astra.nvidia.com/maas/confluence/mcp
+      url: https://your-mcp-server.example.com/mcp
       transport: streamable-http
       headers:
         Authorization: "Bearer ${MAAS_API_KEY}"
