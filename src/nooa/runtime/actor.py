@@ -1250,6 +1250,7 @@ class ActorRuntime:
         tool_call_id: str | None = None,
         execution_count: int = 1,
         restrictions: "RestrictionsConfig | None" = None,
+        sandbox_executor: Any = None,
     ) -> "ExecutionResult":
         """Execute Python code with namespace + strategy builtins (RuntimeServices protocol).
 
@@ -1263,6 +1264,10 @@ class ActorRuntime:
             execution_count: Execution number for Jupyter-style "Cell In[N]" filename.
             restrictions: Code execution restrictions (blocked modules/calls).
                 None uses defaults from RestrictionsConfig().
+            sandbox_executor: When set (a ``SandboxedExecutor``), the cell runs in the
+                guarded worker process instead of in-process. The surrounding
+                middleware pipeline, before/after_code_execution hooks and events
+                still run here on the parent, so the sandbox composes with them.
 
         Returns:
             ExecutionResult with stdout, error, defined_methods, and optionally returned_value.
@@ -1283,6 +1288,7 @@ class ActorRuntime:
                 "tool_call_id": tool_call_id,
                 "execution_count": execution_count,
                 "restrictions": restrictions,
+                "sandbox_executor": sandbox_executor,
             }
             ep_ctx = ExecutePythonContext(
                 code=code,
@@ -1492,6 +1498,15 @@ class ActorRuntime:
                     except Exception as e:
                         result = ExecutionResult(stdout="", error=e, defined_methods={})
                         return result
+
+            # Sandbox backend: delegate the exec to the guarded worker AFTER the
+            # shared cleanup + validation above (so restrictions/cell-guard parity
+            # holds), while the middleware pipeline, before/after hooks and events
+            # still wrap the cell on the parent. The worker owns the namespace,
+            # stdout capture and wrapper, so we skip the in-process exec below.
+            if sandbox_executor is not None:
+                result = await sandbox_executor.run_cell(code, execution_count=execution_count)
+                return result
 
             # Set up stdout/stderr capture BEFORE ast.parse/compile so that
             # SyntaxWarnings (e.g. invalid escape sequences in LLM-generated code)

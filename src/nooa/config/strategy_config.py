@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from nooa.runtime.restrictions import RestrictionsConfig
+from nooa.runtime.sandbox.config import SandboxConfig
 
 if TYPE_CHECKING:
     from nooa.strategies.prefill import Prefill  # noqa: F401
@@ -62,6 +63,16 @@ class CodeActConfig(BaseModel):
     max_tool_calls: int | None = None
     translate_tool_calls: bool = False
     restrictions: RestrictionsConfig = RestrictionsConfig()
+
+    # Execution backend for execute_python cells:
+    #   * "inprocess" (default) — run cells in the agent's own process/event loop.
+    #     Zero behavior change; the historical path.
+    #   * "sandbox" — run each cell in a locked-down worker process with
+    #     OS-enforced guardrails (hard timeout, memory/CPU caps, filesystem
+    #     confinement, network off). Turns ``cell_timeout`` into a *hard* bound.
+    # The ``sandbox`` sub-config below is ignored unless this is "sandbox".
+    execution_backend: Literal["inprocess", "sandbox"] = "inprocess"
+    sandbox: SandboxConfig = SandboxConfig()
     # Prefill plugin to run before the main generation loop.
     #
     #   * Default — ``InspectInputsPrefill()`` auto-renders every parameter via
