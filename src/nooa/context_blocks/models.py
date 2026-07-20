@@ -302,6 +302,20 @@ class RenderedMessage(BaseModel):
     images: list[dict[str, Any]] | None = Field(
         default=None, description="Optional image parts (LiteLLM shape)"
     )
+    provider_items: list[dict[str, Any]] | None = Field(
+        default=None,
+        exclude=True,
+        repr=False,
+        description=(
+            "Verbatim provider output items (Responses API reasoning + "
+            "function_call) carried alongside an assistant tool-call message. "
+            "Responses-capable clients replay these byte-verbatim so "
+            "provider-side prompt caching can match; chat-completions "
+            "clients strip them. Excluded from dumps/reprs — like "
+            "ToolCallEvent.provider_items — so encrypted reasoning blobs "
+            "never leak into logs or serialized storage."
+        ),
+    )
 
 
 class ContextWindowStats(BaseModel):

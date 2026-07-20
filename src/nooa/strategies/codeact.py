@@ -125,6 +125,51 @@ def _prepend_comment(tool_calls: list[ToolCall], text: str) -> list[ToolCall]:
     return result
 
 
+def _extract_provider_batch(response: Any) -> list[dict[str, Any]] | None:
+    """Pull the verbatim provider output items from an LLM response, if any.
+
+    ResponsesClient puts the raw Responses output items (reasoning /
+    function_call / message dicts) in ``assistant_message["_batch"]``.
+    These are replayed byte-verbatim on later turns so provider prompt
+    caching can match the server's cached sequence (reasoning models get
+    near-zero cache hits without this). Chat-completions responses have no
+    batch → None (behavior unchanged).
+    """
+    am = getattr(response, "assistant_message", None)
+    if not isinstance(am, dict):
+        return None
+    batch = am.get("_batch")
+    if not isinstance(batch, list):
+        return None
+    # Drop None-valued keys: model_dump() of litellm item models emits them,
+    # and the Responses API rejects explicit nulls on replayed input items.
+    items = [
+        {k: v for k, v in i.items() if v is not None}
+        for i in batch
+        if isinstance(i, dict) and i.get("type")
+    ]
+    return items or None
+
+
+def _slice_provider_items(batch: list[dict[str, Any]], call_id: str) -> list[dict[str, Any]] | None:
+    """Items belonging to one tool call: the contiguous run of non-function_call
+    items (reasoning, message) preceding it, plus the function_call itself.
+
+    Keyed by ``call_id``; order-preserving and non-overlapping across multiple
+    tool calls in one response. None when the call_id is not in the batch
+    (synthetic tool calls).
+    """
+    run: list[dict[str, Any]] = []
+    for item in batch:
+        if item.get("type") == "function_call":
+            if item.get("call_id") == call_id:
+                return [*run, item]
+            run = []
+        else:
+            run.append(item)
+    return None
+
+
 @dataclass
 class _ToolCallsResult:
     """Result of processing tool calls in a single turn."""
@@ -911,6 +956,7 @@ Standard Python builtins and agent instance (`self`) are available."""
                         call,
                         return_type,
                         event_id or "",
+                        provider_items_batch=_extract_provider_batch(response),
                     )
                     if result.completed:
                         turn_state.success = True
@@ -1186,11 +1232,16 @@ Standard Python builtins and agent instance (`self`) are available."""
         call: "CurrentCall",
         return_type: Any,
         event_id: str,
+        provider_items_batch: list[dict[str, Any]] | None = None,
     ) -> _ToolCallsResult:
         """Process tool calls from a single LLM turn.
 
         Executes tool calls sequentially, stopping at the first error.
         Returns a _ToolCallsResult indicating whether the task completed.
+
+        ``provider_items_batch`` is the response's verbatim output items
+        (Responses API); each ToolCallEvent gets its slice attached for
+        byte-verbatim replay on later turns (prompt caching).
         """
         # Handle tool calls - process ALL tool calls sequentially
         # Some LLMs return multiple tool calls in one response even when
@@ -1228,6 +1279,11 @@ Standard Python builtins and agent instance (`self`) are available."""
                     name=tool_call.name,
                     arguments=args,
                     result=None,  # Will be updated after execution
+                    provider_items=(
+                        _slice_provider_items(provider_items_batch, tool_call.id)
+                        if provider_items_batch
+                        else None
+                    ),
                 )
             )
 

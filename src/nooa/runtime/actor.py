@@ -626,6 +626,27 @@ class ActorRuntime:
         # the ~4-chars-per-token heuristic before the first response.
         self._tokens_per_char: float = _DEFAULT_TOKENS_PER_CHAR
 
+        # Prompt-cache observability + prefix-stability enforcement.
+        # Diffs consecutive requests per (agent, strategy) conversation,
+        # attributes prefix breaks to context blocks, accumulates provider
+        # cached-token stats, and demotes persistently-churning static blocks
+        # to the dynamic partition. NOOA_CACHE_DIAG=0 disables.
+        from nooa.runtime.cache_aware import CacheAwareManager
+
+        _cm = getattr(agent, "context_manager", None)
+        self.cache_aware = CacheAwareManager(
+            on_demote=_cm.demote_to_dynamic if _cm is not None else None,
+        )
+
+    def _cache_conversation_key(self) -> str:
+        """Conversation key for cache-aware tracking — mirrors prompt_cache_key.
+
+        One manager exists per agent, so the strategy tag alone identifies the
+        conversation (calls sharing a strategy share the cacheable prefix).
+        """
+        strategy = _current_strategy_var.get()
+        return type(strategy).__name__ if strategy is not None else "default"
+
     def _event_format_for_event(self, event: Any) -> Any:
         """Return the FormatConfig to use when serializing an event.
 
@@ -1194,7 +1215,13 @@ class ActorRuntime:
             _usage_dict.get("cached_tokens")
             or _usage_dict.get("cache_read_input_tokens")
             or (_usage_dict.get("prompt_tokens_details") or {}).get("cached_tokens")
+            # Responses API shape: usage.input_tokens_details.cached_tokens
+            or (_usage_dict.get("input_tokens_details") or {}).get("cached_tokens")
             or 0
+        )
+        # Fold provider usage into the cache-aware conversation stats.
+        self.cache_aware.observe_usage(
+            self._cache_conversation_key(), _prompt_tokens, _cached_tokens
         )
         _reasoning_tokens = int(
             (_usage_dict.get("completion_tokens_details") or {}).get("reasoning_tokens")
@@ -3028,14 +3055,25 @@ class ActorRuntime:
             set_journal_payload_from_messages,
         )
 
-        set_journal_payload_from_messages(result.messages)
+        # Cache-aware pass: (1) context trail — rewrite the list so consecutive
+        # requests are byte-append-only (the trailing <context> swap otherwise
+        # voids provider caching on gpt-5.5-class stacks); (2) diff against the
+        # previous request and surface any prefix break with block attribution.
+        _cache_key = self._cache_conversation_key()
+        final_messages = self.cache_aware.stabilize_messages(_cache_key, result.messages)
+        if final_messages is not result.messages:
+            final_output = provider_formatter.format(final_messages)
+        else:
+            final_output = result.output
+        set_journal_payload_from_messages(final_messages)
+        self.cache_aware.observe_request(_cache_key, final_messages)
 
         # Do not pre-call estimate the full request size here. The only exact
         # prompt token count is provider usage from a successful API response;
         # generate() writes that actual value back into _last_context_stats after
         # the call. Until then, keep render_context's local estimate as a fallback
         # for diagnostics and context-window error recovery.
-        messages = result.output
+        messages = final_output
         self._last_context_stats = result.stats
         self._last_prompt_tokens_actual = None
         return messages
