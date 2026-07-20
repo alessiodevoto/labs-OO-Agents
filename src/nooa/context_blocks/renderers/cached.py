@@ -38,6 +38,13 @@ from nooa.context_blocks.models import (
     TextPart,
 )
 
+# The trailing dynamic-blocks envelope delimiters. Shared with
+# nooa.runtime.cache_aware._is_context_envelope, which detects the envelope
+# message structurally (first part == CONTEXT_ENVELOPE_OPEN) to weave the
+# context trail — keep formatter output and detection in lockstep.
+CONTEXT_ENVELOPE_OPEN = "<context>\n"
+CONTEXT_ENVELOPE_CLOSE = "\n</context>"
+
 
 def _partition(
     system_blocks: list[ResolvedBlock],
@@ -93,7 +100,10 @@ class CachedBlockFormatter(BlockFormatter):
             '`expr="..."` attribute whose value is the Python expression '
             "re-evaluated each turn.\n"
             'Event history: system entries in `<sys tag="N">`; '
-            'reference via `self.events["N"]`.'
+            'reference via `self.events["N"]`.\n'
+            "Dynamic blocks appear in `<context>` snapshots along the "
+            "conversation; the LAST `<context>` is the current one — earlier "
+            "snapshots are historical values."
         )
 
     def format(self, blocks: list[ResolvedBlock]) -> list[RenderedMessage]:
@@ -127,16 +137,16 @@ class CachedBlockFormatter(BlockFormatter):
         if dynamic_blocks:
             dynamic_rendered = [_xml_system_block(b) for b in dynamic_blocks]
             suffix_inner = "\n".join(dynamic_rendered)
-            suffix = f"<context>\n{suffix_inner}\n</context>"
+            suffix = f"{CONTEXT_ENVELOPE_OPEN}{suffix_inner}{CONTEXT_ENVELOPE_CLOSE}"
             # Build parts for the <context>...</context> envelope.
-            envelope_parts: list[MessagePart] = [TextPart(text="<context>\n")]
+            envelope_parts: list[MessagePart] = [TextPart(text=CONTEXT_ENVELOPE_OPEN)]
             for i, (block, rendered) in enumerate(
                 zip(dynamic_blocks, dynamic_rendered, strict=True)
             ):
                 if i > 0:
                     envelope_parts.append(TextPart(text="\n"))
                 envelope_parts.append(BlockPart(key=block.key, content=rendered))
-            envelope_parts.append(TextPart(text="\n</context>"))
+            envelope_parts.append(TextPart(text=CONTEXT_ENVELOPE_CLOSE))
 
             # Always append; never merge into a trailing event. Merging would
             # mutate the bytes of a historical event message whenever a later

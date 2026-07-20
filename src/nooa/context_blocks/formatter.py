@@ -225,6 +225,7 @@ def _event_block_to_messages(
                     name=event.name,
                     arguments=event.arguments,
                 ),
+                provider_items=event.provider_items,
             )
         ]
         if event.result is not None:
@@ -425,22 +426,25 @@ class OpenAIProviderFormatter(ProviderFormatter):
         out: list[dict] = []
         for msg in messages:
             if msg.tool_call is not None:
-                out.append(
-                    {
-                        "role": "assistant",
-                        "content": None,
-                        "tool_calls": [
-                            {
-                                "id": msg.tool_call.id,
-                                "type": "function",
-                                "function": {
-                                    "name": msg.tool_call.name,
-                                    "arguments": json.dumps(msg.tool_call.arguments),
-                                },
-                            }
-                        ],
-                    }
-                )
+                tool_call_msg: dict[str, Any] = {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": msg.tool_call.id,
+                            "type": "function",
+                            "function": {
+                                "name": msg.tool_call.name,
+                                "arguments": json.dumps(msg.tool_call.arguments),
+                            },
+                        }
+                    ],
+                }
+                if msg.provider_items:
+                    # Verbatim Responses items (reasoning + function_call) ride
+                    # along; ResponsesClient replays them, CompletionClient strips.
+                    tool_call_msg["provider_items"] = msg.provider_items
+                out.append(tool_call_msg)
             elif msg.tool_call_id is not None:
                 out.append(
                     {
@@ -535,16 +539,22 @@ class ResponsesProviderFormatter(ProviderFormatter):
                 # Preserve assistant text that precedes the tool call
                 if msg.content and msg.role == Role.ASSISTANT:
                     out.append({"role": "assistant", "content": msg.content})
-                out.append(
-                    {
-                        "type": "function_call",
-                        "call_id": msg.tool_call.id,
-                        "name": msg.tool_call.name,
-                        "arguments": json.dumps(msg.tool_call.arguments)
-                        if isinstance(msg.tool_call.arguments, dict)
-                        else msg.tool_call.arguments,
-                    }
-                )
+                if msg.provider_items:
+                    # Replay the provider's own items verbatim (reasoning +
+                    # function_call) so prompt caching can match the server's
+                    # cached sequence for reasoning models.
+                    out.extend(msg.provider_items)
+                else:
+                    out.append(
+                        {
+                            "type": "function_call",
+                            "call_id": msg.tool_call.id,
+                            "name": msg.tool_call.name,
+                            "arguments": json.dumps(msg.tool_call.arguments)
+                            if isinstance(msg.tool_call.arguments, dict)
+                            else msg.tool_call.arguments,
+                        }
+                    )
             elif msg.tool_call_id is not None:
                 out.append(
                     {

@@ -5,6 +5,7 @@ import copy
 import inspect
 import json
 import logging
+import os
 import re
 import warnings
 from abc import ABC, abstractmethod
@@ -1651,6 +1652,21 @@ DEFAULT_CACHE_CONTROL_INJECTION_POINTS = [
 ]
 
 
+def _strip_provider_items(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Drop the Responses-only ``provider_items`` key from chat messages.
+
+    ``provider_items`` (verbatim reasoning + function_call items for prompt
+    caching) is consumed by ResponsesClient._transform_messages; the Chat
+    Completions API has no equivalent and unknown message keys can be
+    rejected at the endpoint. Non-mutating: returns shallow-copied dicts only
+    for messages that carry the key.
+    """
+    return [
+        ({k: v for k, v in m.items() if k != "provider_items"} if "provider_items" in m else m)
+        for m in messages
+    ]
+
+
 # ============================================================================
 # PATCH: Prevent litellm from stripping cache_control for Anthropic models
 # ============================================================================
@@ -1763,7 +1779,9 @@ class CompletionClient(UnifiedLLM):
             if cache_control_injection_points is None
             else cache_control_injection_points
         )
-        prepared_messages = self._inject_cache_control(messages, cache_points)
+        prepared_messages = _strip_provider_items(
+            self._inject_cache_control(messages, cache_points)
+        )
 
         api_params = {
             "model": self.model,
@@ -1939,7 +1957,9 @@ class CompletionClient(UnifiedLLM):
             if cache_control_injection_points is None
             else cache_control_injection_points
         )
-        prepared_messages = self._inject_cache_control(messages, cache_points)
+        prepared_messages = _strip_provider_items(
+            self._inject_cache_control(messages, cache_points)
+        )
 
         api_params = {
             "model": self.model,
@@ -2214,6 +2234,7 @@ class ResponsesClient(UnifiedLLM):
         retry_config: RetryConfig | None = None,
         http_config: HttpConfig | None = None,
         cache_control_injection_points: list[dict[str, Any]] | None = None,
+        reasoning_replay: bool | None = None,
         **config,
     ):
         """
@@ -2239,6 +2260,9 @@ class ResponsesClient(UnifiedLLM):
             cache_control_injection_points: Optional list of role/position rules to
                 enable prompt caching (for example: {"role": "system"} or
                 {"role": "tool", "position": "last"}). Applied to all calls.
+            reasoning_replay: Replay the model's reasoning items verbatim across
+                turns so provider prompt caching works for reasoning models.
+                None (default) reads env NOOA_REASONING_REPLAY (on unless "0").
             **config: Additional configuration passed to litellm (api_key, api_base, etc.)
         """
         super().__init__(model, **config)
@@ -2250,6 +2274,29 @@ class ResponsesClient(UnifiedLLM):
             self.cache_control_injection_points = cache_control_injection_points
         else:
             self.cache_control_injection_points = DEFAULT_CACHE_CONTROL_INJECTION_POINTS
+        # Reasoning-item replay for prompt caching. When enabled (default; env
+        # NOOA_REASONING_REPLAY=0 disables), requests ask for stateless
+        # replayable reasoning (store=false + include reasoning.encrypted_content)
+        # and messages carrying "provider_items" are replayed verbatim in
+        # _transform_messages. Without this, reasoning models (gpt-5.5 etc.)
+        # get near-zero prompt-cache hits in multi-turn tool use.
+        if reasoning_replay is None:
+            reasoning_replay = os.environ.get("NOOA_REASONING_REPLAY", "1") != "0"
+        self.reasoning_replay = reasoning_replay
+
+    def _apply_reasoning_replay(self, api_params: dict[str, Any]) -> None:
+        """Add store=false + include=[reasoning.encrypted_content] when replay is on.
+
+        Mutates ``api_params`` in place; explicit caller values win (setdefault
+        for ``store``; ``include`` is extended without duplicates).
+        """
+        if not self.reasoning_replay:
+            return
+        api_params.setdefault("store", False)
+        include = list(api_params.get("include") or [])
+        if "reasoning.encrypted_content" not in include:
+            include.append("reasoning.encrypted_content")
+        api_params["include"] = include
 
     def _convert_tool_to_schema(self, tool: Tool) -> dict[str, Any]:
         """Convert Tool object to Responses API schema format."""
@@ -2320,6 +2367,8 @@ class ResponsesClient(UnifiedLLM):
 
         if instructions:
             api_params["instructions"] = instructions
+
+        self._apply_reasoning_replay(api_params)
 
         if "base_url" in api_params:
             api_params["api_base"] = api_params.pop("base_url")
@@ -2451,6 +2500,8 @@ class ResponsesClient(UnifiedLLM):
 
         if instructions:
             api_params["instructions"] = instructions
+
+        self._apply_reasoning_replay(api_params)
 
         if "base_url" in api_params:
             api_params["api_base"] = api_params.pop("base_url")
@@ -2613,6 +2664,15 @@ class ResponsesClient(UnifiedLLM):
                 # Preserve assistant text that precedes tool calls (matches native formatter)
                 if msg.get("content"):
                     transformed.append({"role": "assistant", "content": msg["content"]})
+                if msg.get("provider_items"):
+                    # Verbatim replay of the provider's own output items
+                    # (reasoning + function_call). Required for prompt caching
+                    # with reasoning models: reconstructing bare function_call
+                    # items breaks the server-side cached sequence at the first
+                    # reasoning position (cached tokens flatline at the
+                    # instructions size — see tmp/cache_awareness analysis).
+                    transformed.extend(msg["provider_items"])
+                    continue
                 for tc in msg["tool_calls"]:
                     fn = tc.get("function", {})
                     transformed.append(

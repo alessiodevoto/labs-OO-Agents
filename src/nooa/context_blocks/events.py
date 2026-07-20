@@ -238,6 +238,21 @@ class ToolCallEvent(EventBase):
         default=None, description="Result of the tool call, added after execution"
     )
 
+    # Verbatim provider output items for this call (Responses API): the
+    # reasoning/message items that preceded the function_call plus the
+    # function_call item itself, exactly as the provider produced them.
+    # Replaying these byte-verbatim (instead of reconstructing the
+    # function_call from the fields above) lets provider-side prompt caching
+    # match the server's cached sequence for reasoning models — without them
+    # the cache dies at the first reasoning position (see cache-awareness
+    # analysis). None for chat-completions clients and synthetic calls.
+    provider_items: list[dict[str, Any]] | None = Field(
+        default=None,
+        exclude=True,
+        repr=False,
+        description="Verbatim provider output items (reasoning + function_call) for replay",
+    )
+
 
 # === Metadata Extension Point ===
 

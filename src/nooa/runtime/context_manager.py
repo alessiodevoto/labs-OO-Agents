@@ -210,6 +210,21 @@ class ContextManager:
         """Return True if the block is in the static (cacheable) partition."""
         return self._static.get(key, False)
 
+    def demote_to_dynamic(self, key: str) -> bool:
+        """Move an existing block to the dynamic (volatile suffix) partition.
+
+        Content and protection are untouched — only placement changes, so the
+        block stops invalidating the cacheable prefix when its value churns.
+        Used by the cache-aware manager for static blocks that keep mutating.
+        Returns True if the block exists and was (or already is) dynamic.
+        """
+        if key not in self._blocks:
+            return False
+        if self._static.get(key, False):
+            self._static[key] = False
+            self._invalidate(key)
+        return True
+
     def __getitem__(self, key: str) -> Any:
         """Get the value of a context block.
 
