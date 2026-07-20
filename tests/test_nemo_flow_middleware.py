@@ -301,6 +301,7 @@ class TestLLMSanitizeResponse:
             assert result.response.content == "hello world"
 
             # Subscriber should see the sanitized version
+            nemo_flow.subscribers.flush()  # event dispatch is async in nemo_relay
             assert len(subscriber_saw) > 0, "Subscriber should have received at least one event"
             last_output = subscriber_saw[-1]
             assert isinstance(last_output, dict), f"Expected dict output, got {type(last_output)}"
@@ -486,6 +487,7 @@ class TestToolSanitizeResponse:
             assert result.result.returned_value == "secret data"
 
             # Subscriber should see the sanitized version
+            nemo_flow.subscribers.flush()  # event dispatch is async in nemo_relay
             assert len(subscriber_saw) > 0
             assert any("[REDACTED]" in str(o) for o in subscriber_saw)
         finally:
@@ -863,6 +865,7 @@ class TestToolMiddlewareEdgeCases:
             assert result.result is fake_result
 
             # NeMo Flow subscriber should see the extracted value (99)
+            nemo_flow.subscribers.flush()  # event dispatch is async in nemo_relay
             assert len(subscriber_saw) > 0
             assert any(o == 99 for o in subscriber_saw)
         finally:
@@ -901,6 +904,7 @@ class TestToolMiddlewareEdgeCases:
             assert result.result is fake_result
 
             # NeMo Flow should see the stdout value
+            nemo_flow.subscribers.flush()  # event dispatch is async in nemo_relay
             assert len(subscriber_saw) > 0
             assert any("hello" in str(o) for o in subscriber_saw)
         finally:
