@@ -64,18 +64,6 @@ For deeper understanding, see these topic-specific docs:
 | Truncation | `docs/guides/truncation.md` | How large values are previewed to the model |
 | Config migration (0.4.x → 0.5.0) | `docs/guides/config-migration.md` | Moving existing config to the unified `nemo_oo` layout (settings/secrets/llm_config YAML) — breaking changes in 0.5.0 |
 
-## Working Documentation
-
-`.development/docs/` is the working docs tree — not `docs/` (which is stable guides).
-
-| Content type | Path |
-|---|---|
-| Architecture, proposals, API specs | `.development/docs/design/` |
-| RCAs, session notes, implementation logs | `.development/docs/scratch/` |
-| Benchmark results, experiment outcomes | `.development/docs/evaluation/` |
-
-When creating significant designs (architecture, API specs, data models), write to `.development/docs/design/` before presenting in chat. Include ASCII/mermaid diagrams.
-
 ## Logging
 
 NeMo OO Agents uses Python's standard `logging` module throughout.  Every module
