@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Backend round-trip tests — parametrized over InMemoryBackend and SQLiteEventBackend.
 
 Every event type that can be stored in the event manager must survive a

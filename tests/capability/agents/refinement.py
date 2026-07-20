@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Refinement Test Agent. Uses refinement to get the ingredients for a recipe.
 
 Not all ingredients are available in the stock. The agent must find alternative ingredients if the ingredient is not in stock.

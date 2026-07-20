@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 # ruff: noqa: F403,F405
 """Quickstart 06: Tracing — all method types traced with parent-child spans.
 

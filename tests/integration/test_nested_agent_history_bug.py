@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Minimal reproduction of nested agent history ordering bug.
 
 This test demonstrates a bug where nested agent calls cause tool_call_id

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Send agent traces to Langfuse via OTLP.
 
 Langfuse is an open-source LLM observability platform.  The ``exporters.langfuse()``

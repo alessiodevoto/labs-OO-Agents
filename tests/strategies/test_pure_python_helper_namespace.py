@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Test that helper methods have consistent execution namespace (includes asyncio).
 
 This test addresses the issue documented in .cursor/plans/fix_empty_trace_issue_8f8a334c.plan.md

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Regression tests for issue 180 and summarizer input sizing.
 
 `TokenBudgetSummarizer.summarize()` must accept large rendered history —

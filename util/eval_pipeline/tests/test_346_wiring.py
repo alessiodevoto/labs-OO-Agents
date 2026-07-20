@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Regression tests for GitLab issue #346 (eval_pipeline unwired/mis-wired params).
 
 Covers:

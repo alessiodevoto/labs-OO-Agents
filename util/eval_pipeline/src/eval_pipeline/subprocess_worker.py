@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Subprocess worker: reads SubprocessTaskInput JSON from stdin, writes EvalTestResult JSON to stdout.
 
 This script runs in a completely clean, spawned subprocess. No inherited state from

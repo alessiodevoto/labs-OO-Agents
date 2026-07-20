@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Targeted unit tests for uncovered lines across nooa.
 
 Each test class covers a specific module and targets specific uncovered lines.

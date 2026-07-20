@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 # ruff: noqa: F403,F405
 """Quickstart 03: SW1 + SW3 — regular Python methods as LLM tools.
 

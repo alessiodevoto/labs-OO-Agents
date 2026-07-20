@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """A method invoked from inside generated code (e.g. ``self.submit()`` during
 ``execute_python``) should nest under the ``code_execution`` span it ran in — not
 under the enclosing agent-method span.

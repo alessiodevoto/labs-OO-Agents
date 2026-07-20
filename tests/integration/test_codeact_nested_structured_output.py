@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Test CodeActStrategy calling PredictStrategy on the same agent.
 
 Regression test for two properties of scoped block inheritance:

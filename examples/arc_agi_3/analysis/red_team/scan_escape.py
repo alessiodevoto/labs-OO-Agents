@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Precise extraction of host escape-tool usage and its results.
 
 The keyword scanner (scan_agent_actions.py) is high-recall/noisy. This script is

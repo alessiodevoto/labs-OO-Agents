@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Canonical Pydantic types for .noo-eval.jsonl files.
 
 This module defines the schema for evaluation result files.

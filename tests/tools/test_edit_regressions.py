@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Regression tests for edit tool improvements.
 
 Tests replay real failure patterns observed across 72 sessions (171 edit failures).

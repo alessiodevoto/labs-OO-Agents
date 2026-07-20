@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 """Ensure Python source files have an SPDX-License-Identifier header.
 
@@ -10,7 +10,7 @@ import sys
 MARKER = "SPDX-License-Identifier"
 SEARCH_LINES = 5
 HEADER = (
-    "# SPDX-FileCopyrightText: Copyright (c) 2025, NVIDIA CORPORATION & AFFILIATES."
+    "# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES."
     " All rights reserved.\n"
     "# SPDX-License-Identifier: Apache-2.0\n"
 )

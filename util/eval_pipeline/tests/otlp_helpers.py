@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Test-only helpers for working with OTLP span data.
 
 ``_otlp_attrs_to_dict`` used to live in ``eval_pipeline.otlp_io``, which was

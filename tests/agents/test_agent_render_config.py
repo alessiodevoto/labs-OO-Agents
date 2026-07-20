@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Tests for Agent.__init__ render_config= parameter (Task 17)."""
 
 from nooa.context_blocks.formatter import MarkdownBlockFormatter

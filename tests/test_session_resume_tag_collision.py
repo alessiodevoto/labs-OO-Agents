@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Regression test: resumed sessions must not reuse tag numbers already in the backend.
 
 Bug: An earlier design cached ``_next_tag_num`` on the EventManager and

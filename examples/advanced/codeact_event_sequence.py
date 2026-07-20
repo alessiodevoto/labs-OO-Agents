@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """CodeAct Event Sequence Example - Debug tool for understanding event flow.
 
 This example demonstrates the exact sequence of events that CodeActStrategy

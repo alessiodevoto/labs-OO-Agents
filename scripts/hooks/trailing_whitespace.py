@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Check and fix trailing whitespace (mimics pre-commit-hooks trailing-whitespace)."""
 
 import sys

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Test PURE_PYTHON REPL behavior via RuntimeServices.execute_code().
 
 Tests that stdout (print statements) is properly captured and returned

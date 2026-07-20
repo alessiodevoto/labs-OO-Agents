@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 # ruff: noqa: F403,F405
 """Quickstart 11: MCP tools — connect external MCP servers as agent tools.
 

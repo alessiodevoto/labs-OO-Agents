@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Bug: _is_structured_instance returns False for Pydantic/dataclass/attrs with __module__='builtins'.
 
 Classes defined inside exec() or a CodeAct execute_python cell get __module__='builtins',

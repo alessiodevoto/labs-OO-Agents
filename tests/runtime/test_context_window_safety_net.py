@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Runtime-level safety net: final structured payload must fit the LLM window.
 
 The pre-render safety net (clamping ``max_event_tokens`` against

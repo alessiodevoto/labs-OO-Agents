@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Comprehensive tests for async context variable correctness.
 
 ContextVars are the concurrency backbone of the agent runtime. Bugs here are

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Focused tests for deterministic fast_agent help/no-help scoring."""
 
 from eval_pipeline.models import ScoringContext

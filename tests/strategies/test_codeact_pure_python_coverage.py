@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Coverage-boosting tests for codeact.py and pure_python.py.
 
 Targets the specific missing lines identified in coverage analysis:

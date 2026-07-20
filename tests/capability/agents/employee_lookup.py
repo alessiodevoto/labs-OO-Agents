@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Employee lookup agent for multi-step subagent chaining testing.
 
 This agent tests whether the LLM can correctly chain two subagents

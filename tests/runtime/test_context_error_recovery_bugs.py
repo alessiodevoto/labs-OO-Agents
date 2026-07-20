@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Failing test: recovery path doesn't archive when prompt_tokens can't be parsed.
 
 Replicates the bug found in e2e testing: when the API error says

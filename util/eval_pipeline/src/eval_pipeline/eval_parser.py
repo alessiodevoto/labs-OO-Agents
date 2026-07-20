@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Parser for .noo-eval.jsonl files.
 
 Provides stateful parsing of eval files with version checking and error handling.

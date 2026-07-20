@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Generate a test fixture: sqlite DB with events filling ~95% of a 262K context window.
 
 Fills events into an agent with SQLiteEventBackend, measures tokens, saves DB when ≥95%.

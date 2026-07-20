@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Integration tests for truncation in code execution (Phase 2).
 
 Note: These tests verify truncation at the execute_code level. Full integration

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """SQLite-specific tests: deserialization, registry, and _CONTEXT_BLOCKS_TYPES guards.
 
 These tests cover behavior that only applies to SQLiteEventBackend:

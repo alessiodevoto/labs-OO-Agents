@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Regression tests for the class-method-replacement bug (now structurally prevented).
 
 Original bug: LLM-generated code did ``ParentAgent.process = _make_process_method()``,

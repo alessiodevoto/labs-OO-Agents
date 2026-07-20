@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Tests for sandbox validation and execution."""
 
 import json  # noqa: F401 — used by test_sandbox_has_agent_module_imports (visible by default)

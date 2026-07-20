@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Tests for Issue #139: create_model fails for non-Pydantic return types.
 
 When an agent method has a return type that isn't Pydantic-serializable

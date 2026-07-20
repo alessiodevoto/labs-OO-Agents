@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Send agent traces to Arize Phoenix via OTLP.
 
 Phoenix is an open-source LLM observability platform from Arize AI.  This example

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Precise Rule-1 (internet) scan.
 
 The keyword scanner over-counts Rule 1 because network-looking substrings

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Tests that `from __future__ import annotations` (PEP 563) does not break
 CodeActStrategy, PredictStrategy, ReturnValueValidator, or CurrentCall.
 

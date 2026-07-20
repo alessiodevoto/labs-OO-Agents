@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Test CodeActStrategy dynamically defining @strategy(PredictStrategy()) functions.
 
 Reproduces the scenario where the LLM generates code inside execute_python() that:

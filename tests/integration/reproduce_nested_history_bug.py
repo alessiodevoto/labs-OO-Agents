@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Standalone reproduction of nested agent history ordering bug.
 
 This script reproduces the bug where nested agent calls cause tool_call_id

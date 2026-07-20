@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Test that has_ellipsis_body works for dynamically exec'd functions.
 
 This tests the critical path where PurePythonStrategy generates code with
