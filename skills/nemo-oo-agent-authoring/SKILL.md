@@ -17,8 +17,8 @@ The **class docstring** is part of the static system-prompt prefix — it appear
 ```python
 import asyncio
 from typing import Annotated
-from nemo_oo_agents import Agent
-from nemo_oo_agents.unifiedllm import get_llm_client
+from nooa import Agent
+from nooa.unifiedllm import get_llm_client
 
 llm = get_llm_client("gpt-4o-mini")    # any litellm model name, or a registry alias
 
@@ -44,7 +44,7 @@ Use `Annotated[type, "description"]` on parameters and return types to give the 
 ## LLM clients and cascading
 
 ```python
-from nemo_oo_agents.unifiedllm import get_llm_client, CompletionClient, RetryConfig
+from nooa.unifiedllm import get_llm_client, CompletionClient, RetryConfig
 
 llm = get_llm_client("gpt-4o-mini")                        # any litellm name passes through (needs provider key)
 llm = get_llm_client("qwen3.5-397b")                       # registry alias (public NIM via NVIDIA_API_KEY from build.nvidia.com)
@@ -52,9 +52,9 @@ llm = get_llm_client("gpt-4o-mini", retry_config=RetryConfig(max_retries=5))  # 
 llm = CompletionClient(model="m", base_url="https://.../v1", api_key="...")  # any OpenAI-compatible endpoint
 ```
 
-**Registry:** models are defined in YAML configs loaded from `~/.config/nemo_oo/models.yaml` (user) and the package's built-in `model_registry.yaml`. Each entry maps an alias to `{model, base_url, api_key_env}`. Inspect with `nooa config show` (shows all config layers and resolved values) or programmatically via `from nemo_oo_agents.unifiedllm.registry import reload_registry; configs = reload_registry()`.
+**Registry:** models are defined in YAML configs loaded from `~/.config/nooa/models.yaml` (user) and the package's built-in `model_registry.yaml`. Each entry maps an alias to `{model, base_url, api_key_env}`. Inspect with `nooa config show` (shows all config layers and resolved values) or programmatically via `from nooa.unifiedllm.registry import reload_registry; configs = reload_registry()`.
 
-Keys come from `.env` (library use) or `~/.config/nemo_oo/secrets.yaml`.
+Keys come from `.env` (library use) or `~/.config/nooa/secrets.yaml`.
 
 **Resolution cascade** for which LLM a method uses — first match wins:
 
@@ -145,9 +145,9 @@ async def analyze(self, text: str) -> Analysis:
 | `PredictStrategy` | single-shot classification/extraction returning a typed value | Parameters serialized as text with size caps | One LLM call, output validated against the return type |
 
 ```python
-from nemo_oo_agents import strategy
-from nemo_oo_agents.strategies import CodeActStrategy, PredictStrategy
-from nemo_oo_agents.config import CodeActConfig, PredictConfig
+from nooa import strategy
+from nooa.strategies import CodeActStrategy, PredictStrategy
+from nooa.config import CodeActConfig, PredictConfig
 
 @strategy(PredictStrategy())                                   # fast single-shot
 async def classify(self, text: str) -> Intent: ...
@@ -177,8 +177,8 @@ Everything public is visible to the LLM by default (in `doc(self)` and the CodeA
 
 ```python
 from typing import Annotated
-from nemo_oo_agents import Agent, hidden
-from nemo_oo_agents.agentdoc import spec        # NOT `from agentdoc import ...` — that package doesn't exist
+from nooa import Agent, hidden
+from nooa.agentdoc import spec        # NOT `from agentdoc import ...` — that package doesn't exist
 
 with hidden:
     import secrets                              # keep out of the LLM's execution namespace
@@ -212,14 +212,14 @@ class SearchAgent(Agent, llm=llm):
 ## Debugging while authoring
 
 ```python
-from nemo_oo_agents import print_prompt, build_prompt_data, enable_logging
-from nemo_oo_agents.unifiedllm import FakeLLMClient
+from nooa import print_prompt, build_prompt_data, enable_logging
+from nooa.unifiedllm import FakeLLMClient
 
 agent = MyAgent(llm=FakeLLMClient())            # no network
 await print_prompt(agent.my_method, sample_arg)  # exact system + task prompt the LLM would see
 data = await build_prompt_data(agent.my_method, sample_arg)  # structured PromptData
 
-enable_logging(level="DEBUG")                    # nemo_oo_agents.* logger hierarchy
+enable_logging(level="DEBUG")                    # nooa.* logger hierarchy
 # kill -USR2 <pid>                               # dump traceback + all registered cells to debug_dump_<pid>.txt
 ```
 

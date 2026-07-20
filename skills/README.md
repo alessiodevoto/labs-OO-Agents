@@ -2,7 +2,7 @@
 
 Portable `SKILL.md` bundles for coding agents (Claude Code, Cursor, Codex, or any Agent Skills host) that help developers **author application agents with** the NVIDIA OO Agents framework, capture traces, and debug runs with the trace viewer and trace explorer.
 
-These are instructions *for coding agents about the framework* — not `nemo_oo_agents.Skill` runtime skills (though the file format is compatible with `TextSkill`, see Validate below).
+These are instructions *for coding agents about the framework* — not `nooa.Skill` runtime skills (though the file format is compatible with `TextSkill`, see Validate below).
 
 ## Skills
 
@@ -17,10 +17,10 @@ These are instructions *for coding agents about the framework* — not `nemo_oo_
 | [`nemo-oo-self-extending`](nemo-oo-self-extending/SKILL.md) | Agent-authored code: persistent skill libraries (self.libs), in-cell helpers and standalone @strategy sub-calls, @slash_command |
 | [`nemo-oo-middleware-hooks`](nemo-oo-middleware-hooks/SKILL.md) | Intercepting execution: middleware (`intercept()` guardrails/transforms/blocking), event observers (`on()`), InstrumentationHooks protocol |
 | [`nemo-oo-capturing-traces`](nemo-oo-capturing-traces/SKILL.md) | Capturing traces: auto-tracing, `enable_tracing` + exporters (jsonl/otlp/langfuse/journal), `@no_trace`, span model, env vars |
-| [`nemo-oo-trace-viewer`](nemo-oo-trace-viewer/SKILL.md) | Running and using the trace viewer (`nemo oo start-dev`): UI, import/export, REST API |
+| [`nemo-oo-trace-viewer`](nemo-oo-trace-viewer/SKILL.md) | Running and using the trace viewer (`nooa start-dev`): UI, import/export, REST API |
 | [`nemo-oo-trace-explorer`](nemo-oo-trace-explorer/SKILL.md) | Programmatic trace analysis: `trace-explorer` CLI, `TraceExplorer` library, thin client, experiment-level debugging |
 
-All content was verified against `src/nemo_oo_agents` at the time of writing; where the skills contradict older docs (e.g. `SkillManager`, `from agentdoc import ...`, `enable_tracing(trace_dir=...)`, "private methods aren't traced"), the skills reflect the code.
+All content was verified against `src/nooa` at the time of writing; where the skills contradict older docs (e.g. `SkillManager`, `from agentdoc import ...`, `enable_tracing(trace_dir=...)`, "private methods aren't traced"), the skills reflect the code.
 
 ## Install
 
@@ -45,7 +45,7 @@ The bundles are loadable as framework `TextSkill`s, which validates their frontm
 ```bash
 uv run python - <<'PY'
 from pathlib import Path
-from nemo_oo_agents import TextSkill
+from nooa import TextSkill
 for path in sorted(Path("skills").glob("*/SKILL.md")):
     s = TextSkill(path=path.parent)
     print(f"{s.id}: {s.description[:88]}")

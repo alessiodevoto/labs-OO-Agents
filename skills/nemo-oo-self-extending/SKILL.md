@@ -16,7 +16,7 @@ Three escalating levels of agent-authored code, from ephemeral to persistent:
 
 ## In-cell helpers and standalone sub-calls (`MethodWriting`)
 
-`MethodWriting` (`nemo_oo_agents.tools.method_writing_lib`) is a guidance `Skill` — attach it and the LLM learns to:
+`MethodWriting` (`nooa.tools.method_writing_lib`) is a guidance `Skill` — attach it and the LLM learns to:
 
 - define plain helpers at the top of a cell for deterministic logic, then use them;
 - define **standalone generation functions** for per-item LLM sub-tasks and fan them out:
@@ -31,13 +31,13 @@ codes = await asyncio.gather(*(detect_language(m) for m in messages))
 return_result(codes)
 ```
 
-Standalone functions (`nemo_oo_agents.standalone`) are `@strategy`-decorated async functions **without `self`** — each call runs on a fresh agent stub (no shared state, history discarded after the call; context blocks via the decorator's `ScopedContext`, `llm=` via the decorator or inherited from the calling context). They work in module code too, not just generated cells — the lightest way to get an LLM-powered function without defining an Agent class.
+Standalone functions (`nooa.standalone`) are `@strategy`-decorated async functions **without `self`** — each call runs on a fresh agent stub (no shared state, history discarded after the call; context blocks via the decorator's `ScopedContext`, `llm=` via the decorator or inherited from the calling context). They work in module code too, not just generated cells — the lightest way to get an LLM-powered function without defining an Agent class.
 
 Helpers defined in cells persist as REPL locals for the rest of the method call but are never attached to the agent (attaching callables to `self` is validator-rejected — see `nemo-oo-codeact-advanced`).
 
 ## Persistent libraries (`SkillWriting` / `self.libs`)
 
-`SkillWriting` (`nemo_oo_agents.tools.library_writing_lib`) gives the agent a managed `libs/` directory of real Python packages. Requires the shell skill (`requires = ("nemo.shell",)`) since file I/O goes through `self.shell`.
+`SkillWriting` (`nooa.tools.library_writing_lib`) gives the agent a managed `libs/` directory of real Python packages. Requires the shell skill (`requires = ("nemo.shell",)`) since file I/O goes through `self.shell`.
 
 The lifecycle the agent follows (documented to it via `doc(self.libs)`):
 
@@ -56,14 +56,14 @@ await self.libs.list(); await self.libs.repo_tree()            # discovery
 - Library code is plain Python — no agent `self`, no `...` bodies, no async requirement. Attachment goes through `SkillRegistry.discover_libs(path)` + `activate(["local.*"])` when the agent has `self.skills`, else `LibraryManager.install(agent, libs_dir=...)`.
 - **Reload ≠ relearn:** after `self.libs.reload(...)`, the new API is live on `self.<lib>`; guide agents to re-read `doc(self.<lib>)` rather than assume.
 
-`LibraryManager` (`nemo_oo_agents.library_manager`) is the low-level loader you can also use directly from Python: `LibraryManager.install(agent, libs_dir=Path("libs"))` scans for subdirectories with a `pyproject.toml`, imports each, attaches as `agent.<lib_name>`; `mgr.reload()` hot-reloads all; `LibraryManager.discover(path)` lists without loading. Modules are attached as attributes only — never injected into exec_globals.
+`LibraryManager` (`nooa.library_manager`) is the low-level loader you can also use directly from Python: `LibraryManager.install(agent, libs_dir=Path("libs"))` scans for subdirectories with a `pyproject.toml`, imports each, attaches as `agent.<lib_name>`; `mgr.reload()` hot-reloads all; `LibraryManager.discover(path)` lists without loading. Modules are attached as attributes only — never injected into exec_globals.
 
 ## Slash commands (`@slash_command`)
 
-Skills can ship user-typed `/commands` (dispatch: `nemo_oo_agents.slash_dispatch`; TUI surfaces them):
+Skills can ship user-typed `/commands` (dispatch: `nooa.slash_dispatch`; TUI surfaces them):
 
 ```python
-from nemo_oo_agents.skill import Skill, slash_command
+from nooa.skill import Skill, slash_command
 
 class MySkill(Skill):
     @slash_command("check", argument_hint="<target>", completions=("deps", "lint", "tests"))

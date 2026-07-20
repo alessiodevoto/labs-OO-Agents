@@ -242,9 +242,7 @@ class MyAgent(Agent, llm=my_llm):
 If you're updating code from the old `@agent` and `@plan` decorators:
 
 **Before:**
-```python
-from nooa import agent, plan
-
+```text
 @agent(llm=my_llm)
 class MyAgent(Agent):
     @plan

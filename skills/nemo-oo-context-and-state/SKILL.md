@@ -14,7 +14,7 @@ Every agent has two managers, always present, hidden from the LLM by default:
 Their agent-facing APIs are `self.context` (`ContextApi`) and `self.events` (`EventsApi`). To let the *LLM* see and manage them, opt in per subclass:
 
 ```python
-from nemo_oo_agents.agentdoc import spec
+from nooa.agentdoc import spec
 
 class MyAgent(Agent, llm=llm):
     def __init__(self, **kwargs):
@@ -40,7 +40,7 @@ self.context.set_dynamic("progress", "self.format_project_state()")
 del self.context["plan"]           # or self.context.pop("plan")
 
 # Class-level default blocks
-from nemo_oo_agents import DynamicContext
+from nooa import DynamicContext
 class MyAgent(Agent, llm=llm, context={"focus": DynamicContext("self.topic")}): ...
 ```
 
@@ -49,8 +49,8 @@ Use docstrings for per-call task instructions; use context blocks for cross-call
 Per-method overrides via `ScopedContext`:
 
 ```python
-from nemo_oo_agents.context_blocks import ScopedContext
-from nemo_oo_agents import strategy, EventQuery
+from nooa.context_blocks import ScopedContext
+from nooa import strategy, EventQuery
 
 @strategy(context=ScopedContext(events=EventQuery.current_call()))
 async def solve(self, problem: str) -> str:
@@ -69,7 +69,7 @@ errors = agent.events.query(type="Error")
 hits   = agent.events.query(query="timeout")            # text search; regex=True for regex
 
 # Filter what history a method's LLM sees
-from nemo_oo_agents import EventQuery
+from nooa import EventQuery
 EventQuery.current_call()      # only this call
 EventQuery.by_type("Message")
 EventQuery.last_n(50)
@@ -87,8 +87,8 @@ agent.events.collapse("3", "17", summary_text="Explored the repo layout")
 Unbounded histories eventually overflow the model context. Install a summarizer:
 
 ```python
-from nemo_oo_agents.agents import TokenBudgetSummarizer, MethodSummarizer, context_budget
-from nemo_oo_agents.config import TokenBudgetConfig, MethodSummarizerConfig
+from nooa.agents import TokenBudgetSummarizer, MethodSummarizer, context_budget
+from nooa.config import TokenBudgetConfig, MethodSummarizerConfig
 
 # Compress oldest events when the token budget is crossed (open-ended conversations)
 TokenBudgetSummarizer.install(agent, config=TokenBudgetConfig(max_tokens=80_000, preserve_recent=10))
@@ -105,17 +105,17 @@ Summarizers are themselves agents; they inherit the host agent's LLM by default.
 ## Persistent state
 
 ```python
-from nemo_oo_agents.storage import SQLiteStorageManager
+from nooa.storage import SQLiteStorageManager
 
 agent = MyAgent(storage=SQLiteStorageManager("agent_state.db"))   # snapshots + resume
 ```
 
-Events, context blocks, LLM-defined methods, and user attributes are serialized; exclude a field with `Annotated[T, nosnapshot]` (`from nemo_oo_agents.storage import nosnapshot`). Note this is **agent state** persistence (`src/nemo_oo_agents/storage/`) — unrelated to trace storage (`traces.db`, owned by the viewer).
+Events, context blocks, LLM-defined methods, and user attributes are serialized; exclude a field with `Annotated[T, nosnapshot]` (`from nooa.storage import nosnapshot`). Note this is **agent state** persistence (`src/nooa/storage/`) — unrelated to trace storage (`traces.db`, owned by the viewer).
 
 For long-term semantic memory (remember/recall across sessions) there is an opt-in memory subsystem:
 
 ```python
-from nemo_oo_agents.memory import MemoryConfig, MemoryManager, MemoryToolsMixin
+from nooa_memory import MemoryConfig, MemoryManager, MemoryToolsMixin
 
 class MyAgent(MemoryToolsMixin, Agent, llm=llm): ...
 MemoryManager.install(agent, config=MemoryConfig(enabled=True))

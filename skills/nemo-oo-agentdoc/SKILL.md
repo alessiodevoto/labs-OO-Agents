@@ -1,7 +1,7 @@
 ---
 name: nemo-oo-agentdoc
 description: Make NVIDIA OO agent types render beautiful documentation for the LLM — doc(), spec(), hidden, Annotated field descriptions, and pformat/pprint tuning. Use when designing Pydantic models/dataclasses the LLM will see, controlling what appears in doc(self), hiding internals, adding field descriptions, fixing noisy or missing type docs, or tuning value truncation.
-compatibility: nemo-oo-agents core package (agentdoc ships inside it — import from nemo_oo_agents.agentdoc)
+compatibility: nemo-oo-agents core package (agentdoc ships inside it — import from nooa.agentdoc)
 ---
 
 # agentdoc: Beautiful Docs for the LLM
@@ -9,7 +9,7 @@ compatibility: nemo-oo-agents core package (agentdoc ships inside it — import 
 Everything the LLM knows about your API comes from `agentdoc`: `doc(self)` is injected into every prompt, tools are discovered via `doc(self.tool)`, and the CodeAct prefill `pprint()`s your arguments. Two-step model: **`spec()` specifies how a type renders; `doc()` renders the API contract.** `pformat()`/`pprint()` are the value-level printers underneath.
 
 ```python
-from nemo_oo_agents.agentdoc import doc, spec, hidden, pformat, pprint
+from nooa.agentdoc import doc, spec, hidden, pformat, pprint
 # inside CodeAct-generated code, doc/pprint (and methods/variables) are auto-injected;
 # spec/hidden/pformat still need the import above
 ```
@@ -90,7 +90,7 @@ Accepted kwargs: `hidden`, `description`, `expand`, `concise`, `max_length`, `ma
 ## `hidden` — one object, three roles
 
 ```python
-from nemo_oo_agents.agentdoc import hidden
+from nooa.agentdoc import hidden
 
 @hidden                              # 1. decorator: hide a method/property
 def rebuild_index(self): ...
@@ -103,7 +103,7 @@ with hidden:                         # 3. module-level context manager: hide imp
 
 - `_private` and dunder names are hidden by default; re-include a `_private` **method** with `@spec(hidden=False)`. A `_private` **field** cannot be re-included — rename it public instead.
 - Pydantic `Field(repr=False)` fields are also skipped by both `doc()` and `pformat()` (`exclude=True` is NOT honored — it only affects serialization).
-- There is no `visible` marker in agentdoc — un-hiding is always `spec(..., hidden=False)` (the top-level `nemo_oo_agents.visible` is a no-op kept for backward compat).
+- There is no `visible` marker in agentdoc — un-hiding is always `spec(..., hidden=False)` (the top-level `nooa.visible` is a no-op kept for backward compat).
 
 ## `doc()` in prompts and generated code
 

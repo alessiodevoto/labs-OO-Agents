@@ -27,7 +27,7 @@ Design rubric: exact semantics (matching rules, parsing, arithmetic) → determi
 ## Built-in tools
 
 ```python
-from nemo_oo_agents.tools import ShellTools, TodoManager
+from nooa.tools import ShellTools, TodoManager
 
 class DevAgent(Agent, llm=llm):
     def __init__(self):
@@ -55,7 +55,7 @@ For an object the LLM might misuse, prefer wrapping the dangerous surface in a s
 Skills inject curated guidance + optional helper APIs into an agent. Three forms:
 
 ```python
-from nemo_oo_agents import Skill, TextSkill
+from nooa import Skill, TextSkill
 
 class MyAgent(Agent, llm=llm):
     def __init__(self, **kwargs):
@@ -80,7 +80,7 @@ class MyAgent(Agent, llm=llm):
 Core library keeps MCP optional: `uv sync --extra mcp` (or `uv add 'nemo-oo-agents[mcp]'`).
 
 ```python
-from nemo_oo_agents.mcp import MCPManager
+from nooa.mcp import MCPManager
 
 class ConfluenceAgent(Agent, llm=llm):
     confluence = MCPManager.create_from_server("my-mcp-server")   # from .mcp.json
@@ -93,12 +93,12 @@ class ConfluenceAgent(Agent, llm=llm):
         ...
 ```
 
-MCP tools appear alongside regular methods — the LLM calls them like any other attribute. Servers are configured in `.mcp.json` (VS Code/Claude Code format); in the TUI they instead live in `.nemo_oo_agents/config.toml` under `[tui.mcp_servers.*]` with `self.mcp` (an `MCPRegistry`) managing connect/activate. Transports: stdio, SSE, streamable-http; OAuth supported (`nemo_oo_agents.mcp.OAuthConfig`).
+MCP tools appear alongside regular methods — the LLM calls them like any other attribute. Servers are configured in `.mcp.json` (VS Code/Claude Code format); in the TUI they instead live in `.nooa/config.toml` under `[tui.mcp_servers.*]` with `self.mcp` (an `MCPRegistry`) managing connect/activate. Transports: stdio, SSE, streamable-http; OAuth supported (`nooa.mcp.OAuthConfig`).
 
 ## Multimodal media
 
 ```python
-from nemo_oo_agents import Image, Audio, Video, File
+from nooa import Image, Audio, Video, File
 
 class MediaAgent(Agent, llm=llm):
     async def describe(self, image: Image) -> str:

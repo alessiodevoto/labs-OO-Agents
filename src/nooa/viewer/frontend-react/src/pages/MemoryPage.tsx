@@ -610,7 +610,7 @@ export function MemoryPage() {
         <div className="text-center py-12 text-gray-500">
           {dbs === null
             ? "Loading..."
-            : "No memory databases discovered under ./.nemo_oo — pass one with ?db=<path>"}
+            : "No memory databases discovered under ./.nooa — pass one with ?db=<path>"}
         </div>
       ) : (
         <>

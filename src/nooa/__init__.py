@@ -24,7 +24,7 @@ _logging.getLogger(__name__).addHandler(_logging.NullHandler())
 from nooa._logging import enable_logging  # noqa: E402
 from nooa._visible import visible  # noqa: E402
 from nooa.agent import Agent  # noqa: E402
-from nooa.agentdoc import hidden  # noqa: E402
+from nooa.agentdoc import hidden, spec  # noqa: E402
 from nooa.context_blocks import Context, ContextWindowStats, DynamicContext  # noqa: E402
 from nooa.decorators import strategy  # noqa: E402
 
@@ -155,6 +155,7 @@ __all__ = [
     "enable_logging",
     # Visibility
     "hidden",
+    "spec",
     "visible",
     # Errors
     "NemoOOAgentsError",

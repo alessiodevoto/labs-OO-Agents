@@ -13,7 +13,7 @@ NVIDIA OO Agents traces every agent method call, LLM call, code execution, and t
 Every `Agent.__init__()` auto-attempts tracing **once per process**: it probes the trace viewer at `http://localhost:5001` (or `$OTLP_ENDPOINT`) and, if reachable, streams spans to it. Nothing to import, nothing to call:
 
 ```bash
-nemo oo start-dev            # terminal 1: viewer + OTLP receiver on :5001
+nooa start-dev            # terminal 1: viewer + OTLP receiver on :5001
 uv run python my_agent.py    # terminal 2: traces appear automatically
 ```
 
@@ -22,7 +22,7 @@ uv run python my_agent.py    # terminal 2: traces appear automatically
 ## Explicit tracing
 
 ```python
-from nemo_oo_agents.tracing import enable_tracing, exporters, flush_traces
+from nooa.tracing import enable_tracing, exporters, flush_traces
 
 # Write JSONL files — one file per session: {trace_dir}/{session_id}.jsonl
 enable_tracing(exporters=[exporters.jsonl("./traces")])
@@ -32,9 +32,9 @@ flush_traces()   # force-flush pending spans (e.g. before process exit)
 ```
 
 Signature: `enable_tracing(exporters=None, *, experiment=None, extra_resource_attrs=None) -> None`
-(source: `src/nemo_oo_agents/tracing/__init__.py`). It is idempotent for no-arg calls; calling again with explicit `exporters` replaces the previous exporters. `experiment` tags every span's resource with an experiment name (defaults to `$TRACE_EXPERIMENT`), which the viewer uses to group eval runs.
+(source: `src/nooa/tracing/__init__.py`). It is idempotent for no-arg calls; calling again with explicit `exporters` replaces the previous exporters. `experiment` tags every span's resource with an experiment name (defaults to `$TRACE_EXPERIMENT`), which the viewer uses to group eval runs.
 
-### Exporter factories (`nemo_oo_agents.tracing.exporters`)
+### Exporter factories (`nooa.tracing.exporters`)
 
 | Factory | Destination | Notes |
 |---|---|---|
@@ -59,7 +59,7 @@ enable_tracing(exporters=[
 Spans are grouped by `session.id`. Set it explicitly when you need a stable, known ID (e.g. eval harnesses):
 
 ```python
-from nemo_oo_agents.tracing import set_session, get_session
+from nooa.tracing import set_session, get_session
 set_session("my-run-001")   # call before running the agent
 ```
 
@@ -68,7 +68,7 @@ set_session("my-run-001")   # call before running the agent
 **All agent methods are traced by default** — public, private (`_x`), and async dunders. Generation methods, plain-Python orchestrators, and deterministic helpers all produce spans. Opt out per-method:
 
 ```python
-from nemo_oo_agents import no_trace
+from nooa import no_trace
 
 class MyAgent(Agent, llm=llm):
     @no_trace
@@ -92,7 +92,7 @@ Parent-child nesting follows the call hierarchy: orchestrator → generation met
 
 ## Trace file format
 
-Files are OTLP JSON Lines: each line is one `{"resourceSpans": [...]}` object. This is the interchange format for the whole toolchain — the viewer imports it (`nemo oo import-traces ./traces`) and the trace explorer reads it directly (`trace-explorer ./traces/<session_id>.jsonl`).
+Files are OTLP JSON Lines: each line is one `{"resourceSpans": [...]}` object. This is the interchange format for the whole toolchain — the viewer imports it (`nooa import-traces ./traces`) and the trace explorer reads it directly (`trace-explorer ./traces/<session_id>.jsonl`).
 
 ## Environment variables
 
@@ -105,7 +105,7 @@ Files are OTLP JSON Lines: each line is one `{"resourceSpans": [...]}` object. T
 
 ## Pitfalls
 
-- **Do NOT use** `from openinference_instrumentation_nemo_oo_agents import enable_tracing` or `enable_tracing(trace_dir=...)` — both appear in older docs/comments but do not exist. Tracing lives in `nemo_oo_agents.tracing`; `trace_dir` is an argument of `exporters.jsonl()`, and `enable_tracing()` returns `None`.
+- **Do NOT use** `from openinference_instrumentation_nemo_oo_agents import enable_tracing` or `enable_tracing(trace_dir=...)` — both appear in older docs/comments but do not exist. Tracing lives in `nooa.tracing`; `trace_dir` is an argument of `exporters.jsonl()`, and `enable_tracing()` returns `None`.
 - Auto-tracing is attempted once per process. If the viewer wasn't running when the first `Agent` was constructed, later agents won't retry — call `enable_tracing(...)` explicitly or restart with the viewer up.
 - For short scripts, call `flush_traces()` before exit; batch exporters flush on a ~1s schedule and a fast exit can drop the tail of a trace.
 - Logic that runs *outside* agent methods (module-level preprocessing, `main()` helpers) is invisible in traces. Keep interesting logic inside agent methods so failures leave trace evidence.
@@ -113,7 +113,7 @@ Files are OTLP JSON Lines: each line is one `{"resourceSpans": [...]}` object. T
 ## Verifying capture works
 
 ```python
-from nemo_oo_agents.tracing import enable_tracing, exporters, flush_traces
+from nooa.tracing import enable_tracing, exporters, flush_traces
 enable_tracing(exporters=[exporters.jsonl("./traces")])
 agent = MyAgent()
 await agent.run("test")

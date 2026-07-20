@@ -107,6 +107,16 @@ _PROPAGATABLE_LLM_PARAMS: frozenset[str] = frozenset(
 _PROPAGATABLE_TOOL_PARAMS: frozenset[str] = frozenset({"tool_call_id", "timeout"})
 
 
+def _extract_model_name(agent: Any) -> str:
+    """Return the model name from an agent's LLM client, if available."""
+    if agent is None:
+        return ""
+    llm = getattr(agent, "_llm", None)
+    if llm is None:
+        return ""
+    return getattr(llm, "model", "")
+
+
 # ---------------------------------------------------------------------------
 # Middleware functions
 # ---------------------------------------------------------------------------
@@ -125,11 +135,7 @@ async def nemo_flow_llm_middleware(
     assert nemo_flow is not None
 
     # Get model name from the agent's LLM client (not in params).
-    model_name = ""
-    if ctx.agent is not None:
-        llm = getattr(ctx.agent, "_llm", None)
-        if llm is not None:
-            model_name = getattr(llm, "model", "")
+    model_name = _extract_model_name(ctx.agent)
     safe_params = {
         k: v
         for k, v in ctx.params.items()

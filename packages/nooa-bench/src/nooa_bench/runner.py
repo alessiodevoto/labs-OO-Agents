@@ -80,7 +80,7 @@ def _setup_tracing(model: str, agent_type: str) -> None:
         )
         from nooa.tracing import exporters as nemo_exporters
     except ImportError:
-        logger.warning("nemo_oo_agents.tracing not available, no tracing")
+        logger.warning("nooa.tracing not available, no tracing")
         return
 
     endpoint = os.environ.get("OTLP_ENDPOINT", "http://localhost:5001/v1/traces")

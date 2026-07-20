@@ -6,11 +6,11 @@ compatibility: nemo-oo-agents core package
 
 # Channels: Reactive Agent Input
 
-`Channel` + `QueueManager` (`nemo_oo_agents.runtime.channels`) are the producer side of agent input: outside events flow in through named channels; the agent's dispatch loop races them and reacts. Peer of `EventManager`/`ContextManager`, but NOT auto-created — you construct it.
+`Channel` + `QueueManager` (`nooa.runtime.channels`) are the producer side of agent input: outside events flow in through named channels; the agent's dispatch loop races them and reacts. Peer of `EventManager`/`ContextManager`, but NOT auto-created — you construct it.
 
 ```python
-from nemo_oo_agents.runtime.channels import QueueManager
-from nemo_oo_agents.runtime.producers import monitor, cron
+from nooa.runtime.channels import QueueManager
+from nooa.runtime.producers import monitor, cron
 
 class Watcher(Agent, llm=llm):
     def __init__(self, **kw):
@@ -57,7 +57,7 @@ class Watcher(Agent, llm=llm):
 ## `spawn()` — background jobs feeding channels
 
 ```python
-from nemo_oo_agents.runtime.producers import monitor, after, cron, tail, run_job
+from nooa.runtime.producers import monitor, after, cron, tail, run_job
 
 handle = qm.spawn(monitor("pytest -q"), channel="ci", buffer=100)  # stream stdout lines
 qm.spawn(after(300), channel="wakeup")                              # one-shot timer → None

@@ -20,7 +20,7 @@
 ### Just want the OO CLI/TUI?
 
 ```bash
-curl -LsSf https://gitlab-master.nvidia.com/interactive-agents/nooa/-/raw/main/scripts/install.sh | sh
+curl -LsSf https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents/-/raw/main/scripts/install.sh | sh
 exec $SHELL          # pick up the ~/.local/bin PATH change
 nooa tui          # launch the interactive agent REPL
 ```
@@ -37,16 +37,16 @@ uv init my-agent-project
 cd my-agent-project
 
 # Core framework
-uv add "nemo-labs-oo-agents @ git+https://gitlab-master.nvidia.com/interactive-agents/nooa.git@main"
+uv add "nemo-labs-oo-agents @ git+https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents.git@main"
 
 # Optional: CLI + TUI (`nooa` command, web terminal, agent REPL)
-uv add "nemo-labs-oo-agents-cli @ git+https://gitlab-master.nvidia.com/interactive-agents/nooa.git@main#subdirectory=packages/nooa-cli"
+uv add "nemo-labs-oo-agents-cli @ git+https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents.git@main#subdirectory=packages/nooa-cli"
 
 # Optional: long-term memory subsystem (MemoryManager, see Long-Term Memory below)
-uv add "nemo-labs-oo-agents-memory @ git+https://gitlab-master.nvidia.com/interactive-agents/nooa.git@main#subdirectory=packages/nooa-memory"
+uv add "nemo-labs-oo-agents-memory @ git+https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents.git@main#subdirectory=packages/nooa-memory"
 
 # Optional: benchmark agent + Harbor runner (BenchAgent, `nemo-harbor`)
-uv add "nemo-labs-oo-agents-bench @ git+https://gitlab-master.nvidia.com/interactive-agents/nooa.git@main#subdirectory=packages/nooa-bench"
+uv add "nemo-labs-oo-agents-bench @ git+https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents.git@main#subdirectory=packages/nooa-bench"
 ```
 
 NOOA ships as four lockstep packages from this repo:
@@ -93,8 +93,8 @@ Run `nooa config show` to see which `secrets.yaml` / `settings.yaml` / `llm_conf
 If you want to contribute to the NOOA framework or change code of the library, use the following steps.
 
 ```bash
-git clone ssh://git@gitlab-master.nvidia.com:12051/interactive-agents/nooa.git
-cd nooa/
+git clone ssh://git@gitlab-master.nvidia.com:12051/interactive-agents/nemo_oo_agents.git
+cd nemo_oo_agents/
 ./setup.sh  # Sets up venv, installs dependencies, installs pre-commit hooks
 # Then create .env with your API key (see API Keys above)
 ```
