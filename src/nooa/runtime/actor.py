@@ -1585,13 +1585,15 @@ class ActorRuntime:
                     last_line_no = last_stmt.lineno
                     code_lines = code.split("\n")
                     if 1 <= last_line_no <= len(code_lines):
-                        # Prepend 'return ' to the last expression line
-                        # This preserves comments and line structure
+                        # Insert 'return ' at the statement's COLUMN (not the line
+                        # start): a ';'-compound final line must keep its earlier
+                        # statements live — line-prefixing made them dead code.
+                        # This preserves comments and line structure.
                         original_line = code_lines[last_line_no - 1]
-                        # Find the first non-whitespace position
-                        stripped = original_line.lstrip()
-                        indent = original_line[: len(original_line) - len(stripped)]
-                        code_lines[last_line_no - 1] = f"{indent}return {stripped}"
+                        col = last_stmt.col_offset
+                        code_lines[last_line_no - 1] = (
+                            f"{original_line[:col]}return {original_line[col:]}"
+                        )
                         code = "\n".join(code_lines)
                         implicit_return_added = True
                         get_harness_metrics().implicit_return()

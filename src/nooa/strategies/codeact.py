@@ -62,6 +62,11 @@ from nooa.strategies.generated_code import (
     HelperFunctionManager,
 )
 from nooa.strategies.template import TemplateStrategy
+from nooa.strategy_validation import (
+    InvariantError,
+    run_postconditions,
+    run_preconditions,
+)
 from nooa.unifiedllm import Tool, ToolCall
 
 if TYPE_CHECKING:
@@ -774,6 +779,9 @@ Standard Python builtins and agent instance (`self`) are available."""
             task_content = await self._build_task_message(runtime, original_call=call)
             tag = runtime.event_manager.add(Task(prompt=task_content))
             object.__setattr__(call, "id", tag)
+            # Method-local preconditions run before generation and fail fast
+            # (raise to abort the call); see nooa.strategy_validation.
+            run_preconditions(runtime.agent, call, self.config.preconditions)
 
         logger.info(
             f"[CODEACT] Starting session for {call.method_name}: "
@@ -1232,7 +1240,7 @@ Standard Python builtins and agent instance (`self`) are available."""
                     args,
                     builtins,
                     session,
-                    call.method_name,
+                    call,
                     return_type,
                     tool_call_event_id=tool_call_event_id,
                 )
@@ -1250,7 +1258,7 @@ Standard Python builtins and agent instance (`self`) are available."""
                 # Return the final result
                 try:
                     validated, error_msg = self._handle_return_result(
-                        runtime, tool_call, args, return_type, session, call.method_name
+                        runtime, tool_call, args, return_type, session, call
                     )
                 except GenerationError:
                     # _handle_return_result raises GenerationError when validation
@@ -1326,7 +1334,7 @@ Standard Python builtins and agent instance (`self`) are available."""
                         translated_args,
                         builtins,
                         session,
-                        call.method_name,
+                        call,
                         return_type,
                         tool_call_event_id=tool_call_event_id,
                     )
@@ -1401,7 +1409,7 @@ Standard Python builtins and agent instance (`self`) are available."""
         args: dict[str, Any],
         builtins: dict[str, Any],
         session: CodeActSession,
-        method_name: str,
+        call: Any,
         return_type: Any,
         tool_call_event_id: str,
     ) -> Any | None:
@@ -1418,6 +1426,7 @@ Standard Python builtins and agent instance (`self`) are available."""
         Returns the execution result, a tuple ("TASK_COMPLETE", result) if return_result()
         was called inline, or None if an error occurred.
         """
+        method_name = call.method_name
         code = args.get("code", "")
 
         # Strip markdown fences early — validator and helper binding below
@@ -1523,7 +1532,7 @@ Standard Python builtins and agent instance (`self`) are available."""
                     result.signal.result,  # Extract the result dict from the signal
                     return_type,
                     session,
-                    method_name,
+                    call,
                 )
             except GenerationError:
                 # _handle_return_result raises GenerationError when validation
@@ -1684,7 +1693,7 @@ Standard Python builtins and agent instance (`self`) are available."""
         args: dict[str, Any],
         return_type: Any,
         session: CodeActSession,
-        method_name: str,
+        call: Any,
     ) -> tuple[Any, str | None]:
         """Validate return_result arguments and return the result.
 
@@ -1699,6 +1708,7 @@ Standard Python builtins and agent instance (`self`) are available."""
             - (value, None) on success
             - (None, "error message") on validation failure
         """
+        method_name = call.method_name
         # Generate execution ID and get current generation_id for correlation
         execution_id = str(uuid4())
         current_generation_id = runtime.get_generation_id()
@@ -1731,6 +1741,7 @@ Standard Python builtins and agent instance (`self`) are available."""
                         f"Call return_result() with no arguments."
                     )
                     return (None, error_msg)
+                run_postconditions(runtime.agent, None, call, self.config.postconditions)
                 return (None, None)  # Success - return None
 
             # Normalize args to always have "result" key
@@ -1816,9 +1827,22 @@ Standard Python builtins and agent instance (`self`) are available."""
                         f"then call return_result(variable) from within the code."
                     )
 
+            # Method-local postconditions: deterministic invariants declared on
+            # the strategy config that Pydantic return-type validation can't
+            # express (e.g. live agent state). An ``InvariantError`` is caught by
+            # the handler below and routed as model-correctable retry feedback;
+            # any other exception surfaces as an infrastructure error.
+            run_postconditions(runtime.agent, validated, call, self.config.postconditions)
+
             return (validated, None)
 
-        except (PydanticValidationError, ValueError, TypeError, json.JSONDecodeError) as e:
+        except (
+            PydanticValidationError,
+            InvariantError,
+            ValueError,
+            TypeError,
+            json.JSONDecodeError,
+        ) as e:
             exception = e
             get_harness_metrics().validation_error(type(e).__name__, str(e)[:500])
             session.record_error()

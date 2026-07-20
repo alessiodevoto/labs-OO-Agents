@@ -2,12 +2,18 @@
 # SPDX-License-Identifier: Apache-2.0
 """Strategy configuration for CodeAct, Predict, and Reflexion strategies."""
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from nooa.runtime.restrictions import RestrictionsConfig
 from nooa.runtime.sandbox.config import SandboxConfig
+from nooa.strategy_validation import (
+    MethodPostcondition,
+    MethodPrecondition,
+    normalize_conditions,
+)
 
 if TYPE_CHECKING:
     from nooa.strategies.prefill import Prefill  # noqa: F401
@@ -73,6 +79,20 @@ class CodeActConfig(BaseModel):
     # The ``sandbox`` sub-config below is ignored unless this is "sandbox".
     execution_backend: Literal["inprocess", "sandbox"] = "inprocess"
     sandbox: SandboxConfig = SandboxConfig()
+
+    # Method-local deterministic validators (see nooa.strategy_validation).
+    # ``preconditions`` run before generation (fail-fast); ``postconditions`` run
+    # after return-type validation and raise ``InvariantError`` for a
+    # model-correctable retry. Attach per-method via the strategy config, e.g.
+    # ``@strategy(CodeActStrategy(config=CodeActConfig(postconditions=[fn])))``.
+    preconditions: Sequence[MethodPrecondition] = ()
+    postconditions: Sequence[MethodPostcondition] = ()
+
+    @field_validator("preconditions", "postconditions", mode="before")
+    @classmethod
+    def _normalize_conditions(cls, value: Any, info: Any) -> Sequence[Any]:
+        return normalize_conditions(info.field_name, value)
+
     # Prefill plugin to run before the main generation loop.
     #
     #   * Default — ``InspectInputsPrefill()`` auto-renders every parameter via
@@ -116,7 +136,18 @@ class CodeActConfig(BaseModel):
 class PredictConfig(BaseModel):
     """Config for PredictStrategy."""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+
+    # Method-local deterministic validators (see nooa.strategy_validation);
+    # currently consumed by the CodeAct strategy (Predict wiring lands with the
+    # full validator MR, !444).
+    preconditions: Sequence[MethodPrecondition] = ()
+    postconditions: Sequence[MethodPostcondition] = ()
+
+    @field_validator("preconditions", "postconditions", mode="before")
+    @classmethod
+    def _normalize_conditions(cls, value: Any, info: Any) -> Sequence[Any]:
+        return normalize_conditions(info.field_name, value)
 
     max_retries: int = 10
     max_tokens: int | None = None
