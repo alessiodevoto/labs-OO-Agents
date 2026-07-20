@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Capability test agents.
 
 These agents use the default CodeAct strategy (configurable via --default_strategy flag).

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Large data handling agent - tests truncation system."""
 
 from nooa import Agent

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Span-id generation must be immune to the global ``random`` module being reseeded.
 
 Regression: user code executed via ``execute_python`` (e.g. a simulation that

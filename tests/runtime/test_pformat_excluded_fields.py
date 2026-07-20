@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Test: _pformat respects Pydantic exclude=True fields.
 
 Regression test for TUI hang caused by _pformat recursing into

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Tests for scorers operating without trace data.
 
 Verifies that ModeSelectionScorer and LLMMethodologyScorer return score=0.0

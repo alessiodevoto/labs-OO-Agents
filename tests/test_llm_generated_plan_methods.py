@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Test that LLM-generated code can define @strategy decorated methods with ellipsis bodies.
 
 This tests the fix for ellipsis detection on exec()-defined methods, which is

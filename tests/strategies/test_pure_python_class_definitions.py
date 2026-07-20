@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Tests for PURE_PYTHON behavior when LLM returns a class definition.
 
 Class definitions are now allowed in REPL-style code. This file verifies that

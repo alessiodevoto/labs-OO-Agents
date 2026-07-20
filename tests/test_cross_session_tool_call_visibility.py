@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Regression tests for cross-session event visibility.
 
 Verifies that both ToolCallEvents (execute_python code) and PythonOutput events

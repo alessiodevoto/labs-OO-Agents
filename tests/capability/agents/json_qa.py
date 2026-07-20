@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """JSON Question Answering Agent - tests semantic understanding of structured data."""
 
 import json  # noqa: F401 — for LLM exec_globals

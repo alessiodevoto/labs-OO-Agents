@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Pre-ellipsis prefill: code before ... runs first, LLM acts on the output.
 
 uv run python examples/advanced/prefill.py

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Test PurePythonStrategy with nested @strategy methods using PredictStrategy.
 
 This tests the scenario where an LLM-generated method defines and calls a helper

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Tests targeting specific uncovered lines in codeact.py, predict.py, and pure_python.py.
 
 Each test class or method documents which source lines it targets.

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Smoke tests to ensure agents can import successfully.
 
 These tests verify that the agents and their dependencies are correctly installed

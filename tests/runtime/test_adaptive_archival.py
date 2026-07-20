@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Unit tests for adaptive archival logic (_archive_on_context_error).
 
 Tests the computation that determines how many events to archive

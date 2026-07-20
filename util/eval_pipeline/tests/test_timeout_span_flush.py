@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Test: OTLP spans must be flushed even when a subprocess worker task times out.
 
 Regression test for the bug where asyncio.timeout cancels agent.run(),

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Capability test agents for eval_pipeline.
 
 These agents are used to test model capabilities via the evaluation pipeline.

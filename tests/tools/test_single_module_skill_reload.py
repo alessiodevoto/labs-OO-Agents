@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Single-module hot-reload for builtin framework tool skills (issue 225).
 
 Builtin tool skills live under ``nooa`` / ``nooa_cli``, which

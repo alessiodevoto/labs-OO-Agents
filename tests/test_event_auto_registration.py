@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Tests for Event auto-registration via __init_subclass__.
 
 Auto-derive event_type from class name (cls.__name__) and auto-register

@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Tests for configurable import restrictions.
 
 Tests the new restricted_imports deny-list feature on RestrictionsConfig,

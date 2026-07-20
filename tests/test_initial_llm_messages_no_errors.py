@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Ensure initial messages sent to the LLM do not contain error leakage.
 
 Prevents "system prompt bugs" where exceptions, tracebacks, or error strings

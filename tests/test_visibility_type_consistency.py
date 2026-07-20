@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Tests for visibility consistency between doc(self) and exec_globals.
 
 Verifies that module-level types and constants are visible in exec_globals

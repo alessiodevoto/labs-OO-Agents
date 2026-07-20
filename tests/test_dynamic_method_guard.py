@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Guard against dynamic method addition to Agent classes and instances.
 
 The guard is **unconditional**: attaching a method-shaped callable to any

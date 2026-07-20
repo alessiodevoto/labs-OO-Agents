@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Tests: archived events must not appear in LLM context after collapse().
 
 When EventManager.collapse() archives a range of events, those events must

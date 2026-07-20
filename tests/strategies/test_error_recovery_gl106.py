@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Tests for strategy error recovery paths — gl-106.
 
 Covers retry exhaustion, max_iterations exceeded, and type validation failures

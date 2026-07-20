@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Utility for writing .noo-eval.jsonl experiment files.
 
 Provides API for evaluation runners to write results incrementally using

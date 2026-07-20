@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Tests targeting uncovered lines in nooa/runtime/actor.py.
 
 Each test class has a docstring explaining the exact line(s) it covers.

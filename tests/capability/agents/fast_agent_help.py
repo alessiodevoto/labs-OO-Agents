@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Fast agent help-calling test — tests whether the LLM can call self.call_for_help() via execute_python.
 
 Weaker models often try to call agent methods directly as tool calls instead

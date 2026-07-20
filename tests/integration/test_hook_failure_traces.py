@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Test that traces are still created when hooks raise exceptions.
 
 This reproduces the missing trace file bug where exceptions in before_agent_call

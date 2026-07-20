@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Write evaluation results as spans to trace files or OTLP.
 
 This module creates OpenTelemetry-compatible spans containing eval results

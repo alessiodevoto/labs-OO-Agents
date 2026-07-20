@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Test that error line numbers are correctly adjusted for wrapper offset.
 
 This reproduces a bug where errors show wrong line numbers.

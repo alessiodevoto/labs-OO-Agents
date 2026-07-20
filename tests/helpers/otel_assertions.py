@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """OpenTelemetry assertion helpers - STUB.
 
 OpenTelemetry tracing has been moved to an external instrumentation package

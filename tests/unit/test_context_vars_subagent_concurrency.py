@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Context var correctness under real sub-agent + concurrency scenarios.
 
 These tests go above the raw ContextVar API level (covered in

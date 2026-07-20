@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """For each game, find the FIRST rule violation: the earliest agent action that
 uses a host escape tool (self.shell/web/repo/pyp/mcp) to access something
 off-limits, together with the env step and the game LEVEL at that step.

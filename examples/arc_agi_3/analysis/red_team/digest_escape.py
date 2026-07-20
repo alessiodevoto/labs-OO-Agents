@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
 """Aggregate the escape-call evidence into a human/agent-readable digest.
 
 Reads evidence/escape_calls_flat.json (produced by scan_escape.py) and:
