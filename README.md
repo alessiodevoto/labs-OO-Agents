@@ -65,19 +65,25 @@ Keys are read from `~/.config/nooa/secrets.yaml` unless already exported in your
 ```yaml
 # ~/.config/nooa/secrets.yaml   (chmod 600; gitignore the project-local one)
 env:
-  NVIDIA_INFERENCE_API_KEY: your-api-key-here
+  NVIDIA_API_KEY: your-build.nvidia.com-key-here
+  # OPENAI_API_KEY: sk-...
   # ANTHROPIC_API_KEY: sk-ant-...
 ```
 
 For **library use** (not the CLI), drop a `.env` in your project directory instead — it's loaded by scripts and the viewer:
 
 ```bash
-echo 'NVIDIA_INFERENCE_API_KEY=your-api-key-here' > .env
+echo 'NVIDIA_API_KEY=your-build.nvidia.com-key-here' > .env
 ```
 
 Run `nooa config show` to see which `secrets.yaml` / `settings.yaml` / `llm_config.yaml` layers are loading (secret values are redacted — only key names are shown).
 
-- **NVIDIA Inference HUB**: The quickstart examples **default** to the NVIDIA inference gateway. Get your key at [inference.nvidia.com](https://inference.nvidia.com) → `NVIDIA_INFERENCE_API_KEY`. Other providers work too — pass any litellm-supported model name to `get_llm_client()` with that provider's key (see Quick Start Step 1).
+- **Model providers**: The quickstart examples pick whichever credential you have set — no configuration needed:
+  - **NVIDIA build.nvidia.com** (NIM, public): get a key at [build.nvidia.com](https://build.nvidia.com) → set `NVIDIA_API_KEY`. The examples default to `nvidia/nemotron-3-super-120b-a12b`; any NIM model works via the litellm `nvidia_nim/...` prefix (served at `integrate.api.nvidia.com`).
+  - **OpenAI**: set `OPENAI_API_KEY`.
+  - **NVIDIA internal inference gateway** (NVIDIA employees): set `NVIDIA_INFERENCE_API_KEY` to route through `inference-api.nvidia.com`.
+  - **Local models** (Ollama, vLLM, …): run a model on your own machine — no API key needed. See [local deployment](#step-1-your-first-generation-method) in Quick Start Step 1.
+  - **Any other provider**: pass any litellm-supported model name to `get_llm_client()` with that provider's key (see Quick Start Step 1).
 
 ### Development Setup (Advanced Use)
 
@@ -108,9 +114,9 @@ The NOOA framework's key strength is that you can start with zero boilerplate an
 Methods with `...` bodies are called **generation methods** (the *agentic methods* of the NOOA tech report) - they're implemented by an agentic strategy using LLMs at runtime. The method signature defines the contract (inputs/outputs), and the **docstring provides instructions** to guide the LLM:
 
 ```python
-# The quickstart import provides `llm`, preconfigured for the NVIDIA
-# inference gateway — set NVIDIA_INFERENCE_API_KEY (see API Keys above).
-# To use another provider instead: llm = get_llm_client("gpt-4o-mini")
+# The quickstart import provides `llm`, configured from whichever public key
+# you've set — NVIDIA_API_KEY (build.nvidia.com) or OPENAI_API_KEY (see API
+# Keys above). To use another provider: llm = get_llm_client("gpt-4o-mini")
 from nooa.util.quickstart import *
 
 
@@ -136,14 +142,9 @@ llm = get_llm_client("claude-sonnet-4-5-20250514") # Anthropic (needs ANTHROPIC_
 llm = get_llm_client("gemini/gemini-2.5-flash")    # Google (needs GEMINI_API_KEY)
 ```
 
-For local development against an OpenAI-compatible server such as vLLM, pass the
-model and endpoint directly. A simple convention is one environment variable for
-the model and one for the URL:
-
-```bash
-export NOOA_MODEL=hosted_vllm/Qwen/Qwen3-1.7B
-export NOOA_API_BASE=http://127.0.0.1:8000/v1
-```
+For **local deployment** against an OpenAI-compatible server, pass the model and
+endpoint directly — no key, no YAML alias. A simple convention is one environment
+variable for the model and one for the URL:
 
 ```python
 import os
@@ -154,6 +155,23 @@ llm = get_llm_client(
 )
 ```
 
+- **[Ollama](https://ollama.com)** — pull a model, then point at the local server
+  (the `ollama_chat/` prefix uses litellm's chat API):
+
+  ```bash
+  ollama run qwen3:1.7b
+  export NOOA_MODEL=ollama_chat/qwen3:1.7b
+  export NOOA_API_BASE=http://localhost:11434
+  ```
+
+- **[vLLM](https://docs.vllm.ai)** — serve a model with `vllm serve`, then use the
+  `hosted_vllm/` prefix:
+
+  ```bash
+  export NOOA_MODEL=hosted_vllm/Qwen/Qwen3-1.7B
+  export NOOA_API_BASE=http://127.0.0.1:8000/v1
+  ```
+
 If you installed `nemo-oo-agents-nvidia` (the installer script includes it), an extra set of NVIDIA-gateway aliases (claude-*, nemotron-*, qwen-*, gemini-*, gpt-*, llama-*) is registered automatically via the `nooa.bundled_configs` entry-point group:
 
 ```python
@@ -161,7 +179,7 @@ llm = get_llm_client("claude-haiku")          # NVIDIA-gateway Claude Haiku
 llm = get_llm_client("nemotron3-nano-30b")    # NVIDIA Nemotron Nano
 ```
 
-Set `NVIDIA_INFERENCE_API_KEY` (or `NVIDIA_API_KEY` for the public NIM endpoint) and they Just Work. External users who don't install `nemo-oo-agents-nvidia` see an OSS-only registry. To customize, run `nooa config eject` (writes to `~/.config/nooa/llm_config.yaml`), drop an `llm_config.yaml` in your project's `.nooa/` dir, or point `NEMO_OO_LLM_CONFIG` at one or more YAML files. Run `nooa config show` to inspect which files are loading.
+These bundled aliases route through NVIDIA's internal inference gateway and require `NVIDIA_INFERENCE_API_KEY` (NVIDIA employees). External users don't install `nemo-oo-agents-nvidia` and instead use public providers directly — `NVIDIA_API_KEY` for [build.nvidia.com](https://build.nvidia.com) NIM (`nvidia_nim/...`), `OPENAI_API_KEY`, etc. To customize the registry, run `nooa config eject` (writes to `~/.config/nooa/llm_config.yaml`), drop an `llm_config.yaml` in your project's `.nooa/` dir, or point `NEMO_OO_LLM_CONFIG` at one or more YAML files. Run `nooa config show` to inspect which files are loading.
 
 See [`src/nooa/unifiedllm/registry.py`](src/nooa/unifiedllm/registry.py) for the YAML schema, or `CompletionClient()` directly for full control.
 
