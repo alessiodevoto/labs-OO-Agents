@@ -34,8 +34,6 @@ import threading
 import time
 from pathlib import Path
 
-from term_state import restore_terminal
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 EXAMPLE_DIR = Path(__file__).resolve().parent
 RESULTS_ROOT = REPO_ROOT / "results" / "arc_agi_3" / "nemo_solver"
@@ -73,6 +71,9 @@ DEFAULTS = {
     "parallel": 4,
     "max_turns": None,
     "max_env_steps": 5000,
+    # Per-turn action batch cap, enforced BOTH agent-side (submit_actions REJECTED)
+    # and harness-side (truncation backstop). 0 = NO cap at all on either side.
+    "max_actions_per_turn": 20,
     # Wall-clock cap for the WHOLE fleet, in seconds. None/0 = no cap. When reached,
     # every still-running game is stopped and the summary is written.
     "max_wall_seconds": None,
@@ -87,6 +88,17 @@ DEFAULTS = {
     "png_scale": 8,  # grid-as-image: off | only | additive
     "reflect_every": 8,
     "allowed_game_overs": -1,
+    # Per-cell OS sandbox for CodeAct cells (execution_backend="sandbox"), applied
+    # to every agent in the fleet. Configured here instead of a hand-exported
+    # ARC_SANDBOX_* env var. `cells: true` turns it on; the rest are the guardrail
+    # knobs. workspace null -> the agent cwd.
+    "sandbox": {
+        "cells": False,
+        "workspace": None,
+        "max_memory_mb": 4096,
+        "max_cpu_seconds": 90,
+        "require": False,
+    },
     "games": [],
     # Live TUI dashboard (viewer.py). On by default; pass --no-tui for automated runs.
     "no_tui": False,
@@ -99,9 +111,12 @@ def load_config(path: str | None, args: argparse.Namespace) -> dict:
     if path:
         import yaml
 
-        cfg.update(
-            {k: v for k, v in yaml.safe_load(Path(path).read_text()).items() if v is not None}
-        )
+        raw = {k: v for k, v in yaml.safe_load(Path(path).read_text()).items() if v is not None}
+        # Merge the nested `sandbox:` block over its defaults so a partial block
+        # (e.g. just `cells: true`) keeps the default guardrail knobs.
+        if isinstance(raw.get("sandbox"), dict):
+            raw["sandbox"] = {**DEFAULTS["sandbox"], **raw["sandbox"]}
+        cfg.update(raw)
     # CLI overrides
     for key in (
         "model",
@@ -110,6 +125,7 @@ def load_config(path: str | None, args: argparse.Namespace) -> dict:
         "parallel",
         "max_turns",
         "max_env_steps",
+        "max_actions_per_turn",
         "max_wall_seconds",
         "turn_timeout",
         "nudge_after",
@@ -157,6 +173,13 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument("--max-turns", dest="max_turns", type=int, default=None)
     p.add_argument("--max-env-steps", dest="max_env_steps", type=int, default=None)
+    p.add_argument(
+        "--max-actions-per-turn",
+        dest="max_actions_per_turn",
+        type=int,
+        default=None,
+        help="per-turn action batch cap (agent + harness); 0 = NO cap",
+    )
     p.add_argument(
         "--max-wall-seconds",
         dest="max_wall_seconds",
@@ -241,6 +264,7 @@ class MultiRunner:
                             "parallel",
                             "max_turns",
                             "max_env_steps",
+                            "max_actions_per_turn",
                             "max_wall_seconds",
                             "turn_timeout",
                             "nudge_after",
@@ -346,6 +370,8 @@ class MultiRunner:
                 str(self.cfg["max_turns"]),
                 "--max-env-steps",
                 str(self.cfg["max_env_steps"]),
+                "--max-actions-per-turn",
+                str(self.cfg["max_actions_per_turn"]),
                 "--agent-turn-timeout",
                 str(self.cfg["turn_timeout"]),
                 "--nudge-after",
@@ -375,6 +401,17 @@ class MultiRunner:
                 cmd += ["--model", str(self.cfg["model"])]
             if self.cfg["reasoning_effort"]:
                 cmd += ["--reasoning-effort", self.cfg["reasoning_effort"]]
+            # Per-cell OS sandbox — driven by the config `sandbox:` block, forwarded
+            # to run_solver as flags (no ARC_SANDBOX_* env var needed at launch).
+            sb = self.cfg.get("sandbox") or {}
+            if sb.get("cells"):
+                cmd += ["--sandbox-cells"]
+                if sb.get("workspace"):
+                    cmd += ["--sandbox-workspace", str(sb["workspace"])]
+                cmd += ["--sandbox-mem-mb", str(sb.get("max_memory_mb", 4096))]
+                cmd += ["--sandbox-cpu-s", str(sb.get("max_cpu_seconds", 90))]
+                if sb.get("require"):
+                    cmd += ["--sandbox-require"]
             # Own process group so _shutdown_games() can killpg the run_solver +
             # its harness child together on TUI quit.
             proc = subprocess.Popen(
@@ -561,37 +598,11 @@ class MultiRunner:
                     except (ProcessLookupError, PermissionError):
                         pass
         self._stop_broker()  # close the shared scorecard (idempotent)
-        self._reap_tui()  # never orphan the viewer either
         try:
             self._sync_once()
             self._write_summary()
         except Exception:
             pass
-
-    def _reap_tui(self) -> None:
-        """End the viewer subprocess and leave the terminal usable.
-
-        Escalates SIGTERM -> SIGKILL: Textual can survive SIGTERM when its
-        event loop is busy (the graceful-exit callback never runs), which
-        would leave run() blocked on wait() and the process orphaned. After
-        the viewer is gone — however it went — reset the shared tty
-        (mouse reporting / alt screen / cursor), because a killed viewer
-        cannot; stale mouse modes make bash "execute" mouse events
-        (``-bash: 35: command not found``). Safe to call multiple times and
-        without a viewer.
-        """
-        tui = getattr(self, "_tui_proc", None)
-        if tui is not None and tui.poll() is None:
-            try:
-                tui.terminate()
-                try:
-                    tui.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    tui.kill()
-                    tui.wait(timeout=5)
-            except OSError:
-                pass
-        restore_terminal()
 
     def _deadline_watch(self, seconds: float) -> None:
         """Wall-clock guard: stop the whole fleet once ``seconds`` elapse.
@@ -605,7 +616,12 @@ class MultiRunner:
         self._deadline_hit = True
         self._stop.set()
         self._cleanup_all()
-        self._reap_tui()  # unblock the foreground viewer, if up
+        tui = getattr(self, "_tui_proc", None)  # unblock the foreground viewer, if up
+        if tui is not None and tui.poll() is None:
+            try:
+                tui.terminate()
+            except OSError:
+                pass
 
     # Back-compat name.
     def _shutdown_games(self) -> None:
@@ -652,11 +668,6 @@ class MultiRunner:
             print(f"[multi] TUI unavailable ({e}); continuing headless (--no-tui to hide)")
             return 1, 0.0
         rc = self._tui_proc.wait()
-        # The viewer may have died un-gracefully (deadline SIGTERM/SIGKILL,
-        # crash), leaving the shared tty with mouse reporting / alt-screen /
-        # hidden-cursor modes on. We own the same tty — restore after ANY
-        # viewer exit (idempotent; harmless after a clean Textual shutdown).
-        restore_terminal()
         return rc, time.monotonic() - t0
 
     def run(self) -> None:

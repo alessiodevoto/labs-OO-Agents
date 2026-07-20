@@ -63,14 +63,28 @@ def build_llm(
     extra: dict[str, object] = {}
     if max_tokens is not None:
         extra["max_tokens"] = max_tokens
-    if reasoning_effort:
-        extra["reasoning_effort"] = reasoning_effort
     if request_timeout is not None:
         # Hard per-request HTTP timeout: a gateway request that hangs would otherwise
         # block the solving loop forever (litellm calls aren't cancellation-responsive).
         extra["timeout"] = request_timeout
     model = "openai/" + os.environ["ARC_LLM_MODEL"]  # litellm needs the provider prefix
     reasoning_model = "nemotron" in model.lower()
+    # Reasoning-effort routing (verified live against the gateway 2026-07-16):
+    #  * Anthropic Opus 4.8+ uses the *adaptive* thinking API — thinking.type=adaptive
+    #    + output_config.effort. litellm's reasoning_effort maps to the OLD
+    #    thinking.type=enabled, which Opus 4.8 REJECTS ("not supported for this model;
+    #    use thinking.type.adaptive and output_config.effort"), and drop_params then
+    #    silently drops it -> reasoning_tokens=0, NO thinking. So send the adaptive
+    #    params raw via extra_body (CompletionClient forwards **config to litellm).
+    #  * gpt-5.x (Responses API) and everything else keep plain reasoning_effort.
+    if reasoning_effort:
+        if "anthropic" in model.lower():
+            extra["extra_body"] = {
+                "thinking": {"type": "adaptive"},
+                "output_config": {"effort": reasoning_effort},
+            }
+        else:
+            extra["reasoning_effort"] = reasoning_effort
     # gpt-5.x on this gateway must use the Responses API (like the reference profiles'
     # use_responses_api profiles): chat-completions with tools + reasoning_effort
     # gets rerouted gateway-side with a mangled model id → 403 key_model_access_denied.
