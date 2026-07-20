@@ -399,3 +399,6 @@ util/harbor/tb1_ultra_smoke.yaml
 
 # LoCoMo benchmark data (downloaded on demand, not vendored)
 examples/memory_bench/data/
+
+# Local scratch/working files (never commit)
+.scratch/
