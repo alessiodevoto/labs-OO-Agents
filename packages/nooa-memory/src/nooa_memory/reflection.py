@@ -18,6 +18,7 @@ offline-testable. See ``docs/design/memory-system/design.md`` §4.2.4.
 
 from __future__ import annotations
 
+import logging
 import math
 import time
 from collections.abc import Callable
@@ -30,6 +31,8 @@ from nooa_memory.forgetting import ForgettingEngine
 from nooa_memory.retrieval import _sigmoid, base_level_activation
 from nooa_memory.schema import EdgeType, Memory, _now
 from nooa_memory.store import MemoryStore
+
+logger = logging.getLogger(__name__)
 
 
 def _never() -> bool:
@@ -312,10 +315,22 @@ class ReflectionEngine:
         if not episodes or should_stop():
             return 0  # never START an LLM call when stopping
         sliced = episodes[: self.config.max_episodes_per_reflection]
+        # A reasoner failure (e.g. an empty LLM reply) must be LOUD and retried
+        # once — a silent ``return 0`` left consolidation dead for a whole run
+        # without any signal (cd82: 17/17 failed calls, zero log lines).
         try:
             new_memories = reasoner(sliced)
-        except Exception:
-            return 0
+        except Exception as exc:
+            logger.warning("memory consolidation reasoner failed (%s) — retrying once", exc)
+            if should_stop():
+                return 0
+            try:
+                new_memories = reasoner(sliced)
+            except Exception as exc2:
+                logger.warning(
+                    "memory consolidation reasoner failed twice (%s) — skipping this pass", exc2
+                )
+                return 0
         if should_stop():
             return 0  # stop observed while the reasoner ran: discard, commit nothing
         created = 0

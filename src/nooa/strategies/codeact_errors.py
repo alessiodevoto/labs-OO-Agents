@@ -16,6 +16,7 @@ from pydantic_core import ErrorDetails
 from nooa.agentdoc import pformat
 from nooa.agentdoc.visibility import is_hidden_field
 from nooa.config.truncation_config import DEFAULT_TRUNCATION_CONFIG, TruncationConfig
+from nooa.strategy_validation import InvariantError
 
 
 def format_validation_error(
@@ -25,6 +26,12 @@ def format_validation_error(
     truncation_config: TruncationConfig = DEFAULT_TRUNCATION_CONFIG,
 ) -> str:
     """Format validation error as actionable return_result() feedback for the LLM."""
+    if isinstance(error, InvariantError):
+        return (
+            f"Method invariant failed: {error}\n"
+            "Revise the answer so it satisfies this invariant, then call return_result() again."
+        )
+
     if isinstance(error, json.JSONDecodeError):
         return (
             f"return_result() failed: Could not parse JSON - {error.msg}\n"

@@ -74,6 +74,11 @@ from nooa.strategies import (  # noqa: E402
     get_default_strategy,
     set_default_strategy,
 )
+from nooa.strategy_validation import (  # noqa: E402
+    InvariantError,
+    MethodPostcondition,
+    MethodPrecondition,
+)
 from nooa.token_counter import char_approximate_token_counter  # noqa: E402
 from nooa.unifiedllm import LLMResponse  # noqa: E402
 
@@ -119,6 +124,10 @@ __all__ = [
     "PredictStrategy",
     "get_default_strategy",
     "set_default_strategy",
+    # Method validators
+    "InvariantError",
+    "MethodPrecondition",
+    "MethodPostcondition",
     # Prefill plugins
     "InspectInputsPrefill",
     # Prompt inspection

@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 import time
 from collections.abc import Callable
 from typing import Any
@@ -524,7 +525,31 @@ class MemoryManager:
         self.store.add_edge(a_id, b_id, etype)
 
     def reflect(self, *, trigger: str = "manual") -> ReflectionReport:
-        """Run a consolidation pass synchronously (also callable manually)."""
+        """Run a consolidation pass (background thread when configured).
+
+        With ``config.reflection.background=True`` the pass runs on a daemon
+        thread and this returns immediately with an empty report — the caller's
+        turn must not pay for serial consolidation LLM calls (600-1,500s/game
+        on the ARC fleet). Stats/bookkeeping update when the pass completes.
+        """
+        if self.config.reflection.background:
+            thread = getattr(self, "_manual_reflect_thread", None)
+            if thread is not None and thread.is_alive():
+                return ReflectionReport()  # a pass is already running — don't stack
+
+            self._emit(ReflectionStarted(trigger=trigger))
+
+            def _run() -> None:
+                report = self.reflection_engine.consolidate(
+                    reasoner=self._reasoner, reconciler=self._reconciler
+                )
+                self._finish_reflection(report, trigger=trigger)
+
+            thread = threading.Thread(target=_run, name="memory-reflect", daemon=True)
+            self._manual_reflect_thread = thread
+            thread.start()
+            return ReflectionReport()
+
         self._emit(ReflectionStarted(trigger=trigger))
         report = self.reflection_engine.consolidate(
             reasoner=self._reasoner, reconciler=self._reconciler

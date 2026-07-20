@@ -279,6 +279,18 @@ class Memory(BaseModel):
     # ------------------------------------------------------------------
     # behaviour
     # ------------------------------------------------------------------
+    def __repr__(self) -> str:
+        # Compact by design: agents print Memory objects inside REPL cells and
+        # the full-record default (~22KB with edges/access log) ballooned LLM
+        # prompts to 180k tokens. Full data stays available via model_dump().
+        head = (self.content or "").replace("\n", " ")[:80]
+        suffix = "…" if len(self.content or "") > 80 else ""
+        title = f" title={self.title!r}" if self.title else ""
+        return f"<Memory {self.id[:8]} {self.type.value}{title} {head!r}{suffix}>"
+
+    def __str__(self) -> str:
+        return self.__repr__()
+
     def embedding_text(self) -> str:
         """Text to embed: title + content + cue tags/entities (boosts recall)."""
         parts: list[str] = []
