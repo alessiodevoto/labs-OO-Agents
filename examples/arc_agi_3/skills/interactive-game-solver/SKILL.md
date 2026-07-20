@@ -15,6 +15,12 @@ Legal actions are those in `available_actions`: `UP`/`DOWN`/`LEFT`/`RIGHT`, `USE
 history and `diff_summary` reports changed cells. Reply with `self.submit_actions([...],
 rationale)` — the **sequence** of actions that carries out your current plan.
 
+## Scoring (RHAE)
+Score = per-level **action efficiency** relative to an unseen human baseline, **squared**.
+Every action spent on a level counts (exploration, failed attempts, RESET, UNDO); an
+unsolved level scores 0. Level i of n carries weight i: the environment score is the
+weighted mean of the level scores, capped by the weighted share of completed levels.
+
 ## World model
 Persist a compressed model as helpers (`self.write_helper(name, src)`; reload with
 `self.load_helpers()`, call `self.h.<module>.<fn>`):

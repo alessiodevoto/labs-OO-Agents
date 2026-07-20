@@ -47,6 +47,27 @@ def _skill_path(name: str) -> Path | None:
     return None
 
 
+def build_memory_config(store_path: str | Path):
+    """The memory variant's MemoryConfig (extracted for testable wiring).
+
+    ``reflection.background=True`` keeps manual ``self.memory.reflect()``
+    consolidation OFF the turn's critical path — inline it cost 600-1,500s/game
+    on the 20260716 fleet and triggered sandbox cell-deadline kills.
+    """
+    from nooa_memory import MemoryConfig
+    from nooa_memory.config import ReflectionPolicy, RetrievalConfig, SpontaneousConfig
+
+    return MemoryConfig(
+        enabled=True,
+        path=str(store_path),
+        owner="ArcSolver",
+        embedding=build_embedding_config(),
+        retrieval=RetrievalConfig(top_k=8, hops=1),
+        spontaneous=SpontaneousConfig(enabled=True, top_k=6),
+        reflection=ReflectionPolicy(trigger="manual", background=True),
+    )
+
+
 def parse_effort_ladder(
     spec: str | None, primary_effort: str | None
 ) -> list[tuple[float, str]] | None:
@@ -118,6 +139,13 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_SKILL,
         help="skill directory under skills/ to load as the agent's "
         "<arc_skill> block (e.g. grid-game-solver, interactive-game-solver)",
+    )
+    p.add_argument(
+        "--max-actions-per-turn",
+        type=int,
+        default=20,
+        help="submit_actions per-turn batch cap; <=0 = unlimited "
+        "(run_solver forwards the same value to the harness)",
     )
     return p.parse_args()
 
@@ -217,6 +245,18 @@ async def run() -> None:
 
     import shutil
 
+    # ARC_HTTP_LOG_DIR: capture raw gateway request/response bodies (cache-awareness
+    # debugging). Must run BEFORE build_llm() so the patched httpx transport is used.
+    http_log_dir = os.environ.get("ARC_HTTP_LOG_DIR")
+    if http_log_dir:
+        from nooa.unifiedllm.http_logging import enable_http_request_logging
+
+        enable_http_request_logging(
+            output_dir=http_log_dir,
+            save_responses=True,
+            verbose=False,
+        )
+
     llm = build_llm(reasoning_effort=args.reasoning_effort)
     effort_ladder = parse_effort_ladder(args.effort_ladder, args.reasoning_effort)
     agent_cls = MemArcSolverAgent if args.variant == "memory" else MdArcSolverAgent
@@ -233,6 +273,7 @@ async def run() -> None:
         visual=args.visual,
         png_scale=args.png_scale,
         skill_path=_skill_path(args.skill),
+        max_actions_per_turn=args.max_actions_per_turn,
     )
 
     # Memory store lives INSIDE the neutral run dir (run_solver puts the whole
@@ -245,12 +286,6 @@ async def run() -> None:
     ws_store = workspace / "memory.sqlite"
 
     if args.variant == "memory":
-        from nooa_memory import MemoryConfig
-        from nooa_memory.config import (
-            ReflectionPolicy,
-            RetrievalConfig,
-            SpontaneousConfig,
-        )
         from nooa_memory.generative import llm_reasoner, llm_reconciler
         from nooa_memory.memory_skill import MemorySkill
 
@@ -265,15 +300,7 @@ async def run() -> None:
         def _session_llm() -> object:
             return agent._llm
 
-        memory_config = MemoryConfig(
-            enabled=True,
-            path=str(store_path),
-            owner="ArcSolver",
-            embedding=build_embedding_config(),
-            retrieval=RetrievalConfig(top_k=8, hops=1),
-            spontaneous=SpontaneousConfig(enabled=True, top_k=6),
-            reflection=ReflectionPolicy(trigger="manual", background=False),
-        )
+        memory_config = build_memory_config(store_path)
         agent.skills.register(
             "nemo.memory",
             MemorySkill(

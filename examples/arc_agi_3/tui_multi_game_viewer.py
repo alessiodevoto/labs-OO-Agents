@@ -28,8 +28,6 @@ import os
 import sys
 from pathlib import Path
 
-import term_state  # same-dir import — must resolve before the path surgery below
-
 # This wrapper must import the progressive-learning REFERENCE package
 # ``arc_agi_3`` — not the vendored SDK wrapper that lives next to this script
 # (examples/arc_agi_3/arc_agi_3/, added with the clean example) and would
@@ -111,9 +109,6 @@ def main() -> None:
     if not results_dir.exists():
         print(f"Results directory not found: {results_dir}")
         return
-    # Own our terminal state: restore modes on exit/SIGTERM/SIGHUP even when
-    # Textual's graceful shutdown never runs (busy event loop, fleet teardown).
-    term_state.install_exit_guard()
     MultiGameTUI(results_dir=results_dir, watch=args.watch).run()
 
 

@@ -42,7 +42,6 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import term_state
 from rich.console import Console, Group
 from rich.live import Live
 from rich.panel import Panel
@@ -599,9 +598,6 @@ def run(container: Path, watch: str, interval: float = 1.5) -> None:
 
 
 def main() -> None:
-    # Own our terminal state: rich Live hides the cursor / may scroll-region;
-    # restore on exit/SIGTERM/SIGHUP even if Live's context exit never runs.
-    term_state.install_exit_guard()
     ap = argparse.ArgumentParser(description="Self-contained live ARC-AGI-3 multi-run viewer")
     ap.add_argument(
         "results_dir_pos",

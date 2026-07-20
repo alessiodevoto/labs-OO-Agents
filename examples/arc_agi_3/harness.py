@@ -103,6 +103,25 @@ def _default_action(available: list[str], last_action: str | None) -> str:
     return available[0] if available else "RESET"
 
 
+def apply_action_cap(actions: list[str], cap: int) -> list[str]:
+    """Truncate a submitted batch to the per-turn cap; ``cap <= 0`` = unlimited."""
+    return actions if cap <= 0 else actions[:cap]
+
+
+def truncation_note(*, executed: int, requested: int) -> str:
+    """State note telling the agent its batch tail was dropped ('' if it wasn't).
+
+    The agent plans against action_results; a silently missing tail would read
+    as 'my actions did nothing' — say explicitly what never ran.
+    """
+    if requested <= executed:
+        return ""
+    return (
+        f"only the first {executed} of your {requested} submitted actions were executed; "
+        f"actions {executed + 1}..{requested} were NOT executed (per-turn action cap)."
+    )
+
+
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--run-dir", required=True)
@@ -128,7 +147,12 @@ def parse_args() -> argparse.Namespace:
         default=5000,
         help="max total environment actions (the main run bound)",
     )
-    p.add_argument("--max-actions-per-turn", type=int, default=20)
+    p.add_argument(
+        "--max-actions-per-turn",
+        type=int,
+        default=20,
+        help="cap on actions executed per agent turn; <=0 = unlimited",
+    )
     p.add_argument(
         "--allowed-game-overs",
         type=int,
@@ -493,7 +517,15 @@ def main() -> int:
             batch = {"actions": [fa], "rationale": f"harness force-advance (agent silent): {fa}"}
             forced = True
         actions = [a for a in batch.get("actions", []) if isinstance(a, str)]
-        actions = actions[: args.max_actions_per_turn]
+        requested_actions = len(actions)
+        actions = apply_action_cap(actions, args.max_actions_per_turn)
+        # A dropped tail must be LOUD on the next state: the agent may have
+        # truncated at submit time (truncated_from in the batch entry) or the
+        # backstop cap above may have cut a directly-written oversized batch.
+        try:
+            requested_actions = max(requested_actions, int(batch.get("truncated_from") or 0))
+        except (TypeError, ValueError):
+            pass
         recorder.agent_turn(
             turn=turn,
             step=env_steps,
@@ -502,7 +534,7 @@ def main() -> int:
         )
 
         results: list[dict] = []
-        note = ""
+        note = truncation_note(executed=len(actions), requested=requested_actions)
         for i, action in enumerate(actions):
             prev_grid = [row[:] for row in grid.data]
             prev_levels = levels_completed

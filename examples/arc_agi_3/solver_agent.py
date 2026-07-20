@@ -41,6 +41,7 @@ from nooa.runtime import show  # CodeAct builtin — attach an image to the turn
 with hidden:
     import importlib.util
     import io
+    import os  # module-level only (hidden from cells; cells' os access stays blocked)
     import time
     from typing import Annotated
 
@@ -54,6 +55,7 @@ with hidden:
         DEFAULT_BLOCKED_MODULES,
         RestrictionsConfig,
     )
+    from nooa.runtime.sandbox import SandboxConfig
     from nooa.skill_registry import SkillRegistry
     from nooa.storage.markers import nosnapshot
     from nooa.strategies import CodeActStrategy
@@ -61,6 +63,7 @@ with hidden:
     # _ReturnResultSignal is the internal signal raised by return_result(); no public
     # re-export exists yet. If nooa ever exposes a public path, update this import.
     from nooa.strategies.codeact import _ReturnResultSignal
+    from nooa.strategy_validation import InvariantError
 
 # L2 guard (isolation plan §L2): deny file/network/process modules in generated
 # CodeAct cells. The agent's own tools (which use pathlib internally) are
@@ -116,6 +119,70 @@ _ARC_RESTRICTIONS = RestrictionsConfig(
     # boundary for the filesystem is the external uid-drop (uid_sandbox / run_solver
     # --sandbox drop), which holds regardless of any in-process import trick.
 )
+
+
+def _wait_requires_submission(agent, result, call) -> None:
+    """Postcondition on ``handle``: a WAIT turn-result must be backed by a
+    submission for the current turn (method-local; not LLM-visible).
+
+    In the 20260716 fleet the agent 13 times ended a turn claiming "submitted N
+    actions" while nothing reached ``ipc/actions.jsonl`` (implicit-return bug,
+    worker restarts) — and both sides idled the full 900s nudge timer. Raising
+    ``InvariantError`` routes the unbacked WAIT through the standard
+    validation-retry channel: an immediate same-turn resubmit instead of a stall.
+    """
+    kind = getattr(result, "kind", None)
+    if kind is None and isinstance(result, dict):
+        kind = result.get("kind")
+    if kind is None or str(kind).upper() != "WAIT":
+        return
+    state = agent._latest_state()
+    turn = state.get("turn") if state else None
+    if turn is None or agent._last_submitted_turn() == turn:
+        return
+    raise InvariantError(
+        f"result kind WAIT, but no actions were submitted for turn {turn} — "
+        "nothing reached the harness. Call self.submit_actions([...], rationale) now; "
+        "a successful submit ends the turn by itself."
+    )
+
+
+def _arc_cell_config() -> CodeActConfig:
+    """Build the per-cell CodeAct config, optionally with the OS sandbox backend.
+
+    Default keeps the historical in-process backend: ``cell_timeout`` is advisory
+    and the module denylist plus the external uid-drop are the guardrails. Enable
+    the per-cell OS sandbox — where ``cell_timeout`` becomes a *hard* kill and the
+    filesystem / network / memory / CPU limits are kernel-enforced (Landlock +
+    seccomp + rlimits) — via ``run_solver.py --sandbox-cells`` (or a run_multi
+    ``sandbox:`` config block), which set the ``ARC_SANDBOX_*`` env this reads. The
+    cell's ``self.*`` tool calls broker back to this live agent, so it needs no
+    network of its own.
+    """
+    base = {
+        "restrictions": _ARC_RESTRICTIONS,
+        "cell_timeout": 60.0,
+        "postconditions": (_wait_requires_submission,),
+    }
+    if os.environ.get("ARC_SANDBOX_CELLS") != "1":
+        return CodeActConfig(**base)
+    workspace = os.environ.get("ARC_SANDBOX_WORKSPACE") or os.getcwd()
+    return CodeActConfig(
+        **base,
+        execution_backend="sandbox",
+        sandbox=SandboxConfig(
+            workspace=workspace,
+            network=False,
+            max_memory_mb=int(os.environ.get("ARC_SANDBOX_MEM_MB", "4096")),
+            max_cpu_seconds=int(os.environ.get("ARC_SANDBOX_CPU_S", "90")),
+            # Fail open in the example so a host lacking Landlock/seccomp still runs;
+            # production callers should keep the default require=True.
+            require=os.environ.get("ARC_SANDBOX_REQUIRE", "0") == "1",
+        ),
+    )
+
+
+_ARC_CELL_CONFIG = _arc_cell_config()
 
 # ── Cell guard (B-lite): AST-level block of the escape / network / denylist-bypass
 # primitives a generated cell could otherwise use, which a module denylist alone
@@ -329,6 +396,13 @@ def _check_helper_ast(source: str) -> str | None:
     """Return an error string if the helper source uses anything beyond pure
     computation (disallowed import / open / dunder / banned builtin), else None."""
     import ast
+    import textwrap
+
+    # Models routinely paste uniformly indented source (e.g. lifted out of a
+    # docstring or an if-block); that's valid code — dedent before parsing
+    # instead of bouncing it with a spurious IndentationError (~220 wasted
+    # rounds across the 20260716 fleet).
+    source = textwrap.dedent(source)
 
     try:
         tree = ast.parse(source)
@@ -476,9 +550,14 @@ class ArcSolverBase(InteractiveAgent):
         effort_ladder: list[tuple[float, str]] | None = None,
         visual: str = "off",
         png_scale: int = 8,
+        max_actions_per_turn: int = MAX_ACTIONS_PER_TURN,
         **kwargs,
     ):
         super().__init__(llm=llm, **kwargs)
+        # Per-turn action batch cap enforced by submit_actions. <=0 disables the
+        # cap entirely (the harness must be launched with the same setting so its
+        # backstop truncation is off too — run_multi forwards one config key to both).
+        self._max_actions_per_turn = int(max_actions_per_turn)
         # Visual input mode (off|only|additive): 'only'/'additive' auto-show the
         # current settled grid to the LLM each turn as a color PNG
         # ((png_scale*64)x(png_scale*64), 16-color palette) — the picture the
@@ -817,7 +896,10 @@ class ArcSolverBase(InteractiveAgent):
     def submit_actions(self, actions: list[str], rationale: str) -> str:
         """Submit the action sequence for the CURRENT turn — this is how you play.
 
-        ``actions``: 1..20 of the game's available actions, e.g.
+        ``actions``: one or more of the game's available actions (subject to the
+        run's per-turn cap, if one is configured — an oversized batch executes
+        only its first ``cap`` actions and the yield explanation + next state's
+        note tell you what was NOT executed), e.g.
         ["UP", "UP", "RIGHT", "USE"] or ["CLICK 32 15"] (CLICK is x y = col row).
         The harness executes them in order (stopping early on level completion,
         WIN or GAME_OVER) and then publishes the next state on ``game_states``.
@@ -836,8 +918,6 @@ class ArcSolverBase(InteractiveAgent):
             return "REJECTED: game already won — no more actions needed."
         if not actions:
             return "REJECTED: empty action list."
-        if len(actions) > MAX_ACTIONS_PER_TURN:
-            return f"REJECTED: {len(actions)} actions > max {MAX_ACTIONS_PER_TURN}."
         available = set(state.get("available_actions", []))
         for a in actions:
             base = a.split()[0] if a.strip() else ""
@@ -852,7 +932,22 @@ class ArcSolverBase(InteractiveAgent):
         turn = state.get("turn")
         if self._last_submitted_turn() == turn:
             return f"REJECTED: already submitted for turn {turn} — wait for the next state."
+        # Over-cap batches execute their first ``cap`` actions instead of bouncing:
+        # a REJECTED round-trip costs a full model call, while the useful prefix
+        # can play now. The drop is LOUD — flagged here in the yield explanation
+        # and relayed by the harness as a note on the next state (truncated_from).
+        cap = getattr(self, "_max_actions_per_turn", MAX_ACTIONS_PER_TURN)
+        requested = len(actions)
+        truncation_warning = ""
+        if cap > 0 and requested > cap:
+            actions = actions[:cap]
+            truncation_warning = (
+                f"; WARNING: batch had {requested} actions — only the first {cap} were "
+                f"submitted, actions {cap + 1}..{requested} were NOT executed"
+            )
         entry = {"turn": turn, "actions": actions, "rationale": rationale[:2000]}
+        if truncation_warning:
+            entry["truncated_from"] = requested
         with self._actions_path.open("a") as f:
             f.write(json.dumps(entry) + "\n")
         # New turn starts now: reset the effort-ladder clock (mirrors the harness
@@ -863,8 +958,8 @@ class ArcSolverBase(InteractiveAgent):
         raise _ReturnResultSignal(
             result={
                 "kind": RespondReason.WAIT,
-                "explanation": f"submitted {len(actions)} action(s) for turn {turn}; "
-                "waiting for the next state",
+                "explanation": f"submitted {len(actions)} action(s) for turn {turn}"
+                f"{truncation_warning}; waiting for the next state",
             }
         )
 
@@ -875,8 +970,11 @@ class ArcSolverBase(InteractiveAgent):
         (``helpers/<filename>``). Use for your evolving world model: parsing,
         entity extraction, predict(state, action) functions. Syntax-checked on
         write; call load_helpers() afterwards to (re)load into ``self.h``."""
+        import textwrap
+
         if not _HELPER_NAME.match(filename):
             return f"REJECTED: filename {filename!r} must match [a-z0-9_]+.py"
+        source = textwrap.dedent(source)  # keep the written file importable (see _check_helper_ast)
         err = _check_helper_ast(source)
         if err is not None:
             return f"REJECTED: {err}"
@@ -917,17 +1015,7 @@ class ArcSolverBase(InteractiveAgent):
     # ----------------------------------------------------------------- turn
 
     @hidden
-    @strategy(
-        CodeActStrategy(
-            config=CodeActConfig(
-                restrictions=_ARC_RESTRICTIONS,
-                cell_timeout=60.0,  # bound a single cell; a runaway search cell is killed
-                # and the agent gets a TimeoutError to react to. NOTE:
-                # asyncio.wait_for can't preempt a tight CPU-bound loop
-                # that never awaits, so this is a partial guard.
-            )
-        )
-    )
+    @strategy(CodeActStrategy(config=_ARC_CELL_CONFIG))
     async def handle(self, notification: dict[str, list]) -> RespondResult:
         """One interactive-grid-game solving turn. Follow the <arc_skill> context block.
 
