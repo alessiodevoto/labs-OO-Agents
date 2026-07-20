@@ -338,7 +338,7 @@ def get_llm_client(name: str, *, client_type: str | None = None, **overrides) ->
         "drop_params": config.get("drop_params", True),
     }
 
-    if api_base := config.get("api_base"):
+    if "api_base" not in overrides and (api_base := config.get("api_base")):
         params["api_base"] = api_base
 
     # Only resolve the registry's api_key_env when the caller hasn't

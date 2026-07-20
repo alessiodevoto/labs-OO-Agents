@@ -136,6 +136,24 @@ llm = get_llm_client("claude-sonnet-4-5-20250514") # Anthropic (needs ANTHROPIC_
 llm = get_llm_client("gemini/gemini-2.5-flash")    # Google (needs GEMINI_API_KEY)
 ```
 
+For local development against an OpenAI-compatible server such as vLLM, pass the
+model and endpoint directly. A simple convention is one environment variable for
+the model and one for the URL:
+
+```bash
+export NOOA_MODEL=hosted_vllm/Qwen/Qwen3-1.7B
+export NOOA_API_BASE=http://127.0.0.1:8000/v1
+```
+
+```python
+import os
+
+llm = get_llm_client(
+    os.environ["NOOA_MODEL"],
+    api_base=os.environ["NOOA_API_BASE"],
+)
+```
+
 If you installed `nemo-oo-agents-nvidia` (the installer script includes it), an extra set of NVIDIA-gateway aliases (claude-*, nemotron-*, qwen-*, gemini-*, gpt-*, llama-*) is registered automatically via the `nooa.bundled_configs` entry-point group:
 
 ```python

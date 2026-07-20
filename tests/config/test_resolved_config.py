@@ -37,8 +37,12 @@ def _isolate(tmp_path, monkeypatch):
 
 class TestModelConfig:
     def test_from_registry_defaults_model_name_to_alias(self):
-        mc = ModelConfig.from_registry("my-alias", {"api_key_env": "K"})
+        mc = ModelConfig.from_registry(
+            "my-alias",
+            {"api_base": "https://example.test/v1", "api_key_env": "K"},
+        )
         assert mc.model_name == "my-alias"
+        assert mc.api_base == "https://example.test/v1"
         assert mc.api_key_env == "K"
 
     def test_extra_passthrough_preserved(self):
@@ -78,10 +82,15 @@ class TestResolvedConfig:
 
     def test_models_are_typed(self, _isolate):
         (_isolate / "llm_config.yaml").write_text(
-            "models:\n  m1:\n    model_name: openai/x\n    api_key_env: OPENAI_API_KEY\n"
+            "models:\n"
+            "  m1:\n"
+            "    model_name: openai/x\n"
+            "    api_base: https://api.openai.com/v1\n"
+            "    api_key_env: OPENAI_API_KEY\n"
         )
         rc = resolved_config()
         assert isinstance(rc.models["m1"], ModelConfig)
+        assert rc.models["m1"].api_base == "https://api.openai.com/v1"
         assert rc.models["m1"].api_key_env == "OPENAI_API_KEY"
 
     def test_sources_lists_winning_files(self, _isolate, monkeypatch):
