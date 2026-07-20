@@ -9,6 +9,7 @@ Usage:
 """
 
 import asyncio
+import importlib
 import sys
 from pathlib import Path
 
@@ -114,8 +115,16 @@ def command(
         nooa tui --agent ./my_agent.py:MyAgent
         nooa tui --vi
     """
-    from nooa_tui.tui.config import Config
-    from nooa_tui.tui.main import main as tui_main
+    try:
+        Config = importlib.import_module("nooa_tui.tui.config").Config
+        tui_main = importlib.import_module("nooa_tui.tui.main").main
+    except ModuleNotFoundError as exc:
+        if exc.name and exc.name.startswith("nooa_tui"):
+            raise click.ClickException(
+                "The `nooa tui` command requires the `nooa-tui` package, "
+                "but it is not importable in this environment."
+            ) from exc
+        raise
 
     config = Config.load(
         model=model,

@@ -1,4 +1,4 @@
-# `nooa.memory` — long-term memory for agents
+# `nooa_memory` — long-term memory for agents
 
 An **opt-in, additive, brain-inspired long-term memory subsystem** for NeMo OO
 Agents. Toggle it on per agent; it changes no core framework code. Its defining
@@ -44,7 +44,7 @@ When `enabled=False` (or not installed), the agent is byte-for-byte unchanged �
 
 ```python
 from nooa import Agent
-from nooa.memory import MemoryConfig, MemoryManager, MemoryToolsMixin
+from nooa_memory import MemoryConfig, MemoryManager, MemoryToolsMixin
 
 class MyAgent(MemoryToolsMixin, Agent, llm=my_llm):
     async def work(self, task: str) -> str:
@@ -212,8 +212,8 @@ recency/strength bumped), so the ACT-R signal stays meaningful.
 **How to configure** (`SpontaneousConfig`):
 
 ```python
-from nooa.memory import MemoryConfig, MemoryManager
-from nooa.memory.config import SpontaneousConfig
+from nooa_memory import MemoryConfig, MemoryManager
+from nooa_memory.config import SpontaneousConfig
 
 MemoryManager.install(agent, config=MemoryConfig(
     enabled=True,
@@ -265,8 +265,8 @@ run when you pass `reasoner=` / `reconciler=` to `install()`.
 **How to configure** (`ReflectionPolicy`):
 
 ```python
-from nooa.memory import MemoryConfig, MemoryManager
-from nooa.memory.config import ReflectionPolicy
+from nooa_memory import MemoryConfig, MemoryManager
+from nooa_memory.config import ReflectionPolicy
 
 MemoryManager.install(
     agent,
@@ -382,7 +382,7 @@ MemoryConfig(
 
 Reuses the framework's existing observability (no new system):
 
-- **logger** `nooa.memory` — `setLevel(logging.DEBUG)` for per-op traces.
+- **logger** `nooa_memory` — `setLevel(logging.DEBUG)` for per-op traces.
 - **events** on the agent's `EventManager`: `MemoryWritten`, `MemoryRecalled`,
   `MemoryInjected`, `ReflectionCompleted` (RUNTIME_EVENT role → visible to any telemetry
   subscriber, never injected into the LLM context).

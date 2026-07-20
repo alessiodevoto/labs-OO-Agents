@@ -1,6 +1,6 @@
 # nemo-labs-oo-agents-cli
 
-CLI and TUI for [nemo-oo-agents](https://gitlab-master.nvidia.com/interactive-agents/nooa). Ships the `nooa` command (subcommands like `nooa tui`, `nooa term`, `nooa eval`, `nooa traces`) and the agent TUI (a REPL-driven CodeAct frontend).
+CLI and TUI for [nemo-oo-agents](https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents). Ships the `nooa` command (subcommands like `nooa tui`, `nooa term`, `nooa eval`, `nooa traces`) and the agent TUI (a REPL-driven CodeAct frontend).
 
 ## Install
 
@@ -26,4 +26,4 @@ nooa term                 # web terminal
 nooa eval ...             # eval pipeline runner
 ```
 
-See the main repo [README](https://gitlab-master.nvidia.com/interactive-agents/nooa/-/blob/main/README.md) for the framework documentation.
+See the main repo [README](https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents/-/blob/main/README.md) for the framework documentation.

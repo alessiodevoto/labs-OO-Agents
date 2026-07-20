@@ -27,7 +27,7 @@ set -eu
 # Configuration
 # ---------------------------------------------------------------------------
 
-REPO_URL="${NEMO_OO_INSTALL_REPO:-https://gitlab-master.nvidia.com/interactive-agents/nooa.git}"
+REPO_URL="${NEMO_OO_INSTALL_REPO:-https://gitlab-master.nvidia.com/interactive-agents/nemo_oo_agents.git}"
 REPO_REF="${NEMO_OO_INSTALL_REF:-main}"
 SECRETS_FILE="${NEMO_OO_INSTALL_SECRETS_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/nooa/secrets.yaml}"
 

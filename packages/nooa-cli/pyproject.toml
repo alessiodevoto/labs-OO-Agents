@@ -2,7 +2,7 @@
 name = "nemo-labs-oo-agents-cli"
 # Version is derived from git tags at build time by uv-dynamic-versioning.
 dynamic = ["version"]
-description = "CLI and TUI for nemo-oo-agents (`nemo` command, web terminal, agent REPL)"
+description = "CLI and TUI for nemo-oo-agents (`nooa` command, web terminal, agent REPL)"
 license = {text = "Apache-2.0"}
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
@@ -48,7 +48,7 @@ ast = [
 ]
 # Data-science stack pre-loaded into the agent's REPL execution namespace
 # (np, pd, px, go, scipy, sklearn). Soft-imported via try/except in
-# nooa_cli.tui.agent — the CLI/TUI works without these too;
+# TUI agent REPLs work without these too;
 # they exist purely so LLM-generated CodeAct cells can use these libs
 # without first failing on a missing import.
 datascience = [

@@ -15,12 +15,17 @@ context blocks, and real arguments — then work through diagnostic questions to
 Use `nooa.print_prompt` with a `FakeLLMClient` to render without making a real LLM call:
 
 ```python
-import asyncio, nooa, sys
+import asyncio, nooa
+from nooa import Agent
 from nooa.unifiedllm import FakeLLMClient
-from nooa_cli.tui.agent import TUIAgent
+
+class DemoAgent(Agent, llm=FakeLLMClient()):
+    async def respond(self, message: str) -> str:
+        """Answer the user's message."""
+        ...
 
 async def main():
-    agent = TUIAgent(llm=FakeLLMClient())
+    agent = DemoAgent()
     await nooa.print_prompt(agent.respond, "example user message here")
 
 asyncio.run(main())
@@ -84,12 +89,11 @@ pydantic internals (`BaseModel`, `Field`), private helpers (anything starting wi
 **Fix:** wrap the import in `with hidden:` at module level:
 
 ```python
-from agentdoc import hidden   # must be outside
+from nooa import hidden   # must be outside
 
 with hidden:
     from nooa.agents import TokenBudgetSummarizer
     from nooa.config import CodeActConfig
-    from nooa_cli.tui.config import AgentConfig, SummarizationConfig
 ```
 
 **Tradeoff:** hiding something means the LLM can't use it by name in the REPL.
@@ -116,10 +120,10 @@ Scroll `<self>` for methods the LLM should never call directly:
 `get_summarization_status()`, `_respond_codeact()`, `_phase`, `_workflow_state`,
 `_config`, `install_summarizer()`, etc.
 
-**Fix:** `@hidden` from `agentdoc`:
+**Fix:** `@hidden` from `nooa`:
 
 ```python
-from agentdoc import hidden
+from nooa import hidden
 from nooa import Agent
 
 class MyAgent(Agent, llm=...):
@@ -259,7 +263,7 @@ def __init__(self, ...):
 ### `@hidden` — hide a method from `<self>` and the execution context
 
 ```python
-from agentdoc import hidden
+from nooa import hidden
 
 @hidden
 def get_summarization_status(self): ...

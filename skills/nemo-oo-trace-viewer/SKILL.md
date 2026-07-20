@@ -1,31 +1,31 @@
 ---
 name: nemo-oo-trace-viewer
 description: Run and use the NVIDIA OO Agents trace viewer — the web UI + OTLP receiver for browsing agent traces and eval results. Use when starting the viewer, importing/exporting/deleting traces, querying the viewer's REST API, or wiring an agent run so traces show up at localhost:5001.
-compatibility: nemo-oo-agents with the [viewer] extra (fastapi, uvicorn); nemo-oo-agents-cli for the `nemo oo` commands
+compatibility: nemo-oo-agents with the [viewer] extra (fastapi, uvicorn); nemo-oo-agents-cli for the `nooa` commands
 ---
 
 # Trace Viewer
 
-The viewer (`src/nemo_oo_agents/viewer/`) is a single FastAPI app that is both the **OTLP receiver** agents send spans to and the **web UI** (React SPA) for browsing traces, LLM calls, and evaluation experiments. Traces persist in SQLite, so they survive restarts.
+The viewer (`src/nooa/viewer/`) is a single FastAPI app that is both the **OTLP receiver** agents send spans to and the **web UI** (React SPA) for browsing traces, LLM calls, and evaluation experiments. Traces persist in SQLite, so they survive restarts.
 
 ## Start it
 
 ```bash
-nemo oo start-dev                                  # http://localhost:5001
-nemo oo start-dev --port 5002                      # custom port
-nemo oo start-dev --db /path/to/other.db           # separate trace store
-nemo oo start-dev --host 127.0.0.1                 # default host is 0.0.0.0
+nooa start-dev                                  # http://localhost:5001
+nooa start-dev --port 5002                      # custom port
+nooa start-dev --db /path/to/other.db           # separate trace store
+nooa start-dev --host 127.0.0.1                 # default host is 0.0.0.0
 ```
 
 Stop with Ctrl-C. If deps are missing: `uv sync --extra viewer`. If the port is busy, the command reports the offending PID.
 
-- **Database resolution**: `--db` > `$NEMO_OO_TRACE_DB` > `~/.config/nemo_oo/traces.db`.
-- Alternate entry point: `python -m nemo_oo_agents.viewer` (this path honors `$NEMO_OO_TRACE_VIEWER_PORT`, default 5001; `start-dev` uses `--port` instead). DB default for the raw module is `./traces.db` — prefer `start-dev`.
+- **Database resolution**: `--db` > `$NEMO_OO_TRACE_DB` > `~/.config/nooa/traces.db`.
+- Alternate entry point: `python -m nooa.viewer` (this path honors `$NEMO_OO_TRACE_VIEWER_PORT`, default 5001; `start-dev` uses `--port` instead). DB default for the raw module is `./traces.db` — prefer `start-dev`.
 
 ## End-to-end workflow
 
 ```bash
-nemo oo start-dev                                # terminal 1
+nooa start-dev                                # terminal 1
 uv run python my_agent.py                        # terminal 2 — auto-traced (see nemo-oo-capturing-traces)
 open http://localhost:5001/traces                # browse the session
 ```
@@ -54,23 +54,23 @@ Trace-detail features worth knowing:
 
 ```bash
 # Import OTLP .jsonl trace files (from exporters.jsonl(...) or a viewer export)
-nemo oo import-traces ./traces/                          # dir (recursive) or single file
-nemo oo import-traces run.jsonl --endpoint http://host:5001 --batch-id my-exp-v2
+nooa import-traces ./traces/                          # dir (recursive) or single file
+nooa import-traces run.jsonl --endpoint http://host:5001 --batch-id my-exp-v2
 
 # Import a Harbor eval job directory
-nemo oo import-harbor <job-dir>
+nooa import-harbor <job-dir>
 
 # Export one session as .jsonl (round-trips through import-traces)
 curl -o session.jsonl "http://localhost:5001/api/trace/export?session_id=<ID>"
 
 # Delete
-nemo oo delete-traces --batch-id my-exp-v2               # one batch via API
+nooa delete-traces --batch-id my-exp-v2               # one batch via API
 # DELETE /api/traces/{session_id}                        # one session
 # DELETE /api/traces?confirm=true                        # everything
 
 # Housekeeping for on-disk trace FILES (not the viewer DB)
-nemo oo traces list
-nemo oo traces delete --older-than 7
+nooa traces list
+nooa traces delete --older-than 7
 ```
 
 Import notes: only OTLP JSON lines (`{"resourceSpans": [...]}`) are accepted; the session ID is derived from the filename; already-imported sessions are skipped; omitted `--batch-id` auto-generates `import_<timestamp>_<hex>`.
@@ -96,9 +96,9 @@ Ingestion is queued and written by a single background writer, so a `GET` immedi
 
 ## Pitfalls
 
-- `nemo oo start-dev` resolves the DB and sets `NEMO_OO_TRACE_DB` in its own environment before starting uvicorn (same process); a *separately launched* `python -m nemo_oo_agents.viewer` without that var uses `./traces.db` in the CWD — easy way to "lose" traces into a second DB.
+- `nooa start-dev` resolves the DB and sets `NEMO_OO_TRACE_DB` in its own environment before starting uvicorn (same process); a *separately launched* `python -m nooa.viewer` without that var uses `./traces.db` in the CWD — easy way to "lose" traces into a second DB.
 - The viewer refuses to start (exit 1) if the SQLite DB is locked by another viewer instance — check for an already-running `start-dev`.
-- Old docs mention `packages/nemo-oo-agents-viewer/` and a `nemo oo viewer` subcommand; the viewer now lives in `src/nemo_oo_agents/viewer/` and `nemo oo start-dev` is the canonical command.
+- Old docs mention `packages/nemo-oo-agents-viewer/` and a `nooa viewer` subcommand; the viewer now lives in `src/nooa/viewer/` and `nooa start-dev` is the canonical command.
 
 ## Related skills
 

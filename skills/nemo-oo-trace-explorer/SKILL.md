@@ -6,7 +6,7 @@ compatibility: nemo-oo-agents core package (trace-explorer CLI ships with it); a
 
 # Trace Explorer
 
-The trace explorer (`src/nemo_oo_agents/trace_explorer/`) is a CLI + Python library purpose-built for **agent-driven root-cause analysis** of traces. Where the viewer is a web UI for humans, the explorer emits LLM-friendly text (or JSON) and supports search, diffing, and experiment-wide aggregation. It is not itself an Agent — it's a tool you (the coding agent) drive.
+The trace explorer (`src/nooa/trace_explorer/`) is a CLI + Python library purpose-built for **agent-driven root-cause analysis** of traces. Where the viewer is a web UI for humans, the explorer emits LLM-friendly text (or JSON) and supports search, diffing, and experiment-wide aggregation. It is not itself an Agent — it's a tool you (the coding agent) drive.
 
 Data sources: local OTLP `.jsonl` trace files, or a running viewer (per-session or per-experiment). It never opens `traces.db` directly — viewer data goes through the HTTP API.
 
@@ -48,7 +48,7 @@ uv run trace-explorer --viewer <URL> --experiment <ID> --json     # machine-read
 ## Python API — full parse (`TraceExplorer`)
 
 ```python
-from nemo_oo_agents.trace_explorer import TraceExplorer
+from nooa.trace_explorer import TraceExplorer
 
 trace = await TraceExplorer.from_file("traces/<session_id>.jsonl")
 # or: trace = await TraceExplorer.from_viewer("http://localhost:5001", "<session-id>")
@@ -71,7 +71,7 @@ Every text method has a structured twin returning dataclasses with `.to_dict()`:
 For very large traces (>100k spans / GB-scale), don't download spans — delegate analysis to the viewer server (`/api/explorer/*`, results cached server-side):
 
 ```python
-from nemo_oo_agents.trace_explorer import TraceExplorerClient
+from nooa.trace_explorer import TraceExplorerClient
 
 client = TraceExplorerClient("http://localhost:5001", "<session-id>")
 await client.get_summary()          # instant DB query: span count, duration, error count
@@ -95,8 +95,8 @@ Prefer the thin client when the trace is huge, when exploring interactively (cac
 ## Tips
 
 - Session IDs abbreviate to 6 characters everywhere.
-- `--install-skill` copies the bundled skill to `~/.claude/skills/trace-explorer/` (there is an in-repo copy at `src/nemo_oo_agents/trace_explorer/skill/SKILL.md`).
-- Entry points: `trace-explorer` console script or `python -m nemo_oo_agents.trace_explorer` — there is no `nemo oo` subcommand for it.
+- `--install-skill` copies the bundled skill to `~/.claude/skills/trace-explorer/` (there is an in-repo copy at `src/nooa/trace_explorer/skill/SKILL.md`).
+- Entry points: `trace-explorer` console script or `python -m nooa.trace_explorer` — there is no `nooa` subcommand for it.
 - Eval-artifact files are rejected by `from_file` (`*.006eval.*` by filename; `*.noo-eval.jsonl` fails span validation) — point it at the session trace, not the eval sidecar.
 - Reasoning content is shown by default; hide with `--no-reasoning`.
 

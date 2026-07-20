@@ -12,13 +12,13 @@ Three interception surfaces, one decision rule:
 |---|---|---|---|---|
 | **Middleware** | `agent.event_manager.intercept(kind, fn)` | YES — transform inputs/outputs, short-circuit, block | propagate (a guardrail raising aborts the call) | per-agent |
 | **Observers** | `agent.event_manager.on(event_type, fn)` | no — fire-and-forget after the event is recorded | isolated | per-agent |
-| **InstrumentationHooks** | `set_hooks(obj)` (`nemo_oo_agents.runtime.hooks`) | no — observational timing/tracing pairs | swallowed + logged, overhead metered | one global slot per async context |
+| **InstrumentationHooks** | `set_hooks(obj)` (`nooa.runtime.hooks`) | no — observational timing/tracing pairs | swallowed + logged, overhead metered | one global slot per async context |
 
 Rule of thumb: enforcing or transforming → `intercept()`; reacting → `on()`; building an observability backend → you probably want a tracing exporter (`nemo-oo-capturing-traces`), not raw hooks — the tracing system already occupies the hooks slot.
 
 ## Middleware (`intercept`)
 
-Each middleware is `async def mw(ctx, nxt) -> ctx` — a typed context object and a `nxt` callable running the rest of the chain. Three kinds (`nemo_oo_agents.runtime.middleware`):
+Each middleware is `async def mw(ctx, nxt) -> ctx` — a typed context object and a `nxt` callable running the rest of the chain. Three kinds (`nooa.runtime.middleware`):
 
 | Kind | Wraps | Context (`ctx`) mutables in | result out |
 |---|---|---|---|
@@ -27,7 +27,7 @@ Each middleware is `async def mw(ctx, nxt) -> ctx` — a typed context object an
 | `"execute_python"` | one CodeAct cell in `runtime.execute_code()` | `code`, `params` (timeout, restrictions, ...) | `ctx.result` (`ExecutionResult`) |
 
 ```python
-from nemo_oo_agents.runtime.middleware import LLMCallContext, LLMCallNext
+from nooa.runtime.middleware import LLMCallContext, LLMCallNext
 
 async def redact_secrets(ctx: LLMCallContext, nxt: LLMCallNext) -> LLMCallContext:
     for m in ctx.messages:                          # transform inputs
@@ -52,7 +52,7 @@ Verified semantics:
 - On a context-window error the runtime archives events, rebuilds messages, and retries — so `llm_call` middleware can run more than once per logical turn; keep it idempotent.
 - The tracing `on_messages_built` hook fires inside the innermost core, so traces show the **post-middleware** messages.
 
-Worked production example: `src/nemo_oo_agents/nemo_flow_middleware.py` installs all three kinds to route calls through NeMo Flow (guardrails/ATIF); `nemo_flow_scope(agent, name)` wraps install/uninstall. Runnable: `examples/quickstart/13_nemo_flow.py`. Test patterns (mutate/short-circuit/ordering): `tests/test_event_middleware.py`.
+Worked production example: `src/nooa/nemo_flow_middleware.py` installs all three kinds to route calls through NeMo Flow (guardrails/ATIF); `nemo_flow_scope(agent, name)` wraps install/uninstall. Runnable: `examples/quickstart/13_nemo_flow.py`. Test patterns (mutate/short-circuit/ordering): `tests/test_event_middleware.py`.
 
 ## Observers (`on`)
 
@@ -69,10 +69,10 @@ agent.event_manager.on("*", audit)                 # wildcard: every event
 
 ## InstrumentationHooks (`set_hooks`)
 
-A `Protocol` of paired callbacks (`nemo_oo_agents.runtime.hooks`): `before_/after_agent_call`, `before_/after_generation`, `before_/after_code_execution`, `before_/after_method_invocation`, `before_/after_tool_execution`, plus the point-in-time `on_messages_built`. Each `before_*` may return a context object that is handed to its `after_*` (span/timing state without globals).
+A `Protocol` of paired callbacks (`nooa.runtime.hooks`): `before_/after_agent_call`, `before_/after_generation`, `before_/after_code_execution`, `before_/after_method_invocation`, `before_/after_tool_execution`, plus the point-in-time `on_messages_built`. Each `before_*` may return a context object that is handed to its `after_*` (span/timing state without globals).
 
 ```python
-from nemo_oo_agents.runtime.hooks import set_hooks
+from nooa.runtime.hooks import set_hooks
 
 class TimingHooks:
     def before_agent_call(self, agent, method_name, args, kwargs, call_id, parent_call_id, **kw):

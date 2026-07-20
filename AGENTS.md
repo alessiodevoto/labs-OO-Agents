@@ -152,7 +152,7 @@ from nooa.tracing import enable_tracing, exporters
 enable_tracing(exporters=[exporters.jsonl("traces/my_agent")])
 ```
 
-Trace viewer runs on port 5001 by default (`nemo oo start-dev --port` to change). See `examples/quickstart/06_tracing.py` for a full example.
+Trace viewer runs on port 5001 by default (`nooa start-dev --port` to change). See `examples/quickstart/06_tracing.py` for a full example.
 
 - **All public methods are traced by default.** Private (`_private`) and dunder (`__method__`) methods are also traced unless you opt out.
 - **Use `@no_trace` to exclude from traces.** Decorate any method (public, private, or dunder) with `@no_trace` to prevent it from appearing in traces while still allowing generation.

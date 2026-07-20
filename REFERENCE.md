@@ -62,7 +62,7 @@ For deeper understanding, see these topic-specific docs:
 | Structured output | `docs/guides/structured-output.md` | Return types, Pydantic validation, PythonSource pattern |
 | Method design | `docs/guides/writing-generation-methods.md` | Writing effective generation methods |
 | Truncation | `docs/guides/truncation.md` | How large values are previewed to the model |
-| Config migration (0.4.x → 0.5.0) | `docs/guides/config-migration.md` | Moving existing config to the unified `nemo_oo` layout (settings/secrets/llm_config YAML) — breaking changes in 0.5.0 |
+| Config migration (0.4.x → 0.5.0) | `docs/guides/config-migration.md` | Moving existing config to the unified `nooa` layout (settings/secrets/llm_config YAML) — breaking changes in 0.5.0 |
 
 ## Logging
 

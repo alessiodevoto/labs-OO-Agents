@@ -29,7 +29,7 @@ import threading
 from typing import Any
 
 #: Cookie set by ``GET /?token=...`` and checked by the other endpoints.
-_TOKEN_COOKIE = "nemo_oo_term_token"
+_TOKEN_COOKIE = "nooa_term_token"
 
 _log = logging.getLogger("nooa.pty_server")
 

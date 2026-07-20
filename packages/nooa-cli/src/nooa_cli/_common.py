@@ -21,7 +21,7 @@ def find_project_root() -> Path:
     Walking up from the cwd (rather than from this module's ``__file__``) ensures
     the *user's* project is resolved. Resolving from ``__file__`` would instead
     find the installed CLI package's own ``pyproject.toml`` in an editable or
-    monorepo install, which is never what a user of ``nemo oo`` wants.
+    monorepo install, which is never what a user of ``nooa`` wants.
 
     Uses a local implementation to keep CLI startup fast (avoids importing
     the heavy nooa core package at module level).

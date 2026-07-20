@@ -61,7 +61,7 @@ def get_user_dir(*parts: str) -> Path:
     else:
         xdg = os.environ.get("XDG_CONFIG_HOME")
         config_home = Path(xdg) if xdg else Path.home() / ".config"
-        base = config_home / "nemo_oo"
+        base = config_home / "nooa"
     return base.joinpath(*parts) if parts else base
 
 

@@ -310,14 +310,14 @@ def _build_tui_argv(
     import shutil
 
     # Find the nooa executable in the current environment
-    nemo_oo = shutil.which("nooa")
-    if nemo_oo is None:
+    nooa_exe = shutil.which("nooa")
+    if nooa_exe is None:
         # Fallback: run as a module using the same Python interpreter
-        nemo_oo_argv = [sys.executable, "-m", "nooa_cli"]
+        nooa_argv = [sys.executable, "-m", "nooa_cli"]
     else:
-        nemo_oo_argv = [nemo_oo]
+        nooa_argv = [nooa_exe]
 
-    argv = nemo_oo_argv + ["tui"]
+    argv = nooa_argv + ["tui"]
 
     if model:
         argv += ["--model", model]

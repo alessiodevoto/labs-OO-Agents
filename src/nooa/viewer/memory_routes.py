@@ -3,7 +3,7 @@
 """Memory viewer API routes — read-only views over MemoryStore sqlite files.
 
 Serves the web viewer's Memory tab (Records / Dashboard / Explain) on top of
-``nooa.memory``: record listing + detail (with the per-memory Usage
+``nooa_memory``: record listing + detail (with the per-memory Usage
 panel), store-level KPIs, and the retrieval-explain debugger.
 
 Caveats:

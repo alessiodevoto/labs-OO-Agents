@@ -79,7 +79,7 @@ Context budget: `max_context_tokens` — or, when unset and the model exposes a 
 ## Restricting generated code (`RestrictionsConfig`)
 
 ```python
-from nemo_oo_agents.runtime.restrictions import RestrictionsConfig
+from nooa.runtime.restrictions import RestrictionsConfig
 CodeActConfig(restrictions=RestrictionsConfig(
     blocked_modules=frozenset({"subprocess", "socket", "requests"}),  # hard: stripped + import-denied
     restricted_imports=frozenset({"os", "shutil"}),                    # soft: import statements denied
@@ -89,7 +89,7 @@ CodeActConfig(restrictions=RestrictionsConfig(
 
 - Defaults: 12 event-loop-hazard modules hard-blocked (subprocess, socket, smtplib, ...); blocking calls denied (`time.sleep`, `os.system`, `Thread.join`, `asyncio.run`, ...); `restricted_imports` **empty** — any other installed module is importable.
 - Always blocked regardless of config: `exec`/`eval`/`compile`/`__import__`/`input`/`breakpoint`/`globals`/`locals`/`vars`, `from x import *`, dangerous dunder access (`__class__`, `__globals__`, ...), process-exit calls, self-recursion into the currently-executing method, and infinite `while True` without break.
-- Process-global default: `set_restricted_imports(frozenset({...}))` / `get_restricted_imports()` (from `nemo_oo_agents.runtime.restrictions`) — applies to every subsequently-constructed `RestrictionsConfig` that doesn't set the field explicitly. Generated code cannot call these (they're in the forbidden-builtins list).
+- Process-global default: `set_restricted_imports(frozenset({...}))` / `get_restricted_imports()` (from `nooa.runtime.restrictions`) — applies to every subsequently-constructed `RestrictionsConfig` that doesn't set the field explicitly. Generated code cannot call these (they're in the forbidden-builtins list).
 - Violations are **not fatal**: the validator error comes back as the cell's error output with a fix hint, and the model retries (within the `max_retries` budget).
 - Agent-in-agent recursion depth is a separate class-level guard: `class MyAgent(Agent, execution=ExecutionConfig(max_nesting_depth=5))` (default 10; class kwarg only).
 
@@ -98,7 +98,7 @@ CodeActConfig(restrictions=RestrictionsConfig(
 Not a config field — use the decorator's scoped-context:
 
 ```python
-from nemo_oo_agents.context_blocks import ScopedContext
+from nooa.context_blocks import ScopedContext
 
 @strategy(CodeActStrategy(), ScopedContext(context={"strategy_prompt": "My leaner instructions..."}))
 async def solve(self, q: str) -> str: ...

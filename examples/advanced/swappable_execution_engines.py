@@ -4,7 +4,7 @@
 Example: Swappable Execution Engines
 
 This example demonstrates the ExecutionEngine protocol pattern. The protocol
-(defined in evaluation/protocol.py) allows different execution strategies
+(defined in eval_pipeline/protocol.py) allows different execution strategies
 to be swapped without changing higher-level code.
 
 Current implementation:
@@ -22,36 +22,39 @@ Usage:
 import argparse
 import asyncio
 import logging
+import time
+from dataclasses import dataclass
 
-from nemo_oo_agents_benchmarks.evaluation.agent_adapter import AgentConfig, NemoOOAgentsAdapter
-from nemo_oo_agents_benchmarks.evaluation.concurrency import ConcurrencyEngine
-from nemo_oo_agents_benchmarks.evaluation.task_runner import (
-    EvaluationTask,
-    RunnerConfig,
-    TaskRunner,
-)
+from eval_pipeline.concurrency import ConcurrencyConfig, ConcurrencyEngine
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-# Simple test agent
+@dataclass(frozen=True)
+class ExampleTask:
+    task_id: str
+    operation: str
+
+
+@dataclass(frozen=True)
+class ExampleResult:
+    task_id: str
+    result: str
+    success: bool
+
+
 class TestAgent:
     """Simple agent for demonstrating execution engines."""
 
-    async def run(self, input_data: dict) -> dict:
+    async def run(self, task: ExampleTask) -> ExampleResult:
         """Execute the agent."""
-        task_id = input_data.get("task_id")
-        operation = input_data.get("operation", "compute")
-
-        # Simulate work
         await asyncio.sleep(0.1)
-
-        return {
-            "task_id": task_id,
-            "result": f"Completed {operation}",
-            "status": "success",
-        }
+        return ExampleResult(
+            task_id=task.task_id,
+            result=f"Completed {task.operation}",
+            success=True,
+        )
 
 
 async def run_with_engine(
@@ -61,9 +64,9 @@ async def run_with_engine(
     """
     Run evaluation with the ConcurrencyEngine.
 
-    The ExecutionEngine protocol in evaluation/protocol.py defines the interface
+    The ExecutionEngine protocol in eval_pipeline/protocol.py defines the interface
     for swappable engines. When new engines are implemented (MultiprocessEngine,
-    RayEngine, NemoRunEngine), they can be passed to TaskRunner without changing
+    RayEngine, NemoRunEngine), they can expose the same run_tasks interface without changing
     higher-level code.
 
     Args:
@@ -73,46 +76,25 @@ async def run_with_engine(
     logger.info("Creating AsyncIO execution engine (semaphore-based)")
     engine = ConcurrencyEngine()
 
-    # Create tasks
-    tasks = [
-        EvaluationTask(
-            task_id=f"task_{i:03d}",
-            data={"task_id": f"task_{i:03d}", "operation": "compute"},
-        )
+    tasks = {
+        f"task_{i:03d}": ExampleTask(task_id=f"task_{i:03d}", operation="compute")
         for i in range(num_tasks)
-    ]
+    }
+    task_ids = list(tasks)
 
     logger.info(f"Created {num_tasks} tasks")
 
-    # Create agent adapter
-    agent_adapter = NemoOOAgentsAdapter(
-        agent_factory=lambda: TestAgent(),
-        config=AgentConfig(timeout_seconds=30, enable_tracing=False),
-    )
-    agent_adapter.register_tasks(tasks)
-
-    # Create runner with the specified engine
-    runner_config = RunnerConfig(
-        max_concurrent=max_concurrent,
-        analyze_traces=False,
-    )
-
-    runner = TaskRunner(
-        engine=engine,  # Swappable execution engine!
-        config=runner_config,
-    )
+    agent = TestAgent()
 
     logger.info(f"Running {num_tasks} tasks with asyncio engine...")
     logger.info(f"Max concurrent: {max_concurrent}")
 
-    import time
-
     start_time = time.time()
 
-    # Execute tasks - same API regardless of engine!
-    results = await runner.run_tasks(
-        tasks=tasks,
-        task_fn=agent_adapter.execute_task_by_id,
+    results = await engine.run_tasks(
+        task_ids=task_ids,
+        task_fn=lambda task_id: agent.run(tasks[task_id]),
+        config=ConcurrencyConfig(max_concurrent=max_concurrent, timeout_seconds=30),
     )
 
     duration = time.time() - start_time
