@@ -782,7 +782,7 @@ connected.
 mcp_auto_connect = ["maas-confluence-stg"]
 
 [tui.mcp_servers.maas-confluence-stg]
-url = "https://maas.stg.astra.nvidia.com/maas/confluence/mcp"
+url = "https://your-mcp-server.example.com/mcp"
 transport = "streamable-http"
 
 [tui.mcp_servers.maas-confluence-stg.headers]
@@ -847,7 +847,7 @@ Alternatively, pass the connection details inline to skip the `.mcp.json` file:
 ```python
 confluence_tool = MCPManager.create_from_server(
     "maas-confluence-stg",
-    url="https://maas.stg.astra.nvidia.com/maas/confluence/mcp",
+    url="https://your-mcp-server.example.com/mcp",
     transport="streamable-http",
     headers={},
 )

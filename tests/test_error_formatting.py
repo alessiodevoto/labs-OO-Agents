@@ -449,10 +449,7 @@ class TestIPythonErrorFormatter:
 
 
 class TestHeredocHint:
-    """Heredoc hint appended to SyntaxErrors that look like LLM-embedded bash heredocs.
-
-    See https://gitlab-master.nvidia.com/interactive-agents/nooa/-/issues/199.
-    """
+    """Heredoc hint appended to SyntaxErrors that look like LLM-embedded bash heredocs."""
 
     @staticmethod
     def _compile_and_format(code: str) -> str:

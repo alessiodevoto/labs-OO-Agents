@@ -1117,7 +1117,6 @@ class TestSummarizationAsyncIntegration:
 class TestSummarizerNoTrace:
     """Regression test: @hidden summarizer helpers must opt out of tracing.
 
-    See https://gitlab-master.nvidia.com/interactive-agents/nooa/-/issues/192.
     Private helpers fire on every turn and used to drown out useful spans.
     The fix decorates them with @no_trace so only ``summarize()`` produces a span.
     """
