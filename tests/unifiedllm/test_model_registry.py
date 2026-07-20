@@ -147,6 +147,16 @@ class TestGetLlmClient:
         llm = get_llm_client("some-unknown-model-xyz")
         assert llm.model == "some-unknown-model-xyz"
 
+    def test_public_provider_model_strings_pass_through(self):
+        """Common public providers should work without registry aliases."""
+        openai_llm = get_llm_client("gpt-4o-mini")
+        anthropic_llm = get_llm_client("claude-sonnet-4-5-20250514")
+
+        assert openai_llm.model == "gpt-4o-mini"
+        assert anthropic_llm.model == "claude-sonnet-4-5-20250514"
+        assert openai_llm.config.get("drop_params") is True
+        assert anthropic_llm.config.get("drop_params") is True
+
     def test_registry_model_uses_model_name(self, tmp_path):
         """Registry model should use the model_name from config."""
         path = _write_project_config(
@@ -442,6 +452,44 @@ class TestApiKeyHandling:
 
         assert llm.config.get("api_key") == "explicit-key"
         assert "ABSENT_ON_PURPOSE" not in caplog.text
+
+
+class TestApiBaseHandling:
+    """Tests for explicit local/self-hosted endpoint URL handling."""
+
+    def test_api_base_static_config(self, tmp_path):
+        path = _write_project_config(
+            _project_dir(tmp_path),
+            """\
+            models:
+              local-model:
+                model_name: hosted_vllm/Qwen/Qwen2.5-0.5B-Instruct
+                api_base: http://127.0.0.1:8000/v1
+            """,
+        )
+        reload_registry(path)
+
+        llm = get_llm_client("local-model")
+
+        assert llm.model == "hosted_vllm/Qwen/Qwen2.5-0.5B-Instruct"
+        assert llm.config["api_base"] == "http://127.0.0.1:8000/v1"
+
+    def test_explicit_api_base_override_beats_registry(self, tmp_path):
+        path = _write_project_config(
+            _project_dir(tmp_path),
+            """\
+            models:
+              local-vllm:
+                model_name: hosted_vllm/Qwen/Qwen2.5-0.5B-Instruct
+                api_base: http://127.0.0.1:8000/v1
+            """,
+        )
+        reload_registry(path)
+
+        llm = get_llm_client("local-vllm", api_base="http://127.0.0.1:9000/v1")
+
+        assert llm.model == "hosted_vllm/Qwen/Qwen2.5-0.5B-Instruct"
+        assert llm.config.get("api_base") == "http://127.0.0.1:9000/v1"
 
 
 class TestConfigLayering:
