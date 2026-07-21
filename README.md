@@ -1,3 +1,9 @@
+> # ⚠️ This repository has moved to GitHub
+>
+> **NVIDIA Object-Oriented Agents (NOOA) now lives at [github.com/NVIDIA-NeMo/labs-OO-Agents](https://github.com/NVIDIA-NeMo/labs-OO-Agents).**
+>
+> This GitLab repository is **archived and read-only** — all new work, issues, and contributions happen on GitHub. The content below is retained for history.
+
 # NeMo OO Agents (NOOA) Framework
 
 **What if your Python methods could think?** With the NeMo Object-Oriented Agents (NOOA) framework, they can. Write AI agents using familiar Python OOP—no new paradigms to learn. Define method signatures with type hints and docstrings, and your methods automatically become intelligent agents that can reason, execute code, and even create new methods to decompose complex tasks.
