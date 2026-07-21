@@ -10,7 +10,7 @@ specific run, so these work on any run and store results anywhere.
 | `red_team/` | `run_scan.sh <run> [out]` | agent cells + tool output | `evidence/*.json` + `escape_digest.md` | this venv (stdlib) |
 | `world_model/` | `analyze_world_models.py <run> [--out]` | helpers + executed cells | `world_model_usage.{md,json}` | this venv (stdlib) |
 | `memory/` | `analyze_memory.py <run> [--out]` | `team_nemo/shared/memory.sqlite` | `memory_usage.{md,json}` | this venv (stdlib) |
-| `analysis/` | `build_comparison.py <run_b> [--baseline A] [--out]` | `events.jsonl` | `rhae_over_time.png`, `budget_over_time.png`, `comparison_summary.json` | **progressive-learning venv** (matplotlib + `arc_agi_3.rhae`) |
+| `analysis/` | `build_comparison.py <run_b> [--baseline A] [--out]` | `events.jsonl` | `rhae_over_time.png`, `budget_over_time.png`, `comparison_summary.json` | this venv (matplotlib + vendored `rhae`) |
 
 ## Examples
 
@@ -28,9 +28,8 @@ examples/arc_agi_3/analysis/red_team/run_scan.sh "$RUN" "$OUT/red_team"
 .venv/bin/python examples/arc_agi_3/analysis/memory/analyze_memory.py "$RUN" --out "$OUT/memory"
 
 # RHAE + budget over time (single run, or compare two with --baseline).
-# Needs matplotlib + arc_agi_3.rhae -> run from the progressive-learning venv:
-cd progressive-learning && .venv/bin/python \
-  ../examples/arc_agi_3/analysis/analysis/build_comparison.py "$RUN" \
+# RHAE (vendored) + budget; matplotlib is a project dep, so use this repo's venv:
+uv run python examples/arc_agi_3/analysis/analysis/build_comparison.py "$RUN" \
   --out "$OUT/analysis" --label-b "this run"
 ```
 
@@ -43,7 +42,6 @@ cd progressive-learning && .venv/bin/python \
   uid-drop and skip cleanly without root.
 - **analysis**: two-run comparison. Pass the run to analyze as `run_b`; add
   `--baseline <other_run>` to overlay a second fleet (the baseline is truncated to
-  `run_b`'s elapsed window). Override the progressive-learning location with
-  `ARC_PL_DIR` if it isn't at `<repo>/progressive-learning`.
+  `run_b`'s elapsed window). Runs in this repo's venv — no external checkout needed.
 - **memory**: opens stores read-only (`immutable=1`), so a live run can be analysed
   without disturbing it.

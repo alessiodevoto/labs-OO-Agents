@@ -30,6 +30,16 @@ seeded: false
 visual: additive
 png_scale: 8
 
+# Per-cell OS sandbox (execution_backend="sandbox"): each CodeAct cell runs in a
+# guarded worker process. This is what makes cell_timeout a HARD bound and adds
+# memory/CPU/filesystem/network guardrails. run_multi forwards these to every agent.
+sandbox:
+  cells: true            # turn the per-cell sandbox on for the fleet
+  max_memory_mb: 4096    # per-cell address-space headroom (MiB)
+  max_cpu_seconds: 90    # per-cell CPU-time cap (seconds)
+  require: false         # true = fail closed if Landlock/seccomp unavailable
+  # workspace: null      # null -> the agent cwd (writable under --sandbox drop)
+
 # Concurrency + per-run caps. Shared scorecard makes parallel play safe.
 # All 25 games at once — host has ample headroom; the practical limit is LLM
 # gateway rate limits (429 -> retry storms), which the effort ladder + retry

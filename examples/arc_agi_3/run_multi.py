@@ -37,11 +37,6 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 EXAMPLE_DIR = Path(__file__).resolve().parent
 RESULTS_ROOT = REPO_ROOT / "results" / "arc_agi_3" / "nemo_solver"
-# Progressive-learning checkout (optional): provides the interactive multi-game
-# TUI (tui_multi_game_viewer.py reuses its reference panels). When absent, the
-# self-contained viewer.py status table is used instead.
-PL_DIR = REPO_ROOT / "progressive-learning"
-PL_PY = PL_DIR / ".venv" / "bin" / "python"
 
 
 def _load_dotenv() -> None:
@@ -630,35 +625,23 @@ class MultiRunner:
     def _run_tui(self) -> tuple[int | None, float]:
         """Foreground live dashboard. Blocks until the user quits. Returns
         (returncode, seconds_ran) so run() can distinguish a real quit from a
-        failed launch (missing venv/tty).
+        failed launch (missing tty).
 
-        Prefers the interactive multi-game TUI (tui_multi_game_viewer.py — the
-        reference per-game panels: grid, reasoning, REPL, world-model; needs the
-        progressive-learning venv). Falls back to the self-contained viewer.py
-        status table (this venv) when that checkout is absent."""
+        Uses the self-contained viewer.py status table (this venv) — the live
+        per-game grid / levels / budget dashboard."""
         # Wait briefly for the container's status.json so the TUI opens populated.
         for _ in range(20):
             if (self.container / "status.json").exists():
                 break
             time.sleep(0.2)
-        if PL_PY.exists():
-            tui_cmd = [
-                str(PL_PY),
-                str(EXAMPLE_DIR / "tui_multi_game_viewer.py"),
-                str(self.container),
-                "--watch",
-                str(self.cfg["watch"]),
-            ]
-            tui_cwd = PL_DIR  # arc_agi_3 reference package imports relative to here
-        else:
-            tui_cmd = [
-                sys.executable,
-                str(EXAMPLE_DIR / "viewer.py"),
-                str(self.container),
-                "--watch",
-                str(self.cfg["watch"]),
-            ]
-            tui_cwd = REPO_ROOT
+        tui_cmd = [
+            sys.executable,
+            str(EXAMPLE_DIR / "viewer.py"),
+            str(self.container),
+            "--watch",
+            str(self.cfg["watch"]),
+        ]
+        tui_cwd = REPO_ROOT
         t0 = time.monotonic()
         try:
             # Popen (not run) so the wall-clock deadline watcher can terminate the

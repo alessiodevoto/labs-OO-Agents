@@ -16,11 +16,12 @@ Two families of curves, both on a shared run-relative wall-clock axis:
 Because A finished and B is still running, A is TRUNCATED to B's elapsed wall-clock
 window so the comparison is apples-to-apples (same number of minutes of fleet time).
 
-Run (needs matplotlib -> the progressive-learning venv):
-    progressive-learning/.venv/bin/python \
-        results/arc_agi_3/nemo_solver/20260711_193827_competition_memory_visual_wm/analysis/build_comparison.py
+Run (this repo's venv — matplotlib is a project dependency):
+    uv run python examples/arc_agi_3/analysis/analysis/build_comparison.py \
+        results/arc_agi_3/nemo_solver/<run_b> [--baseline <run_a>] [--out <dir>]
 
-Outputs (into this analysis/ dir): rhae_over_time.png, budget_over_time.png, comparison_summary.json
+Outputs (into --out or <run_b>/analysis): rhae_over_time.png, budget_over_time.png,
+comparison_summary.json
 """
 
 from __future__ import annotations
@@ -28,14 +29,11 @@ from __future__ import annotations
 import argparse
 import glob
 import json
-import os
 import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[4]  # examples/arc_agi_3/analysis/analysis -> repo
-# arc_agi_3.rhae lives in the progressive-learning checkout; allow an override.
-_PL = os.environ.get("ARC_PL_DIR") or str(REPO / "progressive-learning")
-sys.path.insert(0, _PL)
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # for the vendored `rhae`
 
 _ap = argparse.ArgumentParser(
     description="Over-time RHAE + budget comparison of two competition runs."
@@ -52,7 +50,7 @@ _ap.add_argument("--label-b", default="this run")
 _args = _ap.parse_args()
 
 import matplotlib  # noqa: E402
-from arc_agi_3.rhae import rhae_bounds, rhae_level_score  # noqa: E402
+from rhae import rhae_bounds, rhae_level_score  # noqa: E402
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
@@ -63,7 +61,7 @@ ANALYSIS_DIR = Path(_args.out).resolve() if _args.out else (RUN_B / "analysis")
 ANALYSIS_DIR.mkdir(parents=True, exist_ok=True)
 LABEL_A, LABEL_B = _args.label_a, _args.label_b
 
-# gpt-5.5 canonical pricing, $/Mtok (progressive-learning/arc_agi_3/llm_configs.py)
+# gpt-5.5 canonical pricing, $/Mtok
 PRICE = {"input": 5.0, "output": 30.0, "cached": 0.50}
 GRID_S = 20.0  # time-grid resolution (seconds)
 

@@ -7,12 +7,12 @@ is when the tool OUTPUT actually contained off-limits data. This scans every
 tool-result stdout (PythonOutput) and flags outputs that display:
 
   RULE 2 (game source):
-    - paths under environment_files/ or progressive-learning/ (the game source
+    - paths under environment_files/ (the game source
       tree), OR actual game/environment .py source lines.
   RULE 3 (foreign / prior-run data):
     - references to OTHER run directories (results/.../<other-run-ts>/, or a
       different game alias' run), prior-run gameplay.json/result.json/traces,
-      or /tmp copies of other runs (arc3_*_smoke, progressive-learning-*).
+      or /tmp copies of other runs (arc3_*_smoke).
 
 We attribute each flagged output to the game whose logs it appears in, and keep
 a short excerpt of the actual leaked line(s). We de-dup identical outputs.
@@ -37,14 +37,14 @@ import rt_common as rt  # noqa: E402
 THIS_RUN_TS = "_".join(rt.RUN_ROOT.name.split("_")[:2])
 
 # Rule-2: game-source tree references / source content.
-R2_PATH = re.compile(r"environment_files/|progressive[-_]learning[-_/]")
+R2_PATH = re.compile(r"environment_files/")
 R2_SRC = re.compile(r"^\s*(def |class |import |from \w+ import|@|return )", re.M)
 
 # Rule-3: other-run / results-tree / foreign /tmp artifacts.
 R3_OTHER_RUN = re.compile(r"/results/[\w./-]*?(\d{8}_\d{6})_[\w./-]*")
 R3_PRIOR_ARTIFACT = re.compile(
     r"(gameplay|result|scorecard)\.json|/traces/\d{8}_\d{6}_|"
-    r"arc3_[\w-]*smoke|progressive-learning-\w+"
+    r"arc3_[\w-]*smoke"
 )
 R3_OTHER_ALIAS = re.compile(
     r"\b(ar25|bp35|cd82|cn04|dc22|ft09|g50t|ka59|lf52|ls20|m0r0|r11l|re86"

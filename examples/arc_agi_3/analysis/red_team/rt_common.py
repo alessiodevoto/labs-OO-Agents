@@ -139,7 +139,7 @@ RULE1_INTERNET = {
 
 # ---- Rule 2: game source-code access -------------------------------------- #
 RULE2_GAMESRC = {
-    "progressive_learning": re.compile(r"progressive[-_]learning"),
+    # Game source + baselines live under <example>/environment_files/.
     "environment_files": re.compile(r"environment_files"),
     "game_py_file": re.compile(r"[\w./-]*game[\w./-]*\.py\b|/[\w./-]*\.py.*\bgame\b"),
     "arcade_sdk": re.compile(r"\barcade\b|arc_agi(_3)?\.env|from\s+arc|import\s+arc\b"),
@@ -149,7 +149,7 @@ RULE2_GAMESRC = {
     ),
     "grep_repo_for_game": re.compile(
         r"(grep|rg|find|cat|less|head|tail|ls)\b[^\n]*"
-        r"(progressive|environment_files|/root/projects/nemo_oo_agents|game-[0-9a-f]{6})"
+        r"(environment_files|/root/projects/nemo_oo_agents|game-[0-9a-f]{6})"
     ),
     "sdk_boot_path": re.compile(r"loaded .* from environment_files|/environment_files/"),
 }

@@ -62,18 +62,23 @@ MEM_EMBED_BASE_URL=https://your-gateway/v1
 MEM_EMBED_API_KEY=sk-...
 MEM_EMBED_DIMS=1024
 
-# ARC-AGI-3 backend key — from https://arcprize.org
-# Needed to DOWNLOAD games for offline play (one time) and to play competition mode.
+# ARC-AGI-3 backend key — from https://arcprize.org (account → API key).
+# Required for competition mode AND the one-time game/baseline download.
 ARC_API_KEY=...
 ```
+
+**`ARC_API_KEY` is required.** With it set, the ARC SDK **auto-downloads** each
+game and its per-level RHAE baselines on first use into
+`examples/arc_agi_3/environment_files/` (gitignored) — no manual step, same
+commands. Point `ARC_DATA_DIR` at another directory to cache them elsewhere.
+Until the download completes, runs still play but RHAE reports 0/100.
 
 Notes:
 - `ARC_LLM_MODEL` is passed to the gateway with an `openai/` provider prefix; set
   `ARC_LLM_USE_RESPONSES=1` if your gateway needs the OpenAI *Responses* API for a
   given model (auto-on for `gpt-5.5`).
-- Offline mode replays games from a local `environment_files/` directory. The SDK
-  **downloads** them on first use with your `ARC_API_KEY` (the games are ARC
-  Prize's, fetched per user — they are not shipped with this example).
+- The games are ARC Prize's, fetched per user with your `ARC_API_KEY` — they are
+  not shipped with this example.
 
 ## Run
 
