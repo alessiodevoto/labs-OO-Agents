@@ -402,3 +402,6 @@ examples/memory_bench/data/
 
 # Local scratch/working files (never commit)
 .scratch/
+
+# ARC-AGI-3 game data + RHAE baselines (downloaded by the SDK on first use)
+examples/arc_agi_3/environment_files/

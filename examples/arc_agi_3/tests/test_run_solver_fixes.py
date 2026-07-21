@@ -3,8 +3,9 @@
 """Regression tests for run_solver / harness / broker fixes:
 
 - DATA_DIR: a competition/offline run showed RHAE 0/100 because the harness cwd
-  had no ``environment_files/`` (the SDK reads per-level RHAE baselines there).
-  DATA_DIR must autodetect an in-repo progressive-learning checkout and honour an
+  had no ``environment_files/`` (the SDK reads/downloads per-level RHAE baselines
+  there). DATA_DIR defaults to the example dir — so the SDK downloads into
+  ``examples/arc_agi_3/environment_files/`` (gitignored) — and honours an
   ARC_DATA_DIR override.
 - scorecard broker: a Ctrl-C on the fleet used to orphan the shared competition
   scorecard open, because ``KeyboardInterrupt`` (a BaseException) escaped the
@@ -48,17 +49,13 @@ def test_data_dir_honours_arc_data_dir_override(tmp_path):
     assert got == str(tmp_path)
 
 
-def test_data_dir_autodetects_progressive_learning():
-    # When ARC_DATA_DIR is unset, prefer an in-repo progressive-learning checkout
-    # that ships environment_files/ (else the repo root). Both are game-name-free.
+def test_data_dir_defaults_to_example_dir():
+    # When ARC_DATA_DIR is unset, DATA_DIR is the example dir, so the SDK
+    # downloads environment_files/ into examples/arc_agi_3/environment_files/.
     env = dict(os.environ)
     env.pop("ARC_DATA_DIR", None)
     got = Path(_data_dir_with_env(**{k: v for k, v in env.items() if k == "PATH"}))
-    pl = REPO_ROOT / "progressive-learning"
-    if (pl / "environment_files").is_dir():
-        assert got == pl, "should prefer the progressive-learning checkout with baselines"
-    else:
-        assert got == REPO_ROOT
+    assert got == EXAMPLE_DIR, "DATA_DIR should default to the arc_agi_3 example dir"
 
 
 # --------------------------------------------------------------------------- #

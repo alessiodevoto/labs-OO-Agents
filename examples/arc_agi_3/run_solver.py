@@ -30,19 +30,15 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 EXAMPLE_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(EXAMPLE_DIR))  # for `from sandbox import ...`
 MAIN_PY = sys.executable
-# The harness runs from this directory; the ARC-AGI SDK looks for (and downloads)
-# offline game files AND the per-level RHAE baselines under
-# <cwd>/environment_files/ — in EVERY operation mode (competition included: the
-# vendored SDK wrapper scans local files for env info/baselines). Resolution:
-# ARC_DATA_DIR env override > a progressive-learning checkout inside the repo
-# (ships environment_files/) > the repo root. Without environment_files the run
-# still plays, but baselines are empty → RHAE shows 0/100 live and 0 in
-# result.json.
-_PL_DIR = REPO_ROOT / "progressive-learning"
-DATA_DIR = Path(
-    os.environ.get("ARC_DATA_DIR")
-    or (_PL_DIR if (_PL_DIR / "environment_files").is_dir() else REPO_ROOT)
-)
+# The harness runs from DATA_DIR; the ARC-AGI SDK looks for (and, with
+# ARC_API_KEY, auto-downloads on first use) offline game files AND the per-level
+# RHAE baselines under <DATA_DIR>/environment_files/ — in EVERY operation mode
+# (competition included: the SDK scans local files for env info/baselines).
+# DATA_DIR defaults to this example directory, so the files land in
+# examples/arc_agi_3/environment_files/ (gitignored). Override with ARC_DATA_DIR.
+# Until the one-time download completes, baselines are empty → RHAE shows 0/100
+# live and 0 in result.json.
+DATA_DIR = Path(os.environ.get("ARC_DATA_DIR") or EXAMPLE_DIR)
 
 
 def parse_args() -> argparse.Namespace:

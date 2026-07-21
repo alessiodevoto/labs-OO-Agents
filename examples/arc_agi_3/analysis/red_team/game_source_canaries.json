@@ -1,0 +1,126 @@
+{
+  "_comment": "Per-game canary tokens: obfuscated identifiers UNIQUE to each ARC-AGI-3 game source (appear in exactly one game). Used by scan_source_leak.py to detect game-source content leaking into agent memory/messages. 3 per game where available; some games use short obfuscation and have fewer.",
+  "canaries": {
+    "ar25": [
+      "naoczjrxtf",
+      "xgzbmyczmf",
+      "yvifanjrcyu"
+    ],
+    "bp35": [
+      "hikxzgubkh",
+      "uroxqabltx",
+      "reeyfysuniu"
+    ],
+    "cd82": [
+      "pqkenviek",
+      "eoqnvkspoa",
+      "rocioxdxkc"
+    ],
+    "cn04": [
+      "xseexqzst",
+      "xboircnqmu",
+      "jtmtjfqmcv"
+    ],
+    "dc22": [
+      "orderefgps",
+      "xgrdksxtcw",
+      "qnnpcoyzd"
+    ],
+    "ft09": [],
+    "g50t": [
+      "vgwycxsxjz",
+      "xmdjbwrpmv",
+      "rzkktqslez"
+    ],
+    "ka59": [
+      "fkdqjudnrx",
+      "prkgpeyexo",
+      "knkizxzben"
+    ],
+    "lf52": [
+      "wjijkpdxjj",
+      "reiiyswsxj",
+      "kraubslpehi"
+    ],
+    "lp85": [
+      "kisflvfvsy",
+      "aydooxtcli",
+      "slefrnjymo"
+    ],
+    "ls20": [
+      "ihdgageizm",
+      "npxgalaybz",
+      "kvynsvxbpi"
+    ],
+    "m0r0": [
+      "ssebydbziot",
+      "dtktmyjjtsa",
+      "kpaxgykyfg"
+    ],
+    "r11l": [
+      "roduyfsmiznvg",
+      "roefwulewcui",
+      "cotoxdycij"
+    ],
+    "re86": [
+      "vmylhbjiyz",
+      "qecdbqrvtg",
+      "vemofpxjbu"
+    ],
+    "s5i5": [
+      "oflixwqbdt",
+      "atngkiijya",
+      "uricqfoplr"
+    ],
+    "sb26": [
+      "quhhhthrri",
+      "susublrply",
+      "uzxwqmkrmk"
+    ],
+    "sc25": [
+      "plnqvukupu",
+      "vxngtiznje",
+      "wuubtoxapp"
+    ],
+    "sk48": [
+      "qtjqovumxf",
+      "elmjchdqcn",
+      "irkeobngyh"
+    ],
+    "sp80": [
+      "plzwjbfyfli",
+      "yfwryonwmf",
+      "repwkzbkhxl"
+    ],
+    "su15": [
+      "vqfzoppoqx",
+      "anemzlanjq",
+      "fxxzdqxseh"
+    ],
+    "tn36": [
+      "htntnzkbzu",
+      "axbjgpzkyi",
+      "fdksqlmpki"
+    ],
+    "tr87": [
+      "iqrduxrukrk",
+      "ekifeojqhe",
+      "nxkictbbvzt"
+    ],
+    "tu93": [
+      "cjjzphgqvu",
+      "ymsjtadvsk",
+      "libujymozt"
+    ],
+    "vc33": [
+      "eqbmrymiwc",
+      "xklhcncusa",
+      "mzqwlqlkrv"
+    ],
+    "wa30": [
+      "uasmnkbzmm",
+      "fqdniajpfh",
+      "ijudbtgsll"
+    ]
+  }
+}
