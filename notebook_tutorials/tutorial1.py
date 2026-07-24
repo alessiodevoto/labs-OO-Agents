@@ -175,6 +175,6 @@ await print_prompt(barista.recommend_drink, customer_request="I could use a pick
 ## Watching agents in flight: the trace viewer
 # `print_prompt` shows the *outgoing* prompt for one call. To watch a whole run unfold — every LLM response, every generated code cell, every tool call, every retry — NOOA ships a live **trace viewer**. Start it once in a separate terminal:
 # ```bash
-# nemo start-dev
+# nooa start-dev
 # ```
 # Now open [http://localhost:5001](http://localhost:5001) and re-run the barista. Every agent you create will stream into the viewer automatically, no code changes needed. It's the single most useful debugging tool in the box, and we'll dedicate a whole tutorial to reading traces once we're building more complex agents.
