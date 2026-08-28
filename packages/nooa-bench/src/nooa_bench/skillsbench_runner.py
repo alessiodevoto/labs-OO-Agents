@@ -1,71 +1,130 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Run one SkillsBench task locally through NOOA in selected skill conditions."""
+"""Run one SkillsBench task locally through NOOA in selected skill conditions.
+
+This file is intentionally the thin CLI facade.  The runner has three separate
+responsibilities behind it:
+
+* ``skillsbench_conditions`` maps user-facing conditions to BenchFlow and NOOA
+  runner settings.
+* ``skillsbench_rollout`` owns sandbox/source staging and one-condition
+  execution.
+* ``skillsbench_artifacts`` owns the stable summary/result schema.
+
+The private helper imports below are kept as a compatibility surface for the
+existing tests and for any local debugging scripts that imported them from this
+module while the runner was monolithic.
+"""
 
 from __future__ import annotations
 
 import argparse
 import asyncio
-import json
 import os
-import shlex
-import shutil
 import subprocess
 import sys
-import tempfile
 import time
-import traceback
-from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any
+
+from nooa_bench.skillsbench_artifacts import (
+    OUTCOME_ERRORED,
+    OUTCOME_FAILED,
+    OUTCOME_PASSED,
+    OUTCOME_UNSCORED,
+    OUTCOME_VERIFIER_ERRORED,
+    ConditionResult,
+    _condition_result_from_dict,
+    _condition_result_from_rollout,
+    _git_commit,
+    _infer_outcome,
+    _load_existing_results,
+    _run_manifest,
+    _summary_markdown_lines,
+    _summary_payload,
+    _write_summary,
+)
+from nooa_bench.skillsbench_conditions import (
+    CONDITIONS,
+    PAIRED_CONDITIONS,
+    ConditionSettings,
+    _condition_settings,
+    _selected_conditions,
+    _task_agent_timeout,
+    _task_agent_timeout_from_frontmatter,
+)
+from nooa_bench.skillsbench_rollout import (
+    SOURCE_COPY_IGNORED_NAMES,
+    SOURCE_COPY_SECRET_SUFFIXES,
+    _build_nooa_runner_args,
+    _copy_nooa_source,
+    _download_agent_logs,
+    _execute_nooa_runner,
+    _install_nooa,
+    _install_nooa_command,
+    _read_activated_skills,
+    _read_task_instruction,
+    _record_agent_run,
+    _rollout_skills_dir,
+    _run_condition,
+    _skill_dirs,
+    _translate_task_library_skills,
+    _translated_library_skills_dir,
+)
 
 DEFAULT_MODEL = "openai/openai/openai/gpt-5.2"
 DEFAULT_TASK = "citation-check"
 DEFAULT_JOBS_DIR = Path("jobs/nooa-skillsbench")
-PAIRED_CONDITIONS = ("no_skill", "text_skill")
-CONDITIONS = (*PAIRED_CONDITIONS, "library_skill")
-OUTCOME_PASSED = "passed"
-OUTCOME_FAILED = "failed"
-OUTCOME_ERRORED = "errored"
-OUTCOME_VERIFIER_ERRORED = "verifier_errored"
-OUTCOME_UNSCORED = "unscored"
-SOURCE_COPY_IGNORED_NAMES = {
-    ".git",
-    ".venv",
-    "__pycache__",
-    ".mypy_cache",
-    ".pytest_cache",
-    ".ruff_cache",
-    "jobs",
-    "skillsbench",
-}
-SOURCE_COPY_SECRET_SUFFIXES = (".key", ".pem", ".p12", ".pfx")
 
-
-@dataclass
-class ConditionResult:
-    """Host-side summary for one nooa SkillsBench rollout."""
-
-    condition: str
-    rollout_dir: str
-    passed: bool
-    reward: float | None
-    error: str | None
-    verifier_error: str | None
-    agent_return_code: int
-    outcome: str = OUTCOME_UNSCORED
-    activated_skills: list[str] | None = None
-    skipped: bool = False
-
-
-@dataclass(frozen=True)
-class ConditionSettings:
-    """Condition-specific settings shared by BenchFlow and the NOOA runner."""
-
-    rollout_skill_mode: str
-    rollout_skills_dir: Path | None
-    runner_skill_mode: str
-    runner_skills_dir: str | None
+__all__ = [
+    "CONDITIONS",
+    "DEFAULT_JOBS_DIR",
+    "DEFAULT_MODEL",
+    "DEFAULT_TASK",
+    "OUTCOME_ERRORED",
+    "OUTCOME_FAILED",
+    "OUTCOME_PASSED",
+    "OUTCOME_UNSCORED",
+    "OUTCOME_VERIFIER_ERRORED",
+    "PAIRED_CONDITIONS",
+    "SOURCE_COPY_IGNORED_NAMES",
+    "SOURCE_COPY_SECRET_SUFFIXES",
+    "ConditionResult",
+    "ConditionSettings",
+    "_build_nooa_runner_args",
+    "_condition_result_from_dict",
+    "_condition_result_from_rollout",
+    "_condition_settings",
+    "_copy_nooa_source",
+    "_credentials",
+    "_download_agent_logs",
+    "_ensure_benchflow_importable",
+    "_execute_nooa_runner",
+    "_git_commit",
+    "_infer_outcome",
+    "_install_nooa",
+    "_install_nooa_command",
+    "_load_env_file",
+    "_load_existing_results",
+    "_read_activated_skills",
+    "_read_task_instruction",
+    "_record_agent_run",
+    "_repo_root",
+    "_reexec_with_skillsbench_uv",
+    "_rollout_skills_dir",
+    "_run_condition",
+    "_run_manifest",
+    "_selected_conditions",
+    "_skill_dirs",
+    "_summary_markdown_lines",
+    "_summary_payload",
+    "_task_agent_timeout",
+    "_task_agent_timeout_from_frontmatter",
+    "_translate_task_library_skills",
+    "_translated_library_skills_dir",
+    "_write_summary",
+    "build_parser",
+    "main",
+]
 
 
 def _repo_root() -> Path:
@@ -121,6 +180,12 @@ def _ensure_benchflow_importable(skillsbench_dir: Path) -> None:
 
 
 def _reexec_with_skillsbench_uv(skillsbench_dir: Path) -> int:
+    """Restart inside the SkillsBench uv project when BenchFlow is not importable.
+
+    Unit tests run from the NOOA checkout, but real rollouts need BenchFlow from
+    the external SkillsBench repo.  Re-exec keeps the CLI command stable while
+    switching only the dependency environment.
+    """
     env = os.environ.copy()
     env["_NOOA_SKILLSBENCH_UV_REEXEC"] = "1"
     repo_root = _repo_root()
@@ -145,611 +210,14 @@ def _reexec_with_skillsbench_uv(skillsbench_dir: Path) -> int:
     return subprocess.run(cmd, env=env).returncode
 
 
-def _copy_nooa_source(src: Path) -> Path:
-    """Stage a compact source tree for upload into the BenchFlow sandbox."""
-    tmp = Path(tempfile.mkdtemp(prefix="nooa-bench-src-"))
-    dst = tmp / "nooa-src"
-
-    def ignore(_dir: str, names: list[str]) -> set[str]:
-        ignored: set[str] = set()
-        for name in names:
-            lower = name.lower()
-            if (
-                name in SOURCE_COPY_IGNORED_NAMES
-                or name == ".env"
-                or name.startswith(".env.")
-                or lower.endswith((".pyc", *SOURCE_COPY_SECRET_SUFFIXES))
-            ):
-                ignored.add(name)
-        return ignored
-
-    shutil.copytree(src, dst, ignore=ignore)
-    return dst
-
-
-def _read_task_instruction(task_dir: Path) -> str:
-    from benchflow.task.document import TaskDocument
-
-    task_md = task_dir / "task.md"
-    if task_md.is_file():
-        return TaskDocument.from_path(task_md).instruction.strip()
-    instruction_md = task_dir / "instruction.md"
-    if instruction_md.is_file():
-        return instruction_md.read_text().strip()
-    raise FileNotFoundError(f"Task missing task.md or instruction.md: {task_dir}")
-
-
-def _task_agent_timeout(task_dir: Path, default: int = 900) -> int:
-    try:
-        from benchflow.task import Task
-    except ImportError:
-        timeout = _task_agent_timeout_from_frontmatter(task_dir / "task.md")
-    else:
-        timeout = Task(task_dir).config.agent.timeout_sec
-    if timeout is None:
-        return default
-    return max(1, int(timeout))
-
-
-def _task_agent_timeout_from_frontmatter(task_md: Path) -> float | None:
-    if not task_md.is_file():
-        return None
-    lines = task_md.read_text().splitlines()
-    if not lines or lines[0].strip() != "---":
-        return None
-    in_agent = False
-    for line in lines[1:]:
-        if line.strip() == "---":
-            return None
-        if line and not line[0].isspace():
-            in_agent = line.strip() == "agent:"
-            continue
-        if in_agent and line.strip().startswith("timeout_sec:"):
-            value = line.split(":", 1)[1].strip().strip("'\"")
-            try:
-                return float(value)
-            except ValueError:
-                return None
-    return None
-
-
-def _condition_settings(task_dir: Path, condition: str) -> ConditionSettings:
-    if condition == "no_skill":
-        return ConditionSettings(
-            rollout_skill_mode="no-skill",
-            rollout_skills_dir=None,
-            runner_skill_mode="no_skill",
-            runner_skills_dir=None,
-        )
-    if condition == "text_skill":
-        skills_dir = task_dir / "environment" / "skills"
-        if not skills_dir.is_dir():
-            raise FileNotFoundError(f"text_skill condition requires skills dir: {skills_dir}")
-        return ConditionSettings(
-            rollout_skill_mode="with-skill",
-            rollout_skills_dir=skills_dir,
-            runner_skill_mode="text_skill",
-            runner_skills_dir="/skills",
-        )
-    if condition == "library_skill":
-        skills_dir = task_dir / "environment" / "skills"
-        if not skills_dir.is_dir():
-            raise FileNotFoundError(f"library_skill condition requires skills dir: {skills_dir}")
-        return ConditionSettings(
-            rollout_skill_mode="with-skill",
-            rollout_skills_dir=skills_dir,
-            runner_skill_mode="library_skill",
-            runner_skills_dir="/skills",
-        )
-    raise ValueError(f"Unknown condition: {condition!r}")
-
-
-def _skill_dirs(skills_root: Path) -> list[Path]:
-    """Return immediate child TextSkill directories under a SkillsBench skills root."""
-    skill_dirs: list[Path] = []
-    if not skills_root.is_dir():
-        return skill_dirs
-    for entry in sorted(skills_root.iterdir()):
-        if not entry.is_dir():
-            continue
-        if (entry / "SKILL.md").is_file() or (entry / "skill.md").is_file():
-            skill_dirs.append(entry)
-    return skill_dirs
-
-
-def _translate_task_library_skills(task_dir: Path, output_dir: Path) -> list[dict[str, Any]]:
-    """Translate task-bundled TextSkills into package-backed LibrarySkills."""
-    from nooa.tools.slim_skill_translator import SlimTextSkillTranslator
-
-    source_skills_dir = task_dir / "environment" / "skills"
-    skill_dirs = _skill_dirs(source_skills_dir)
-    if not skill_dirs:
-        raise FileNotFoundError(f"no SKILL.md directories found in {source_skills_dir}")
-
-    if output_dir.exists():
-        shutil.rmtree(output_dir)
-    output_dir.mkdir(parents=True)
-
-    translator = SlimTextSkillTranslator()
-    summaries: list[dict[str, Any]] = []
-    for skill_dir in skill_dirs:
-        result = translator.translate(skill_dir, output_dir)
-        report = translator.validate_package(result.package_dir)
-        summary = {
-            "translator": translator.__class__.__name__,
-            "source_dir": str(skill_dir),
-            "package_dir": str(result.package_dir),
-            "package_name": result.package_name,
-            "registry_name": result.registry_name,
-            "class_name": result.class_name,
-            "files_written": result.files_written,
-            "omitted_scripts": [asdict(item) for item in result.omitted_scripts],
-            "validation": {**asdict(report), "package_dir": str(report.package_dir)},
-        }
-        summaries.append(summary)
-        if not report.ok:
-            errors = "; ".join(report.errors) or "unknown validation failure"
-            raise RuntimeError(f"translated LibrarySkill failed validation for {skill_dir}: {errors}")
-
-    (output_dir / "translation_summary.json").write_text(json.dumps(summaries, indent=2))
-    return summaries
-
-
-def _build_nooa_runner_args(
-    *,
-    instruction: str,
-    model: str,
-    settings: ConditionSettings,
-    agent_env: dict[str, str],
-) -> list[str]:
-    args = [
-        "/opt/nooa-bench-venv/bin/python",
-        "-m",
-        "nooa_bench.runner",
-        "--instruction",
-        instruction,
-        "--model",
-        model,
-        "--agent-type",
-        "bench",
-        "--working-dir",
-        "/root",
-        "--skill-mode",
-        settings.runner_skill_mode,
-    ]
-    if settings.runner_skills_dir:
-        args.extend(["--skills-dir", settings.runner_skills_dir])
-    if agent_env.get("OPENAI_BASE_URL"):
-        args.extend(["--api-base", agent_env["OPENAI_BASE_URL"]])
-    return args
-
-
-def _install_nooa_command(source_sandbox_dir: str) -> str:
-    """Return the in-sandbox command that bootstraps uv and installs NOOA."""
-    return (
-        "set -eu; "
-        "if ! command -v uv >/dev/null 2>&1; then "
-        "if ! command -v curl >/dev/null 2>&1; then "
-        "if command -v apt-get >/dev/null 2>&1; then "
-        "apt-get update && apt-get install -y curl ca-certificates; "
-        "else echo 'curl is required to install uv' >&2; exit 127; "
-        "fi; "
-        "fi; "
-        "curl -LsSf https://astral.sh/uv/0.9.7/install.sh | sh; "
-        "fi; "
-        "export PATH=/root/.local/bin:$PATH; "
-        f"cd {shlex.quote(source_sandbox_dir)}; "
-        "UV_PROJECT_ENVIRONMENT=/opt/nooa-bench-venv "
-        "uv sync --package nooa-bench"
-    )
-
-
-async def _install_nooa(env: Any, source_sandbox_dir: str) -> None:
-    cmd = _install_nooa_command(source_sandbox_dir)
-    result = await env.exec(cmd, user="root", timeout_sec=900)
-    if result.return_code != 0:
-        stdout = result.stdout or ""
-        stderr = result.stderr or ""
-        raise RuntimeError(
-            "NOOA install failed: "
-            f"return_code={result.return_code} "
-            f"stdout={stdout[-4000:]!r} stderr={stderr[-4000:]!r}"
-        )
-
-
-async def _download_agent_logs(env: Any, agent_dir: Path) -> None:
-    agent_dir.mkdir(parents=True, exist_ok=True)
-    try:
-        await env.download_dir("/logs/agent", agent_dir)
-    except Exception as exc:
-        (agent_dir / "download_error.txt").write_text(str(exc))
-
-
-async def _execute_nooa_runner(
-    env: Any,
-    *,
-    command: str,
-    agent_env: dict[str, str],
-    timeout_sec: int,
-) -> int:
-    """Run the in-container NOOA runner and return its process exit code."""
-    result = await env.exec(
-        f"{command} > /logs/agent/nooa-run.log 2>&1",
-        user="agent",
-        env=agent_env,
-        timeout_sec=timeout_sec,
-    )
-    return int(result.return_code)
-
-
-def _read_activated_skills(agent_dir: Path) -> list[str] | None:
-    result_path = agent_dir / "result.json"
-    if not result_path.is_file():
-        return None
-    try:
-        payload = json.loads(result_path.read_text())
-    except json.JSONDecodeError:
-        return None
-    skills = payload.get("activated_skills")
-    if not isinstance(skills, list) or not all(isinstance(item, str) for item in skills):
-        return None
-    return skills
-
-
-def _infer_outcome(
-    *,
-    passed: bool,
-    reward: float | None,
-    error: str | None,
-    verifier_error: str | None,
-) -> str:
-    """Infer a stable local outcome for old summaries or missing BenchFlow helpers."""
-    if passed:
-        return OUTCOME_PASSED
-    if error:
-        return OUTCOME_ERRORED
-    if verifier_error:
-        return OUTCOME_VERIFIER_ERRORED
-    if reward is not None:
-        return OUTCOME_FAILED
-    return OUTCOME_UNSCORED
-
-
-def _classify_rollout_result(result: Any) -> str:
-    """Return BenchFlow's outcome string for a rollout result.
-
-    BenchFlow is only importable after this CLI has re-executed in the
-    SkillsBench project, so keep the dependency lazy and confined here.
-    """
-    from benchflow._utils.scoring import classify_result_outcome
-
-    outcome = classify_result_outcome(
-        {
-            "rewards": result.rewards,
-            "error": result.error,
-            "verifier_error": result.verifier_error,
-        }
-    )
-    return str(outcome)
-
-
-def _condition_result_from_rollout(
-    *,
-    condition: str,
-    rollout: Any,
-    agent_return_code: int,
-    activated_skills: list[str] | None,
-) -> ConditionResult:
-    result = rollout.result or rollout._build_result()
-    reward = (result.rewards or {}).get("reward") if result.rewards else None
-    outcome = _classify_rollout_result(result)
-    return ConditionResult(
-        condition=condition,
-        rollout_dir=str(rollout._rollout_dir) if rollout._rollout_dir else "",
-        passed=outcome == OUTCOME_PASSED,
-        reward=reward,
-        error=result.error,
-        verifier_error=result.verifier_error,
-        agent_return_code=agent_return_code,
-        outcome=outcome,
-        activated_skills=activated_skills,
-    )
-
-
-def _translated_library_skills_dir(jobs_dir: Path, job_name: str) -> Path:
-    return jobs_dir / job_name / "translated_library_skills"
-
-
-def _rollout_skills_dir(
-    *,
-    task_dir: Path,
-    jobs_dir: Path,
-    job_name: str,
-    condition: str,
-    settings: ConditionSettings,
-) -> Path | None:
-    if condition != "library_skill":
-        return settings.rollout_skills_dir
-    output_dir = _translated_library_skills_dir(jobs_dir, job_name)
-    _translate_task_library_skills(task_dir, output_dir)
-    return output_dir
-
-
-def _record_agent_run(
-    rollout: Any,
-    *,
-    condition: str,
-    agent_return_code: int,
-) -> None:
-    if agent_return_code != 0:
-        rollout._error = (
-            f"NOOA runner failed with exit code {agent_return_code}. "
-            "See agent/nooa-run.log."
-        )
-    rollout._trajectory = [
-        {
-            "type": "nooa_runner",
-            "condition": condition,
-            "return_code": agent_return_code,
-            "log_path": "/logs/agent/nooa-run.log",
-        }
-    ]
-    rollout._agent_name = "nooa-bench"
-
-
-async def _run_condition(
-    *,
-    task_dir: Path,
-    jobs_dir: Path,
-    job_name: str,
-    condition: str,
-    model: str,
-    sandbox: str,
-    agent_env: dict[str, str],
-    repo_src: Path,
-) -> ConditionResult:
-    from benchflow.rollout import Rollout, RolloutConfig
-
-    settings = _condition_settings(task_dir, condition)
-    agent_timeout = _task_agent_timeout(task_dir)
-    config = RolloutConfig(
-        task_path=task_dir,
-        environment=sandbox,
-        sandbox_user="agent",
-        jobs_dir=jobs_dir,
-        job_name=job_name,
-        rollout_name=f"{task_dir.name}__{condition}",
-        agent="nooa-harbor",
-        model=model,
-        agent_env=agent_env,
-        skill_mode=settings.rollout_skill_mode,
-        skills_dir=_rollout_skills_dir(
-            task_dir=task_dir,
-            jobs_dir=jobs_dir,
-            job_name=job_name,
-            condition=condition,
-            settings=settings,
-        ),
-        timeout=agent_timeout,
-    )
-    rollout = await Rollout.create(config)
-    source_tmp: Path | None = None
-    agent_return_code = 1
-    activated_skills: list[str] | None = None
-    try:
-        await rollout.setup()
-        await rollout.start()
-        await rollout.install_agent()
-
-        source_tmp = _copy_nooa_source(repo_src)
-        await rollout._env.upload_dir(source_tmp, "/tmp/nooa-src")
-        await _install_nooa(rollout._env, "/tmp/nooa-src")
-
-        instruction = _read_task_instruction(task_dir)
-        args = _build_nooa_runner_args(
-            instruction=instruction,
-            model=model,
-            settings=settings,
-            agent_env=agent_env,
-        )
-
-        command = " ".join(shlex.quote(arg) for arg in args)
-        started = time.monotonic()
-        agent_return_code = await _execute_nooa_runner(
-            rollout._env,
-            command=command,
-            agent_env=agent_env,
-            timeout_sec=agent_timeout,
-        )
-        rollout._timing["agent_execution"] = time.monotonic() - started
-        await _download_agent_logs(rollout._env, rollout._rollout_paths.agent_dir)
-        activated_skills = _read_activated_skills(rollout._rollout_paths.agent_dir)
-        _record_agent_run(
-            rollout,
-            condition=condition,
-            agent_return_code=agent_return_code,
-        )
-        await rollout.verify()
-    except Exception as exc:
-        trace = traceback.format_exc()
-        if rollout._error:
-            rollout._error = f"{rollout._error}; post-run error: {exc}\n{trace}"
-        else:
-            rollout._error = f"{exc}\n{trace}"
-    finally:
-        await rollout.cleanup()
-        if source_tmp is not None:
-            shutil.rmtree(source_tmp.parent, ignore_errors=True)
-
-    return _condition_result_from_rollout(
-        condition=condition,
-        rollout=rollout,
-        agent_return_code=agent_return_code,
-        activated_skills=activated_skills,
-    )
-
-
-def _git_commit(path: Path) -> str | None:
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            cwd=path,
-            check=True,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-        )
-    except (OSError, subprocess.CalledProcessError):
-        return None
-    return result.stdout.strip() or None
-
-
-def _run_manifest(
-    *,
-    task: str,
-    model: str,
-    sandbox: str,
-    conditions: tuple[str, ...],
-    skillsbench_dir: Path,
-    jobs_dir: Path,
-    repo_src: Path,
-) -> dict[str, Any]:
-    return {
-        "task": task,
-        "model": model,
-        "sandbox": sandbox,
-        "conditions": list(conditions),
-        "skillsbench_dir": str(skillsbench_dir),
-        "jobs_dir": str(jobs_dir),
-        "repo_commit": _git_commit(repo_src),
-        "created_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
-    }
-
-
-def _selected_conditions(condition: str) -> tuple[str, ...]:
-    if condition == "both":
-        return PAIRED_CONDITIONS
-    if condition == "all":
-        return CONDITIONS
-    return (condition,)
-
-
-def _condition_result_from_dict(payload: dict[str, Any]) -> ConditionResult:
-    passed = bool(payload.get("passed", False))
-    reward = payload.get("reward")
-    error = payload.get("error")
-    verifier_error = payload.get("verifier_error")
-    outcome = payload.get("outcome")
-    if not isinstance(outcome, str) or not outcome:
-        outcome = _infer_outcome(
-            passed=passed,
-            reward=reward,
-            error=error,
-            verifier_error=verifier_error,
-        )
-    return ConditionResult(
-        condition=str(payload.get("condition", "")),
-        rollout_dir=str(payload.get("rollout_dir", "")),
-        passed=passed,
-        reward=reward,
-        error=error,
-        verifier_error=verifier_error,
-        agent_return_code=int(payload.get("agent_return_code", 1)),
-        outcome=outcome,
-        activated_skills=payload.get("activated_skills"),
-        skipped=bool(payload.get("skipped", False)),
-    )
-
-
-def _load_existing_results(jobs_dir: Path, job_name: str) -> dict[str, ConditionResult]:
-    summary_path = jobs_dir / job_name / "summary.json"
-    if not summary_path.is_file():
-        return {}
-    try:
-        payload = json.loads(summary_path.read_text())
-    except json.JSONDecodeError:
-        return {}
-    results = payload.get("results")
-    if not isinstance(results, list):
-        return {}
-    loaded: dict[str, ConditionResult] = {}
-    for item in results:
-        if not isinstance(item, dict):
-            continue
-        result = _condition_result_from_dict(item)
-        if result.condition:
-            loaded[result.condition] = result
-    return loaded
-
-
-def _summary_payload(
-    *,
-    job_name: str,
-    results: list[ConditionResult],
-    manifest: dict[str, Any] | None,
-) -> dict[str, Any]:
-    return {
-        "job_name": job_name,
-        "manifest": manifest or {},
-        "results": [asdict(result) for result in results],
-    }
-
-
-def _summary_markdown_lines(
-    *,
-    results: list[ConditionResult],
-    manifest: dict[str, Any] | None,
-) -> list[str]:
-    lines = ["# NOOA SkillsBench One-Task Summary", ""]
-    if manifest:
-        lines.extend(
-            [
-                "## Manifest",
-                f"- task: {manifest['task']}",
-                f"- model: {manifest['model']}",
-                f"- sandbox: {manifest['sandbox']}",
-                f"- repo_commit: {manifest['repo_commit']}",
-                "",
-            ]
-        )
-    for result in results:
-        lines.append(f"## {result.condition}")
-        if result.skipped:
-            lines.append("- skipped: True")
-        lines.append(f"- outcome: {result.outcome}")
-        lines.append(f"- passed: {result.passed}")
-        lines.append(f"- reward: {result.reward}")
-        lines.append(f"- rollout_dir: {result.rollout_dir}")
-        lines.append(f"- agent_return_code: {result.agent_return_code}")
-        if result.activated_skills is not None:
-            lines.append(f"- activated_skills: {result.activated_skills}")
-        if result.error:
-            lines.append(f"- error: {result.error}")
-        if result.verifier_error:
-            lines.append(f"- verifier_error: {result.verifier_error}")
-        lines.append("")
-    return lines
-
-
-def _write_summary(
-    jobs_dir: Path,
-    job_name: str,
-    results: list[ConditionResult],
-    manifest: dict[str, Any] | None = None,
-) -> None:
-    job_dir = jobs_dir / job_name
-    job_dir.mkdir(parents=True, exist_ok=True)
-    payload = _summary_payload(job_name=job_name, results=results, manifest=manifest)
-    (job_dir / "summary.json").write_text(json.dumps(payload, indent=2))
-    lines = _summary_markdown_lines(results=results, manifest=manifest)
-    (job_dir / "summary.md").write_text("\n".join(lines))
-
-
 async def _amain(args: argparse.Namespace) -> int:
     skillsbench_dir = Path(args.skillsbench_dir).resolve()
     task_dir = skillsbench_dir / "tasks" / args.task
     if not task_dir.is_dir():
         raise FileNotFoundError(f"SkillsBench task not found: {task_dir}")
+
+    # The first process runs from the NOOA repo.  If BenchFlow is absent, re-exec
+    # in the SkillsBench uv environment and keep this checkout on PYTHONPATH.
     if not os.environ.get("_NOOA_SKILLSBENCH_UV_REEXEC"):
         try:
             import benchflow  # noqa: F401
@@ -792,6 +260,7 @@ async def _amain(args: argparse.Namespace) -> int:
                 flush=True,
             )
             continue
+
         try:
             result = await _run_condition(
                 task_dir=task_dir,
@@ -804,6 +273,8 @@ async def _amain(args: argparse.Namespace) -> int:
                 repo_src=_repo_root(),
             )
         except Exception as exc:
+            # Failures before a Rollout result exists are runner errors, not
+            # scoreable benchmark failures.
             result = ConditionResult(
                 condition=condition,
                 rollout_dir="",
@@ -814,6 +285,7 @@ async def _amain(args: argparse.Namespace) -> int:
                 agent_return_code=1,
                 outcome=OUTCOME_ERRORED,
             )
+
         results.append(result)
         print(
             f"{condition}: outcome={result.outcome} passed={result.passed} reward={result.reward} "

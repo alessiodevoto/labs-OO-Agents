@@ -298,6 +298,8 @@ class BenchAgent(
 
     def _reset_task_tools(self, cwd: str) -> None:
         """Reset shell/repo tools and per-task planning state."""
+        # Recreate shell/repo tools after skill configuration so each evaluation
+        # starts in the requested working directory with fresh task-local todos.
         self._install_python_tools(cwd)
         from nooa import Context
 
@@ -336,6 +338,8 @@ class BenchAgent(
             skills_dir=task_input.get("skills_dir"),
         )
 
+        # Skill activation is part of the prompt/tool surface; shell/repo state
+        # is task-local and reset immediately before solving.
         self._reset_task_tools(self._working_dir_for_task(task_input))
         metadata = self._evaluation_metadata()
 
