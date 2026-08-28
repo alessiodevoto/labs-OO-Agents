@@ -63,6 +63,9 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 
+# Local benchmark/evaluation artifacts
+jobs/
+
 # Translations
 *.mo
 *.pot
