@@ -189,6 +189,27 @@ def _write_answer(result: dict[str, Any]) -> None:
         logger.warning("Could not write answer file %s: %s", ANSWER_FILE, e)
 
 
+def _task_input(
+    *,
+    instruction: str,
+    working_dir: str | None,
+    skill_mode: str | None,
+    skills_dir: str | None,
+) -> dict[str, Any]:
+    task_input: dict[str, Any] = {"user_message": instruction}
+    if working_dir:
+        task_input["working_dir"] = working_dir
+    if skill_mode:
+        task_input["skill_mode"] = skill_mode
+    if skills_dir:
+        task_input["skills_dir"] = skills_dir
+    return task_input
+
+
+def _exit_code_from_result(result: dict[str, Any]) -> int:
+    return 0 if result.get("success") else 1
+
+
 async def _run(
     instruction: str,
     model: str,
@@ -223,25 +244,26 @@ async def _run(
 
     logger.info("Running agent %s (model=%s)...", agent_type, model)
     start_task_tokens()
-    task_input: dict[str, Any] = {"user_message": instruction}
-    if working_dir:
-        task_input["working_dir"] = working_dir
-    if skill_mode:
-        task_input["skill_mode"] = skill_mode
-    if skills_dir:
-        task_input["skills_dir"] = skills_dir
-    result = await agent._run_evaluation(task_input)
+    result = await agent._run_evaluation(
+        _task_input(
+            instruction=instruction,
+            working_dir=working_dir,
+            skill_mode=skill_mode,
+            skills_dir=skills_dir,
+        )
+    )
     result.update(get_task_tokens())
     _write_result(result, model, agent_type)
     _write_trajectory(agent)
     _write_answer(result)
 
-    if result.get("success"):
+    exit_code = _exit_code_from_result(result)
+    if exit_code == 0:
         logger.info("Agent completed successfully.")
-        return 0
+        return exit_code
     else:
         logger.error("Agent reported failure.")
-        return 1
+        return exit_code
 
 
 @click.command()

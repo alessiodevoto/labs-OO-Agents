@@ -288,6 +288,37 @@ class BenchAgent(
         """Preload the planning todo every benchmark task should start from."""
         self.todo.add("Create a todo-based plan with clear dependencies")
 
+    def _working_dir_for_task(self, task_input: dict) -> str:
+        cwd = task_input.get("working_dir")
+        if cwd:
+            if not os.path.isdir(cwd):
+                raise ValueError(f"working_dir does not exist: {cwd!r}")
+            return cwd
+        return next((d for d in ("/testbed", "/app") if os.path.isdir(d)), os.getcwd())
+
+    def _reset_task_tools(self, cwd: str) -> None:
+        """Reset shell/repo tools and per-task planning state."""
+        self._install_python_tools(cwd)
+        from nooa import Context
+
+        self.context_manager["todo"] = Context(doc(type(self.todo)), prefix=True)
+        self.todo.clear()
+        self._seed_todos()
+
+    def _evaluation_metadata(self) -> dict[str, list[str]]:
+        return {"activated_skills": self.skills.activated()}
+
+    def _format_evaluation_result(self, result: object, metadata: dict[str, list[str]]) -> dict:
+        if isinstance(result, TaskResult):
+            return {
+                "response": result.command_to_verify,
+                "success": bool(result.solution_description),
+                "result": result.model_dump(),
+                **metadata,
+            }
+        result_str = str(result) if result is not None else ""
+        return {"response": result_str, "success": True, "result": result, **metadata}
+
     async def _run_evaluation(self, task_input: dict) -> dict:
         """Entry point called by the Harbor runner."""
         # Read task fields generically (Harbor adapters vary in field names).
@@ -305,33 +336,12 @@ class BenchAgent(
             skills_dir=task_input.get("skills_dir"),
         )
 
-        # Reset shell to the task working dir.
-        cwd = task_input.get("working_dir")
-        if cwd:
-            if not os.path.isdir(cwd):
-                raise ValueError(f"working_dir does not exist: {cwd!r}")
-        else:
-            cwd = next((d for d in ("/testbed", "/app") if os.path.isdir(d)), os.getcwd())
-        self._install_python_tools(cwd)
-        from nooa import Context
-
-        self.context_manager["todo"] = Context(doc(type(self.todo)), prefix=True)
-        self.todo.clear()
-        self._seed_todos()
-        metadata = {"activated_skills": self.skills.activated()}
+        self._reset_task_tools(self._working_dir_for_task(task_input))
+        metadata = self._evaluation_metadata()
 
         try:
             result = await self._solve_task(self.problem_statement)
-            if isinstance(result, TaskResult):
-                return {
-                    "response": result.command_to_verify,
-                    "success": bool(result.solution_description),
-                    "result": result.model_dump(),
-                    **metadata,
-                }
-            # Fallback for non-structured returns
-            result_str = str(result) if result is not None else ""
-            return {"response": result_str, "success": True, "result": result, **metadata}
+            return self._format_evaluation_result(result, metadata)
         except Exception as e:
             _logger.error("BenchAgent failed: %s", e)
             return {"response": "", "success": False, "error": str(e), **metadata}

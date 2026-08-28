@@ -14,11 +14,13 @@ from nooa_bench.skillsbench_runner import (
     _condition_settings,
     _copy_nooa_source,
     _credentials,
+    _infer_outcome,
     _install_nooa_command,
     _load_env_file,
     _load_existing_results,
     _read_activated_skills,
     _run_manifest,
+    _selected_conditions,
     _skill_dirs,
     _task_agent_timeout,
     _translate_task_library_skills,
@@ -135,6 +137,28 @@ def test_condition_settings_library_skill_requires_skills_dir(tmp_path):
 
     with pytest.raises(FileNotFoundError, match="requires skills dir"):
         _condition_settings(task_dir, "library_skill")
+
+
+def test_selected_conditions_expands_aliases():
+    assert _selected_conditions("both") == ("no_skill", "text_skill")
+    assert _selected_conditions("all") == ("no_skill", "text_skill", "library_skill")
+    assert _selected_conditions("library_skill") == ("library_skill",)
+
+
+def test_infer_outcome_keeps_scoreable_failure_distinct_from_agent_error():
+    assert (
+        _infer_outcome(passed=False, reward=0.0, error=None, verifier_error=None)
+        == "failed"
+    )
+    assert (
+        _infer_outcome(
+            passed=False,
+            reward=None,
+            error="runner failed",
+            verifier_error=None,
+        )
+        == "errored"
+    )
 
 
 def test_translate_task_library_skills_writes_valid_packages(tmp_path):
@@ -263,6 +287,7 @@ def test_write_summary_records_pass_fail_reward_rollout_dirs_and_manifest(tmp_pa
             error="failed",
             verifier_error=None,
             agent_return_code=1,
+            outcome="errored",
             activated_skills=[],
         ),
         ConditionResult(
@@ -273,6 +298,7 @@ def test_write_summary_records_pass_fail_reward_rollout_dirs_and_manifest(tmp_pa
             error=None,
             verifier_error=None,
             agent_return_code=0,
+            outcome="passed",
             activated_skills=["cmd.xlsx"],
         ),
     ]
@@ -290,10 +316,13 @@ def test_write_summary_records_pass_fail_reward_rollout_dirs_and_manifest(tmp_pa
 
     assert payload["manifest"]["repo_commit"] == "abc123"
     assert payload["results"][0]["rollout_dir"] == "/tmp/no"
+    assert payload["results"][0]["outcome"] == "errored"
     assert payload["results"][1]["reward"] == 1.0
+    assert payload["results"][1]["outcome"] == "passed"
     assert payload["results"][1]["activated_skills"] == ["cmd.xlsx"]
     assert "- repo_commit: abc123" in summary_md
     assert "## no_skill" in summary_md
+    assert "- outcome: passed" in summary_md
     assert "- passed: True" in summary_md
 
 
@@ -307,6 +336,7 @@ def test_load_existing_results_for_resume(tmp_path):
             error=None,
             verifier_error=None,
             agent_return_code=0,
+            outcome="passed",
             activated_skills=["cmd.xlsx"],
         )
     ]
@@ -315,4 +345,41 @@ def test_load_existing_results_for_resume(tmp_path):
     loaded = _load_existing_results(tmp_path, "job")
 
     assert loaded["text_skill"].passed is True
+    assert loaded["text_skill"].outcome == "passed"
     assert loaded["text_skill"].activated_skills == ["cmd.xlsx"]
+
+
+def test_load_existing_results_infers_outcome_for_legacy_summary(tmp_path):
+    job_dir = tmp_path / "job"
+    job_dir.mkdir()
+    (job_dir / "summary.json").write_text(
+        json.dumps(
+            {
+                "results": [
+                    {
+                        "condition": "library_skill",
+                        "rollout_dir": "/tmp/scoreable",
+                        "passed": False,
+                        "reward": 0.0,
+                        "error": None,
+                        "verifier_error": None,
+                        "agent_return_code": 0,
+                    },
+                    {
+                        "condition": "text_skill",
+                        "rollout_dir": "/tmp/infra",
+                        "passed": False,
+                        "reward": None,
+                        "error": "runner failed",
+                        "verifier_error": None,
+                        "agent_return_code": 1,
+                    },
+                ]
+            }
+        )
+    )
+
+    loaded = _load_existing_results(tmp_path, "job")
+
+    assert loaded["library_skill"].outcome == "failed"
+    assert loaded["text_skill"].outcome == "errored"

@@ -9,6 +9,27 @@ import json
 from nooa_bench import runner
 
 
+def test_task_input_includes_only_supplied_optional_fields():
+    payload = runner._task_input(
+        instruction="fix it",
+        working_dir="/root",
+        skill_mode="library_skill",
+        skills_dir=None,
+    )
+
+    assert payload == {
+        "user_message": "fix it",
+        "working_dir": "/root",
+        "skill_mode": "library_skill",
+    }
+
+
+def test_exit_code_from_result_keeps_agent_failure_explicit():
+    assert runner._exit_code_from_result({"success": True}) == 0
+    assert runner._exit_code_from_result({"success": False}) == 1
+    assert runner._exit_code_from_result({}) == 1
+
+
 def test_write_result_preserves_activated_skills(monkeypatch, tmp_path):
     monkeypatch.setattr(runner, "LOGS_DIR", tmp_path)
 

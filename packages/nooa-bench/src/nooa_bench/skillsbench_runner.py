@@ -24,6 +24,11 @@ DEFAULT_TASK = "citation-check"
 DEFAULT_JOBS_DIR = Path("jobs/nooa-skillsbench")
 PAIRED_CONDITIONS = ("no_skill", "text_skill")
 CONDITIONS = (*PAIRED_CONDITIONS, "library_skill")
+OUTCOME_PASSED = "passed"
+OUTCOME_FAILED = "failed"
+OUTCOME_ERRORED = "errored"
+OUTCOME_VERIFIER_ERRORED = "verifier_errored"
+OUTCOME_UNSCORED = "unscored"
 SOURCE_COPY_IGNORED_NAMES = {
     ".git",
     ".venv",
@@ -48,6 +53,7 @@ class ConditionResult:
     error: str | None
     verifier_error: str | None
     agent_return_code: int
+    outcome: str = OUTCOME_UNSCORED
     activated_skills: list[str] | None = None
     skipped: bool = False
 
@@ -359,6 +365,23 @@ async def _download_agent_logs(env: Any, agent_dir: Path) -> None:
         (agent_dir / "download_error.txt").write_text(str(exc))
 
 
+async def _execute_nooa_runner(
+    env: Any,
+    *,
+    command: str,
+    agent_env: dict[str, str],
+    timeout_sec: int,
+) -> int:
+    """Run the in-container NOOA runner and return its process exit code."""
+    result = await env.exec(
+        f"{command} > /logs/agent/nooa-run.log 2>&1",
+        user="agent",
+        env=agent_env,
+        timeout_sec=timeout_sec,
+    )
+    return int(result.return_code)
+
+
 def _read_activated_skills(agent_dir: Path) -> list[str] | None:
     result_path = agent_dir / "result.json"
     if not result_path.is_file():
@@ -371,6 +394,107 @@ def _read_activated_skills(agent_dir: Path) -> list[str] | None:
     if not isinstance(skills, list) or not all(isinstance(item, str) for item in skills):
         return None
     return skills
+
+
+def _infer_outcome(
+    *,
+    passed: bool,
+    reward: float | None,
+    error: str | None,
+    verifier_error: str | None,
+) -> str:
+    """Infer a stable local outcome for old summaries or missing BenchFlow helpers."""
+    if passed:
+        return OUTCOME_PASSED
+    if error:
+        return OUTCOME_ERRORED
+    if verifier_error:
+        return OUTCOME_VERIFIER_ERRORED
+    if reward is not None:
+        return OUTCOME_FAILED
+    return OUTCOME_UNSCORED
+
+
+def _classify_rollout_result(result: Any) -> str:
+    """Return BenchFlow's outcome string for a rollout result.
+
+    BenchFlow is only importable after this CLI has re-executed in the
+    SkillsBench project, so keep the dependency lazy and confined here.
+    """
+    from benchflow._utils.scoring import classify_result_outcome
+
+    outcome = classify_result_outcome(
+        {
+            "rewards": result.rewards,
+            "error": result.error,
+            "verifier_error": result.verifier_error,
+        }
+    )
+    return str(outcome)
+
+
+def _condition_result_from_rollout(
+    *,
+    condition: str,
+    rollout: Any,
+    agent_return_code: int,
+    activated_skills: list[str] | None,
+) -> ConditionResult:
+    result = rollout.result or rollout._build_result()
+    reward = (result.rewards or {}).get("reward") if result.rewards else None
+    outcome = _classify_rollout_result(result)
+    return ConditionResult(
+        condition=condition,
+        rollout_dir=str(rollout._rollout_dir) if rollout._rollout_dir else "",
+        passed=outcome == OUTCOME_PASSED,
+        reward=reward,
+        error=result.error,
+        verifier_error=result.verifier_error,
+        agent_return_code=agent_return_code,
+        outcome=outcome,
+        activated_skills=activated_skills,
+    )
+
+
+def _translated_library_skills_dir(jobs_dir: Path, job_name: str) -> Path:
+    return jobs_dir / job_name / "translated_library_skills"
+
+
+def _rollout_skills_dir(
+    *,
+    task_dir: Path,
+    jobs_dir: Path,
+    job_name: str,
+    condition: str,
+    settings: ConditionSettings,
+) -> Path | None:
+    if condition != "library_skill":
+        return settings.rollout_skills_dir
+    output_dir = _translated_library_skills_dir(jobs_dir, job_name)
+    _translate_task_library_skills(task_dir, output_dir)
+    return output_dir
+
+
+def _record_agent_run(
+    rollout: Any,
+    *,
+    condition: str,
+    agent_return_code: int,
+) -> None:
+    if agent_return_code != 0:
+        rollout._error = (
+            f"NOOA runner failed with exit code {agent_return_code}. "
+            "See agent/nooa-run.log."
+        )
+    rollout._trajectory = [
+        {
+            "type": "nooa_runner",
+            "condition": condition,
+            "return_code": agent_return_code,
+            "log_path": "/logs/agent/nooa-run.log",
+        }
+    ]
+    rollout._agent_name = "nooa-bench"
 
 
 async def _run_condition(
@@ -388,11 +512,6 @@ async def _run_condition(
 
     settings = _condition_settings(task_dir, condition)
     agent_timeout = _task_agent_timeout(task_dir)
-    rollout_skills_dir = settings.rollout_skills_dir
-    if condition == "library_skill":
-        rollout_skills_dir = jobs_dir / job_name / "translated_library_skills"
-        _translate_task_library_skills(task_dir, rollout_skills_dir)
-
     config = RolloutConfig(
         task_path=task_dir,
         environment=sandbox,
@@ -404,7 +523,13 @@ async def _run_condition(
         model=model,
         agent_env=agent_env,
         skill_mode=settings.rollout_skill_mode,
-        skills_dir=rollout_skills_dir,
+        skills_dir=_rollout_skills_dir(
+            task_dir=task_dir,
+            jobs_dir=jobs_dir,
+            job_name=job_name,
+            condition=condition,
+            settings=settings,
+        ),
         timeout=agent_timeout,
     )
     rollout = await Rollout.create(config)
@@ -430,30 +555,20 @@ async def _run_condition(
 
         command = " ".join(shlex.quote(arg) for arg in args)
         started = time.monotonic()
-        result = await rollout._env.exec(
-            f"{command} > /logs/agent/nooa-run.log 2>&1",
-            user="agent",
-            env=agent_env,
+        agent_return_code = await _execute_nooa_runner(
+            rollout._env,
+            command=command,
+            agent_env=agent_env,
             timeout_sec=agent_timeout,
         )
-        agent_return_code = int(result.return_code)
         rollout._timing["agent_execution"] = time.monotonic() - started
         await _download_agent_logs(rollout._env, rollout._rollout_paths.agent_dir)
         activated_skills = _read_activated_skills(rollout._rollout_paths.agent_dir)
-        if agent_return_code != 0:
-            rollout._error = (
-                f"NOOA runner failed with exit code {agent_return_code}. "
-                "See agent/nooa-run.log."
-            )
-        rollout._trajectory = [
-            {
-                "type": "nooa_runner",
-                "condition": condition,
-                "return_code": agent_return_code,
-                "log_path": "/logs/agent/nooa-run.log",
-            }
-        ]
-        rollout._agent_name = "nooa-bench"
+        _record_agent_run(
+            rollout,
+            condition=condition,
+            agent_return_code=agent_return_code,
+        )
         await rollout.verify()
     except Exception as exc:
         trace = traceback.format_exc()
@@ -466,27 +581,9 @@ async def _run_condition(
         if source_tmp is not None:
             shutil.rmtree(source_tmp.parent, ignore_errors=True)
 
-    result = rollout.result or rollout._build_result()
-    reward = (result.rewards or {}).get("reward") if result.rewards else None
-    from benchflow._utils.scoring import classify_result_outcome
-
-    passed = (
-        classify_result_outcome(
-            {
-                "rewards": result.rewards,
-                "error": result.error,
-                "verifier_error": result.verifier_error,
-            }
-        )
-        == "passed"
-    )
-    return ConditionResult(
+    return _condition_result_from_rollout(
         condition=condition,
-        rollout_dir=str(rollout._rollout_dir) if rollout._rollout_dir else "",
-        passed=passed,
-        reward=reward,
-        error=result.error,
-        verifier_error=result.verifier_error,
+        rollout=rollout,
         agent_return_code=agent_return_code,
         activated_skills=activated_skills,
     )
@@ -529,15 +626,36 @@ def _run_manifest(
     }
 
 
+def _selected_conditions(condition: str) -> tuple[str, ...]:
+    if condition == "both":
+        return PAIRED_CONDITIONS
+    if condition == "all":
+        return CONDITIONS
+    return (condition,)
+
+
 def _condition_result_from_dict(payload: dict[str, Any]) -> ConditionResult:
+    passed = bool(payload.get("passed", False))
+    reward = payload.get("reward")
+    error = payload.get("error")
+    verifier_error = payload.get("verifier_error")
+    outcome = payload.get("outcome")
+    if not isinstance(outcome, str) or not outcome:
+        outcome = _infer_outcome(
+            passed=passed,
+            reward=reward,
+            error=error,
+            verifier_error=verifier_error,
+        )
     return ConditionResult(
         condition=str(payload.get("condition", "")),
         rollout_dir=str(payload.get("rollout_dir", "")),
-        passed=bool(payload.get("passed", False)),
-        reward=payload.get("reward"),
-        error=payload.get("error"),
-        verifier_error=payload.get("verifier_error"),
+        passed=passed,
+        reward=reward,
+        error=error,
+        verifier_error=verifier_error,
         agent_return_code=int(payload.get("agent_return_code", 1)),
+        outcome=outcome,
         activated_skills=payload.get("activated_skills"),
         skipped=bool(payload.get("skipped", False)),
     )
@@ -564,20 +682,24 @@ def _load_existing_results(jobs_dir: Path, job_name: str) -> dict[str, Condition
     return loaded
 
 
-def _write_summary(
-    jobs_dir: Path,
+def _summary_payload(
+    *,
     job_name: str,
     results: list[ConditionResult],
-    manifest: dict[str, Any] | None = None,
-) -> None:
-    job_dir = jobs_dir / job_name
-    job_dir.mkdir(parents=True, exist_ok=True)
-    payload = {
+    manifest: dict[str, Any] | None,
+) -> dict[str, Any]:
+    return {
         "job_name": job_name,
         "manifest": manifest or {},
-        "results": [result.__dict__ for result in results],
+        "results": [asdict(result) for result in results],
     }
-    (job_dir / "summary.json").write_text(json.dumps(payload, indent=2))
+
+
+def _summary_markdown_lines(
+    *,
+    results: list[ConditionResult],
+    manifest: dict[str, Any] | None,
+) -> list[str]:
     lines = ["# NOOA SkillsBench One-Task Summary", ""]
     if manifest:
         lines.extend(
@@ -594,6 +716,7 @@ def _write_summary(
         lines.append(f"## {result.condition}")
         if result.skipped:
             lines.append("- skipped: True")
+        lines.append(f"- outcome: {result.outcome}")
         lines.append(f"- passed: {result.passed}")
         lines.append(f"- reward: {result.reward}")
         lines.append(f"- rollout_dir: {result.rollout_dir}")
@@ -605,6 +728,20 @@ def _write_summary(
         if result.verifier_error:
             lines.append(f"- verifier_error: {result.verifier_error}")
         lines.append("")
+    return lines
+
+
+def _write_summary(
+    jobs_dir: Path,
+    job_name: str,
+    results: list[ConditionResult],
+    manifest: dict[str, Any] | None = None,
+) -> None:
+    job_dir = jobs_dir / job_name
+    job_dir.mkdir(parents=True, exist_ok=True)
+    payload = _summary_payload(job_name=job_name, results=results, manifest=manifest)
+    (job_dir / "summary.json").write_text(json.dumps(payload, indent=2))
+    lines = _summary_markdown_lines(results=results, manifest=manifest)
     (job_dir / "summary.md").write_text("\n".join(lines))
 
 
@@ -630,12 +767,7 @@ async def _amain(args: argparse.Namespace) -> int:
 
     jobs_dir = Path(args.jobs_dir).resolve()
     job_name = args.job_name or f"{args.task}__nooa__{time.strftime('%Y-%m-%d__%H-%M-%S')}"
-    if args.condition == "both":
-        conditions = PAIRED_CONDITIONS
-    elif args.condition == "all":
-        conditions = CONDITIONS
-    else:
-        conditions = (args.condition,)
+    conditions = _selected_conditions(args.condition)
     manifest = _run_manifest(
         task=args.task,
         model=args.model,
@@ -654,7 +786,8 @@ async def _amain(args: argparse.Namespace) -> int:
             result.skipped = True
             results.append(result)
             print(
-                f"{condition}: skipped=True passed={result.passed} reward={result.reward} "
+                f"{condition}: skipped=True outcome={result.outcome} "
+                f"passed={result.passed} reward={result.reward} "
                 f"rollout_dir={result.rollout_dir}",
                 flush=True,
             )
@@ -679,10 +812,11 @@ async def _amain(args: argparse.Namespace) -> int:
                 error=str(exc),
                 verifier_error=None,
                 agent_return_code=1,
+                outcome=OUTCOME_ERRORED,
             )
         results.append(result)
         print(
-            f"{condition}: passed={result.passed} reward={result.reward} "
+            f"{condition}: outcome={result.outcome} passed={result.passed} reward={result.reward} "
             f"rollout_dir={result.rollout_dir}",
             flush=True,
         )
